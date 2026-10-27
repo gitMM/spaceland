@@ -19,7 +19,8 @@ namespace DeathStar
         static readonly Color EnvDark=new Color(0.03f,0.032f,0.036f);
 
         // Planning-overlay colours (linear). Hull stays plain grey.
-        // Foundry shape view: grey box, red box too small for human-scale parts, orange wedge, magenta apex.
+        // Foundry shape view: grey box, red box with an edge under 3.2 m (its parts take smaller size classes), orange
+        // wedge, magenta apex.
         public static Color ShapeColor(in ShapeInfo s)=>s.kind switch
         {
             CellShape.Wedge=>new Color(1f,0.5f,0.1f),

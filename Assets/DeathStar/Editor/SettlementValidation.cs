@@ -93,7 +93,7 @@ namespace DeathStar.EditorTools
             }
             checks++;
             ShapeClasses();checks++;
-            return $"PASS: {checks} settlement checks; family preview/save/migration/atomicity; 24 rotations; insertion order; open connectors and junctions; exact eight-corner warp; seamless metric relief; diagonal invalidation; shape classes and exposures.";
+            return $"PASS: {checks} settlement checks; family preview/save/migration/atomicity; 24 rotations; insertion order; open connectors and junctions; exact eight-corner warp; seamless metric relief; diagonal invalidation; shape classes and exposures; every family placeable in every cell, valid cells out to the build limit.";
         }
         // On a ball grown from the seed, cells on the cube's edge diagonals (two coordinates tie for the largest
         // magnitude) are wedges along the third axis, the corner diagonals apexes, everything else boxes.
@@ -120,22 +120,29 @@ namespace DeathStar.EditorTools
             Require(grown.TryEdit(new Vector3Int(3,3,1),true,out var cut),"Ridge cut failed");
             Require(cut.Exposure(new Vector3Int(3,3,0),out gable)==CellExposure.Ridge&&gable,"Ridge end lost its gable");
             Require(walled.Shape(new Vector3Int(3,3,0)).kind==CellShape.Wedge,"An edit changed a neighbour's shape");
-            // Placement rules refuse exactly where fixed-size parts would not fit, and say why.
-            int padOk=0,padNo=0,tubeOk=0,tubeNo=0;
-            for(int y=-3;y<=3;y++)for(int z=-3;z<=3;z++)
+            // Every family can be placed in every cell: each surface cell of the ball (boxes, small boxes, wedges and
+            // apexes) is taken out and put back in each family.
+            var families=(TileFamily[])Enum.GetValues(typeof(TileFamily));int small=0;
+            foreach(var c in ball)
             {
-                var at=new Vector3Int(4,y,z);
-                Require(grown.TryEdit(at,false,out var plain),"Hull placement failed at "+at);
-                var face=plain.FaceSize(at,0);bool padFits=Mathf.Min(face.x,face.y)>=BlockConstruction.PadRoom;
-                bool pad=grown.TryEdit(at,false,out _,TileFamily.Pad,0);
-                Require(pad==padFits&&(pad||grown.LastError.Contains("landing pad needs")),$"Pad rule wrong at {at} ({face.x:0.0} × {face.y:0.0} m)");
-                if(pad)padOk++;else padNo++;
-                bool tubeFits=plain.Shape(at).minEdge>=BlockConstruction.CorridorRoom;
-                bool tube=grown.TryEdit(at,false,out _,TileFamily.Corridor);
-                Require(tube==tubeFits&&(tube||grown.LastError.Contains("corridor needs")),"Corridor rule wrong at "+at);
-                if(tube)tubeOk++;else tubeNo++;
+                if(Mathf.Max(Mathf.Abs(c.x),Mathf.Max(Mathf.Abs(c.y),Mathf.Abs(c.z)))!=3)continue;
+                if(grown.Shape(c).Small)small++;
+                Require(grown.TryEdit(c,true,out var without),"Removal failed at "+c);
+                foreach(var f in families)Require(without.TryEdit(c,false,out _,f),$"{f} refused at {c}: {without.LastError}");
             }
-            Require(padOk>0&&padNo>0&&tubeOk>0&&tubeNo>0,$"Placement rules not exercised both ways (pads {padOk}/{padNo}, corridors {tubeOk}/{tubeNo})");
+            Require(small>0,"No small boxes on the ball");
+            // Out to the build limit the cube's corners and the ridges beside them stay valid: their roofs flatten, they
+            // don't fold. Stored corners that do fold a cell (two swapped) or collapse it (one on another) are refused.
+            foreach(int k in new[]{13,40,63})
+                Require(Builds(new[]{new Vector3Int(k,k,k),new Vector3Int(k,k,k-1),new Vector3Int(-k,k,0),new Vector3Int(0,-k,-k+1)},BlockConstruction.SeedGuide),"Shell "+k+" corner or ridge refused");
+            Require(Builds(new[]{new Vector3Int(-64,-64,-64),new Vector3Int(63,-64,0)},new BlockGuide{shape=BlockShape.Rounded,strength=1,center=Vector3.zero,extents=Vector3.one*4}),"Corner-centred guide refused its corners");
+            foreach(bool collapse in new[]{false,true})
+            {
+                var save=new BlockConstruction().Capture();var a=save.corners[0].position;
+                save.corners[0].position=save.corners[1].position;if(!collapse)save.corners[1].position=a;
+                bool refused=false;try{new BlockConstruction().Restore(save);}catch(ArgumentException){refused=true;}
+                Require(refused,collapse?"A collapsed cell was accepted":"A folded cell was accepted");
+            }
             var ridges=SettlementExamples.Ridges();
             const int R=SettlementExamples.RidgeRadius;
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R-1,R-1,1),out _)==CellExposure.Keel,"Ridges example lost its keel");
@@ -156,6 +163,11 @@ namespace DeathStar.EditorTools
                 Require(onRidge.Contains(f),"Station example lacks "+f+" on a ridge");
                 if(f!=TileFamily.Corridor&&f!=TileFamily.Conduit)Require(onCrown.Contains(f),"Station example lacks a "+f+" crown");
             }
+        }
+        static bool Builds(Vector3Int[] cells,BlockGuide guide)
+        {
+            try{BlockConstruction.FromCells(cells,guide);return true;}
+            catch(ArgumentException){return false;}
         }
         public static string FoundryInteraction(TileLibrary library)
         {

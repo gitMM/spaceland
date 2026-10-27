@@ -456,7 +456,7 @@ Rules:
 
 - Kit parts follow the fixed-size rules of [Scale and human reference](#scale-and-human-reference). They are built directly from the cell's real corners in a rigid frame, so their edges meet the bent neighbours exactly.
 - 2 × 2 landmarks form only on four box cells.
-- A corridor needs at least 3.2 m across its cross-section, and a single landing pad a face of at least 3.6 m (its 4.4 m deck, on a pedestal, may overhang the cell by up to 0.4 m a side). Other families are never refused: their smallest size fits the smallest cells, and every family has a kit.
+- Every family fits every cell. A corridor keeps its true-size tube in the narrowest (2.4 m) cells, overhanging into its neighbours by at most 0.2 m (collars 0.4 m). A landing pad's deck takes the largest size class that overhangs its face by at most 0.4 m a side (L from 3.6 m, M from 2.6 m, S below); a 2 × 2 pad takes its class from the block's width, and the hatch stays true size. Other families' smallest size fits the smallest cells, and every family has a kit.
 
 Every solid family builds its own kit on special cells (`TileBuilder.Kits*.cs`). Corridors and conduits keep their tubes, junctions and collars there: a corridor on a ridge in a skin always links to its neighbours, so it is a junction, not a gallery. The Foundry's shape view (C, twice) and its **Ridges** example show where the special cells are.
 

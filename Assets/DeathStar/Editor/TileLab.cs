@@ -61,10 +61,16 @@ namespace DeathStar.EditorTools
             using var rig=new Rig(lib);
             if(mode=="warmup"){var t=rig.Shoot(TileGallery.Fragment,320,180);UnityEngine.Object.DestroyImmediate(t);return "DONE warmup";}
             if(mode=="snap")return Snap(rig,opts);
-            if(mode=="foundry")
+            if(mode=="foundry"||mode=="limit")
             {
                 var checks=new List<(bool ok,string text)>();var shots=new List<(string file,string what)>();
-                var notes=FoundryReport(rig,checks,shots);
+                List<string> notes;
+                if(mode=="foundry")notes=FoundryReport(rig,checks,shots);
+                else
+                {
+                    notes=new List<string>();rig.Stage.root.SetActive(false);
+                    try{LimitReport(rig,checks,shots,notes);}finally{rig.Stage.root.SetActive(true);}
+                }
                 return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text).Concat(notes));
             }
             return Report(rig);
@@ -332,9 +338,7 @@ namespace DeathStar.EditorTools
                 foreach(bool remove in new[]{false,true})
                 {
                     var sw=Stopwatch.StartNew();
-                    // A family refused for lack of room falls back to Hull, as a player would pick another.
-                    if(!model.TryEdit(cell,remove,out var next,TileGallery.Families[i%TileGallery.Families.Length])&&
-                        (remove||!model.TryEdit(cell,false,out next)))break;
+                    if(!model.TryEdit(cell,remove,out var next,TileGallery.Families[i%TileGallery.Families.Length]))break;
                     view.Rebuild(next,next.ChangedCells);ms.Add(sw.Elapsed.TotalMilliseconds);sum.Add(view.LastTimings);model=next;
                 }
             }
@@ -410,7 +414,7 @@ namespace DeathStar.EditorTools
                 shots.Add(("foundry-pad-incomplete.png","removing a quarter restores three separate pads"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
-            try{RidgesReport(rig,checks,shots,notes);StationReport(rig,checks,shots,notes);}
+            try{RidgesReport(rig,checks,shots,notes);LimitReport(rig,checks,shots,notes);StationReport(rig,checks,shots,notes);}
             finally{rig.Stage.root.SetActive(true);}
             return notes;
         }
@@ -449,6 +453,62 @@ namespace DeathStar.EditorTools
                 var spike=warp.Map((Vector3)new Vector3Int(-1,-1,1)*(R-1)*5);
                 t=rig.Shoot(new TileGallery.View(spike*0.15f+Vector3.up*3,spike,Vector3.up,70),W,H);Save(t,Path.Combine(Dir,"station-inside.png"));UnityEngine.Object.DestroyImmediate(t);
                 shots.Add(("station-inside.png","inside the hollow: the spike under the Life Support crown"));
+            }
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
+        }
+        // The cap at the build limit: the flattest ridges and crown, and the narrowest cells holding a corridor and pads.
+        static void LimitReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)
+        {
+            var root=new GameObject("Limit lab");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var model=SettlementExamples.Limit();var view=new FoundrySettlement(root.transform,rig.Library.materials);
+            try
+            {
+                view.measureFixedParts=true;view.Rebuild(model);view.measureFixedParts=false;var full=view.LastTimings;
+                notes.Add($"Limit example, cells: {ShapeCounts(model)}");
+                notes.Add($"Limit example, full rebuild: {full.Total:0} ms for {full.tiles} tiles: {Split(full)}");
+                float narrow=float.MaxValue;
+                foreach(var c in SettlementExamples.LimitCorridor.Concat(SettlementExamples.LimitPads))
+                    narrow=Mathf.Min(narrow,model.Shape(SettlementExamples.RidgeCell(c.x,c.y,c.z)).minEdge);
+                notes.Add($"Limit example: the corridor and pads stand in cells as narrow as {narrow:0.00} m");
+                ScaleCheck("Limit",view,checks,notes);
+                ConnectorCheck("Limit",model,checks,notes);
+                KitCheck("Limit",model,checks,notes);
+                var small=new[]{"pad M","pad S","pad quarter M","pad quarter S"};
+                checks.Add((view.fixedPartSizes.Exists(p=>small.Contains(p.name)),"Limit: pads on narrow faces take a smaller size class"));
+                TileLook.AddLights(root.transform);
+                const int R=SettlementExamples.LimitRadius,LowCorner=SettlementExamples.LimitLow;
+                var warp=new CurvedTileMesh(model);
+                Vector3 At(float x,float y,float z)=>warp.Map(Vector3.Scale(new Vector3(x,y,z),new Vector3(-5,5,-5)));
+                // At shell 63 the cap is nearly flat: seen from above, its three ridges read as a cube's edges, so
+                // look along the surface instead.
+                var crown=At(R+0.5f,R+0.5f,R+0.5f);var outward=crown.normalized;
+                var corner=At(LowCorner,R+0.5f,LowCorner);var toward=(corner-crown-outward*Vector3.Dot(corner-crown,outward)).normalized;
+                var cap=new TileGallery.View(crown+outward*14-toward*30,(crown+corner)*0.5f,outward,55);
+                var t=rig.Shoot(cap,320,180);UnityEngine.Object.DestroyImmediate(t);
+                t=rig.Shoot(cap,W,H);Save(t,Path.Combine(Dir,"limit.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("limit.png","the cap at the build limit (shell 63), along its nearly flat surface: crests on the ridges, a corridor node on the crown"));
+                // From above, by family and by shape: the corridor runs beside the x ridge, the pads stand on red small boxes.
+                var run0=At(58,62,R+0.5f);var run1=At(61,62,R+0.5f);var mid=At(58.5f,60.5f,R+0.5f);var up=mid.normalized;
+                var along=(run1-run0-up*Vector3.Dot(run1-run0,up)).normalized;
+                var plan=new TileGallery.View(mid+up*34,mid,along,50);
+                foreach(var (mode,file,what) in new[]{(DebugView.Family,"limit-plan-coded.png","the narrowest cells from above, by family: corridor (pink) beside the x ridge, two single pads and a 2 x 2 pad"),
+                    (DebugView.Shape,"limit-plan-shapes.png","the same by cell shape: the corridor and pads stand on red small boxes")})
+                {
+                    view.SetDebugView(mode);t=rig.Shoot(plan,W,H);Save(t,Path.Combine(Dir,file));UnityEngine.Object.DestroyImmediate(t);shots.Add((file,what));
+                }
+                view.SetDebugView(DebugView.Off);
+                // Close up, looking down the run into its 2.4 m slot beside the x ridge, plain and by family.
+                var across=Vector3.Cross(up,along);var tube=(run0+run1)*0.5f-up*2;
+                var close=new TileGallery.View(tube+up*8+across*2-along*9,tube+along*2,up,50);
+                var sheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                for(int i=0;i<2;i++)
+                {
+                    view.SetDebugView(i==0?DebugView.Off:DebugView.Family);t=rig.Shoot(close,W/2,H);
+                    sheet.SetPixels(i*(W/2),0,W/2,H,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                view.SetDebugView(DebugView.Off);
+                sheet.Apply();Save(sheet,Path.Combine(Dir,"limit-narrow.png"));UnityEngine.Object.DestroyImmediate(sheet);
+                shots.Add(("limit-narrow.png","close up down the corridor run in the 2.4 m cells beside the x ridge, plain and by family"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

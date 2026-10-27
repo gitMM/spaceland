@@ -172,9 +172,9 @@ namespace DeathStar
             if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
             return CellExposure.Buried;
         }
-        // Preview and commit use the same result. Hovering never changes the live construction. face: the new cell's
-        // outward face (the side clicked), which a landing pad would use; -1 checks its best face.
-        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull,int face=-1)
+        // Preview and commit use the same result. Hovering never changes the live construction. Every family fits
+        // every cell: parts too big for a narrow cell take a smaller size class (TileBuilder.SizeClasses).
+        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull)
         {
             next=null;LastError=null;
             if(!Enum.IsDefined(typeof(TileFamily),family)){LastError="Unknown tile family.";return false;}
@@ -194,29 +194,8 @@ namespace DeathStar
                 }
                 if(!ValidGeometry(candidate.cells,candidate.corners,new[]{edit}))
                 {LastError="This gap cannot be filled safely on the sphere grid.";return false;}
-                var refusal=candidate.Refusal(edit,family,face);
-                if(refusal!=null){LastError=refusal;return false;}
             }
             next=candidate;return true;
-        }
-        // Families whose fixed-size parts need room (design doc: Ridges, keels and crowns), in metres. A single pad's
-        // 4.4 m deck stands on a pedestal and may overhang its cell by up to 0.4 m a side.
-        public const float CorridorRoom=3.2f,PadRoom=3.6f;
-        string Refusal(Vector3Int cell,TileFamily family,int face)
-        {
-            if(family==TileFamily.Corridor)
-            {
-                float narrow=Shape(cell).minEdge;
-                if(narrow<CorridorRoom)return $"A corridor needs {CorridorRoom:0.0} m across; this cell narrows to {narrow:0.0} m.";
-            }
-            if(family==TileFamily.Pad)
-            {
-                var best=Vector2.zero;
-                for(int f=0;f<6;f++)if(face<0||f==face)
-                {var size=FaceSize(cell,f);if(Mathf.Min(size.x,size.y)>Mathf.Min(best.x,best.y))best=size;}
-                if(Mathf.Min(best.x,best.y)<PadRoom)return $"A landing pad needs a {PadRoom:0.0} m face; this one is {best.x:0.0} × {best.y:0.0} m.";
-            }
-            return null;
         }
         // A face's size in metres: its mean extent along each of the two lattice axes it spans.
         public Vector2 FaceSize(Vector3Int cell,int face)
@@ -291,6 +270,7 @@ namespace DeathStar
             Vector3 c=Corner(cell+CornerOffset(FaceCorners[face,2])),d=Corner(cell+CornerOffset(FaceCorners[face,3]));
             return Vector3.Lerp(Vector3.Lerp(a,b,u),Vector3.Lerp(d,c,u),v);
         }
+        public const float MinScaledJacobian=0.001f;
         public bool GeometryIsValid()=>ValidGeometry(cells,corners,cells);
         static bool ValidGeometry(HashSet<Vector3Int> occupancy,Dictionary<Vector3Int,Vector3> points,IEnumerable<Vector3Int> check)
         {
@@ -306,9 +286,12 @@ namespace DeathStar
                     Vector3 dy=Vector3.Lerp(Vector3.Lerp(p[2]-p[0],p[3]-p[1],u),Vector3.Lerp(p[6]-p[4],p[7]-p[5],u),w);
                     Vector3 dz=Vector3.Lerp(Vector3.Lerp(p[4]-p[0],p[5]-p[1],u),Vector3.Lerp(p[6]-p[2],p[7]-p[3],u),v);
                     float determinant=Vector3.Dot(dx,Vector3.Cross(dy,dz));
-                    // Cube-sphere corner cells legitimately have a small positive corner
-                    // Jacobian. Reject foldovers/collapse without flattening a large hull.
-                    if(!float.IsFinite(determinant)||determinant<0.002f)return false;
+                    // A wedge's or apex's folded roof flattens as the shell grows, so its outer corner's Jacobian
+                    // falls towards zero (scaled by the edges: 0.0033 at the build limit). Reject foldovers and
+                    // collapse, not flatness: the scaled Jacobian stays positive and no edge shrinks under 0.1 cell.
+                    float edges=dx.magnitude*dy.magnitude*dz.magnitude;
+                    if(!float.IsFinite(determinant)||determinant<MinScaledJacobian*edges||
+                       Mathf.Min(dx.sqrMagnitude,Mathf.Min(dy.sqrMagnitude,dz.sqrMagnitude))<0.01f)return false;
                 }
             }
             return true;

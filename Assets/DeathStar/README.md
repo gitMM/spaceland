@@ -159,9 +159,15 @@ cross-section is rigid and true size, only the length follows the cells, and at 
 cross-section frame from that face's four corners, so runs meet exactly. Ribs, porthole rims and collars keep their
 length along the run; rib count follows the run's length. Collars and the sockets they plug into share one radius
 (2.15 m, down to 1.6 m on narrow faces); ports, junction hubs and sockets are rigid. Conduit elbows stay in station
-space, with a flange at each end over the step to the true-size pipes. The flat gallery is unchanged. Placement refuses a corridor in a
-cell narrower than 3.2 m and a landing pad on a face under 3.6 m (its 4.4 m deck may overhang the cell by 0.4 m a side), and says why; hovering names the family, the cell's
-shape and the face size.
+space, with a flange at each end over the step to the true-size pipes. The flat gallery is unchanged. Every family can
+be placed in every cell, out to the build limit. In the narrowest cells (2.4 m, round the cube's corners) a corridor's
+2.8 m tube fills its slot, overhanging into its neighbours by at most 0.2 m, and its collars by at most 0.4 m. A landing
+pad's deck takes the largest size class that overhangs the face by at most 0.4 m a side: L (4.4 m) from 3.6 m faces, M
+from 2.6 m, S below that. A 2 × 2 pad takes its class from the block's width. The airlock hatch stays true size.
+Hovering names the family, the cell's shape and the face size. The geometry check rejects folded and collapsed cells,
+not flat ones: a ridge's roof flattens as the shell grows, so the check is scale-free (Jacobian over its three edge
+lengths ≥ 0.001; the flattest cell, at shell 63, measures 0.0033). Before, it turned away the cube's corners from
+shell 13 and its ridges a cell further each shell after that.
 
 **Death Star → Open Tile Gallery** opens `Scenes/TileGallery.unity`: a floating station fragment (80 × 30 × 60 m) and
 eleven specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. The stage shows
@@ -237,6 +243,7 @@ Judge the tiles headless instead of playing (edit mode only; it refreshes and co
 tools/tile-lab.sh report
 tools/tile-lab.sh validate
 tools/tile-lab.sh foundry
+tools/tile-lab.sh limit
 tools/tile-lab.sh snap view=Trench
 tools/tile-lab.sh snap family=Defense back=1
 ```
@@ -263,5 +270,11 @@ conduit cross-sections must come out within 2% of true size at every tube end, a
 build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
 `crowns-sheet.png` the crown in each family with a kit). `station.png`, `station-coded.png`, `station-shapes.png`,
 `station-back.png` and `station-inside.png` show the Station example; the validation checks that it holds every
-shape and exposure, every family on a ridge and every solid family on a crown. The script submits the lab as a
+shape and exposure, every family on a ridge and every solid family on a crown, and that every family can be put
+back into every surface cell of a ball (boxes, small boxes, wedges, apexes) and the corners and ridges stay valid out
+to shell 63. The Limit example is a cap round a cube corner at shell 63, where cells are narrowest and ridges flattest:
+`limit.png` along its surface, `limit-plan-coded.png` / `limit-plan-shapes.png` from above (a corridor beside the x
+ridge, single pads and a 2 × 2 pad on small boxes), `limit-narrow.png` down the corridor's 2.4 m slot; its checks
+cover fixed-part sizes, tube widths and joints, kits and the pads' smaller classes. `tools/tile-lab.sh limit` runs just
+that example. The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

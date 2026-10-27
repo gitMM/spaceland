@@ -364,7 +364,7 @@ namespace DeathStar
             previewRevision=Revision;previewFace=face;previewRemove=remove;
             previewFamily=SelectedFamily;
             var cell=remove?face.cell:face.cell+BlockConstruction.Steps[face.side];
-            Model.TryEdit(cell,remove,out previewModel,SelectedFamily,face.side);
+            Model.TryEdit(cell,remove,out previewModel,SelectedFamily);
             if(previewModel==null){previewText=Model.LastError??"This face cannot be extended safely.";return;}
             previewModel=previewModel.SettleForEdit();
             previewText=remove?"Click to remove the highlighted block":

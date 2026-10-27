@@ -75,6 +75,15 @@ namespace DeathStar
                 foreach(float k in SizeClasses)if(span.x*k<=room.x-margin&&span.y*k<=room.y-margin)return k;
                 return SizeClasses[SizeClasses.Length-1];
             }
+            // The mean edge length in metres of cell q's face on this side, along the lattice step d lying in it; 5 on
+            // flat stages.
+            public float Span(Vector3Int q,Vector3Int d)
+            {
+                if(curved==null)return Cell;
+                int a=AxisOf(n),u=AxisOf(d),v=3-a-u;
+                Vector3 C(int i,int j){var k=q;k[a]+=n[a]>0?1:0;k[u]+=i;k[v]+=j;return curved.Corner(k);}
+                return ((C(1,0)-C(0,0)).magnitude+(C(1,1)-C(0,1)).magnitude)*0.5f;
+            }
             // Equipment: a free-standing part at true size in the largest class that fits, scaled about its foot
             // (pivot, in this frame). The part's name carries its class (L, M or S).
             public Equipment Equip(string name,float u,float v,Vector3 pivot,Vector2 span,float margin=0.6f,int cells=1)
@@ -718,41 +727,56 @@ namespace DeathStar
 
         // Landing pad for small craft: a round deck on a pedestal and angled struts, a rim, and an airlock hatch in
         // the centre so a pod docks straight onto it. A 2 x 2 block makes one 9 m pad, each tile building its
-        // quarter. Faces across its axis carry a window row (the pad's control room).
+        // quarter. Faces across its axis carry a window row (the pad's control room). The deck takes the largest size
+        // class whose deck (4.4 m in L, 9.1 m for a 2 x 2 block) overhangs the face by at most 0.4 m a side, so a pad
+        // fits on every face. The hatch and the pedestal under it stay true size.
+        const float PadOverhang=0.4f;
         static void Pad(Face f)
         {
             if(!f.primary){if(!f.axial)WindowRow(f,HighSill,HighHead);return;}
             bool big=f.Block2(out var c,out _);
-            using(big?f.Fixed("pad quarter",c.x,c.y):f.Fixed("pad",0,0))PadGeometry(f);
+            var q=f.cell;var dx=f.x*(c.x<0?-1:1);var dy=f.y*(c.y<0?-1:1);
+            float room=Mathf.Min(f.Span(q,dx),f.Span(q,dy)),deck=4.4f;
+            if(big)
+            {
+                // the block's width along each side, on its narrower row
+                float wx=Mathf.Min(f.Span(q,dx)+f.Span(q+dx,dx),f.Span(q+dy,dx)+f.Span(q+dx+dy,dx));
+                float wy=Mathf.Min(f.Span(q,dy)+f.Span(q+dy,dy),f.Span(q+dx,dy)+f.Span(q+dx+dy,dy));
+                room=Mathf.Min(wx,wy);deck=9.1f;
+            }
+            float k=SizeClasses[SizeClasses.Length-1];
+            foreach(float cls in SizeClasses)if(deck*cls<=room+2*PadOverhang+1e-3f){k=cls;break;}
+            string size=k>0.9f?" L":k>0.7f?" M":" S";
+            using(big?f.Fixed("pad quarter"+size,c.x,c.y):f.Fixed("pad"+size,0,0))PadGeometry(f,big,c,k);
         }
-        static void PadGeometry(Face f)
+        static void PadGeometry(Face f,bool big,Vector2 c,float k)
         {
             f.bare.Add(Whole);
             const float deck=0.7f,top=0.95f;
             var axis=Vector3.back;
-            if(f.Block2(out var c,out _))
+            if(big)
             {
                 float sx=Mathf.Sign(c.x),sy=Mathf.Sign(c.y);
                 var o=new Vector3(c.x,c.y,0);
                 var start=sx==-sy?new Vector3(-sx,0,0):new Vector3(0,-sy,0);
-                const float R=4.55f,arc=Mathf.PI*0.5f;
+                const float arc=Mathf.PI*0.5f;float R=4.55f*k;
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0,0),new Vector2(1.3f,0),new Vector2(1.3f,deck)},12,false,start,arc);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0,deck),new Vector2(R,deck),new Vector2(R,top),new Vector2(0,top)},24,false,start,arc);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(R,top),new Vector2(R,top+0.18f),new Vector2(R-0.35f,top+0.18f),new Vector2(R-0.35f,top)},24,false,start,arc);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(1.3f,top),new Vector2(1.3f,top+0.1f),new Vector2(1.05f,top+0.1f),new Vector2(1.05f,top)},12,false,start,arc);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0,top),new Vector2(1.0f,top),new Vector2(1.0f,top+0.04f),new Vector2(0,top+0.04f)},12,false,start,arc);
-                Strut(f,c,new Vector2(-sx,-sy).normalized,1.4f,3.3f,deck);
+                Strut(f,c,new Vector2(-sx,-sy).normalized,1.4f,Mathf.Max(3.3f*k,2f),deck);
                 return;
             }
             {
-                const float R=2.2f;
+                float R=2.2f*k;
                 var o=Vector3.zero;
                 f.m.Cylinder(Smooth,Face.P(0,0,0),Face.P(0,0,deck),0.85f,16,false,false);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0,deck),new Vector2(R,deck),new Vector2(R,top),new Vector2(0,top)},28,false);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(R,top),new Vector2(R,top+0.16f),new Vector2(R-0.28f,top+0.16f),new Vector2(R-0.28f,top)},28,false);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0.85f,top),new Vector2(0.85f,top+0.1f),new Vector2(0.65f,top+0.1f),new Vector2(0.65f,top)},20,false);
                 f.m.Lathe(Smooth,o,axis,new[]{new Vector2(0,top),new Vector2(0.62f,top),new Vector2(0.62f,top+0.04f),new Vector2(0,top+0.04f)},20,false);
-                foreach(var d in new[]{new Vector2(1,1),new Vector2(-1,1),new Vector2(1,-1),new Vector2(-1,-1)})Strut(f,Vector2.zero,d.normalized,0.7f,1.75f,deck);
+                foreach(var d in new[]{new Vector2(1,1),new Vector2(-1,1),new Vector2(1,-1),new Vector2(-1,-1)})Strut(f,Vector2.zero,d.normalized,0.7f,Mathf.Max(1.75f*k,1.3f),deck);
             }
         }
         // Angled strut from near the pad's foot out to the underside of its deck.

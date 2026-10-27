@@ -192,17 +192,20 @@ Per-part budget: about 3k triangles near. A special tile stays at or under 8k ne
 
 ## 5. Placement rules
 
-The checks run in `BlockConstruction.TryEdit` and reuse `LastError`, so the Foundry preview already shows the reason.
+Every family fits every cell. `BlockConstruction.TryEdit` refuses only a cell the sphere grid can't fill, and reuses
+`LastError`, so the Foundry preview shows the reason.
 
 | Rule | Detail |
 |---|---|
-| Corridor | Needs ≥ 3.2 m across its cross-section |
-| Pad (single) | Needs a ≥ 3.6 m face: the 4.4 m deck may overhang its cell by up to 0.4 m a side (decided after Phase 1; 4.6 m allowed pads on only ~10% of a sphere) |
+| Corridor | Allowed in every cell. The tube stays true size; in the narrowest (2.4 m) cells it overhangs into its neighbours by at most 0.2 m, its collars by at most 0.4 m |
+| Pad (single) | Allowed on every face. The deck takes the largest size class that overhangs the face by at most 0.4 m a side: L (4.4 m) from 3.6 m, M from 2.6 m, S below; the hatch stays true size |
+| Pad (2 × 2) | Takes its class from the block's width |
 | 2 × 2 landmarks | Only on four Box cells |
-| Other families | Never refused: size class S fits the smallest cells, and every family has a kit |
+| Other families | Size class S fits the smallest cells, and every family has a kit |
+| Geometry | Refused only for a folded or collapsed cell: the Jacobian over its three edge lengths stays ≥ 0.001 (0.0033 for the flattest real cell, at shell 63), so corners and ridges are valid out to the build limit |
 
-**Preview text** names the shape, size and form, for example "Ridge · 5.3 × 3.4 m · Habitat gallery". A refusal
-gives the reason, for example "Pad needs a 3.6 m face; this one is 3.1 m".
+**Preview text** names the shape, size and form, for example "Ridge · 5.3 × 3.4 m · Habitat gallery". A refused
+cell gives the reason: "This gap cannot be filled safely on the sphere grid."
 
 ## Performance
 

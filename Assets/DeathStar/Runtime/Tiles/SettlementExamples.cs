@@ -67,6 +67,28 @@ namespace DeathStar
             return BlockConstruction.FromFamilies(cells,BlockConstruction.SeedGuide);
         }
 
+        // The same kind of cap at the build limit (shell 63, 315 m out), where cells are narrowest (2.4 m round the
+        // corner) and the ridges' folded roofs flattest. Every family runs along a ridge as in Ridges, and the crown is a
+        // corridor node. In the narrow cells beside the x ridge: a corridor along it, so its tube spans the narrow way,
+        // two single pads and a 2 x 2 pad, which take smaller size classes.
+        public const int LimitRadius=63,LimitLow=LimitRadius-8;
+        public static readonly Vector3Int[] LimitCorridor={new Vector3Int(58,62,63),new Vector3Int(59,62,63),new Vector3Int(60,62,63),new Vector3Int(61,62,63)};
+        public static readonly Vector3Int[] LimitPads={new Vector3Int(60,60,63),new Vector3Int(57,60,63),
+            new Vector3Int(55,63,55),new Vector3Int(56,63,55),new Vector3Int(55,63,56),new Vector3Int(56,63,56)};
+        public static BlockConstruction Limit()
+        {
+            const int R=LimitRadius,L=LimitLow;
+            var cells=new Dictionary<Vector3Int,TileFamily>();
+            for(int x=L;x<=R;x++)for(int y=L;y<=R;y++)for(int z=L;z<=R;z++)
+                if(Mathf.Max(x,Mathf.Max(y,z))>=R-1)cells[RidgeCell(x,y,z)]=TileFamily.Hull;
+            for(int axis=0;axis<3;axis++)for(int run=0;run<4;run++)for(int k=0;k<2;k++)
+            {var c=new Vector3Int(R,R,R);c[axis]=L+run*2+k;cells[RidgeCell(c.x,c.y,c.z)]=RidgeRuns[axis][run];}
+            cells[RidgeCell(R,R,R)]=TileFamily.Corridor;
+            foreach(var c in LimitCorridor)cells[RidgeCell(c.x,c.y,c.z)]=TileFamily.Corridor;
+            foreach(var c in LimitPads)cells[RidgeCell(c.x,c.y,c.z)]=TileFamily.Pad;
+            return BlockConstruction.FromFamilies(cells,BlockConstruction.SeedGuide);
+        }
+
         // A whole station: a sphere grown from the seed, two layers thick and hollow, with every family on every shape.
         //   ridges   all 12, each in one family: all eleven, with Hull twice
         //   crowns   the 8 corners in the 8 other solid families, each joined by its own family's ridge, and a sunken
