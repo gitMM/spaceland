@@ -400,11 +400,15 @@ namespace DeathStar
         }
 
         public Mesh ToMesh(string name){Flush();return Build(name);}
+        // Vertices at the start of both meshes from the last ToMeshes: identical in near and far.
+        public int SharedVertices {get;private set;}
         // The mesh with the armour carved, and a far level of detail with the armour plain (null if nothing is carved).
         public (Mesh near,Mesh far) ToMeshes(string name)
         {
+            SharedVertices=0;
             if(jobs.Count==0)return (Build(name),null);
             int mark=positions.Count;var marks=new int[SlotCount];for(int i=0;i<SlotCount;i++)marks[i]=indices[i].Count;
+            SharedVertices=mark;
             foreach(var j in jobs)
             {
                 surfaceFrame=j.frame;

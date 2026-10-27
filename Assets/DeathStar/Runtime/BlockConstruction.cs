@@ -32,6 +32,24 @@ namespace DeathStar
             return p;
         }
     }
+    // The sphere map folds the cells on the cube's diagonals: two adjacent faces (wedge, along a cube edge) or three
+    // (apex, at a cube corner) flatten into one curved roof. Everything else is a box, however sheared.
+    public enum CellShape { Box, Wedge, Apex }
+    // How a special cell meets open space. Ridge/Crown: the whole roof (a nearly flat band or triangle) is open. Half:
+    // part of it is covered. Keel/Spike: the roof is covered and the slopes are open, so they meet in a sharp 46-60°
+    // edge (wedge) or point (apex) sticking into open space. Box cells report Box.
+    public enum CellExposure { Box, Buried, Ridge, Half, Keel, Crown, Spike }
+    public readonly struct ShapeInfo
+    {
+        public const float SmallEdge=3.2f;
+        public readonly CellShape kind;
+        public readonly int spine;              // wedge: the lattice axis along its ridge; otherwise -1
+        public readonly byte roof;              // merged faces, bit i for BlockConstruction.Steps[i]
+        public readonly float minEdge,maxEdge;  // metres
+        public ShapeInfo(CellShape kind,int spine,byte roof,float minEdge,float maxEdge)
+        {this.kind=kind;this.spine=spine;this.roof=roof;this.minEdge=minEdge;this.maxEdge=maxEdge;}
+        public bool Small=>kind==CellShape.Box&&minEdge<SmallEdge;
+    }
     [Serializable]
     public struct BlockCorner { public Vector3Int key; public Vector3 position; }
     [Serializable]
@@ -55,7 +73,10 @@ namespace DeathStar
         HashSet<Vector3Int> cells=new HashSet<Vector3Int>();
         Dictionary<Vector3Int,TileFamily> families=new Dictionary<Vector3Int,TileFamily>();
         Dictionary<Vector3Int,Vector3> corners=new Dictionary<Vector3Int,Vector3>();
-        BlockGuide guide=new BlockGuide{shape=BlockShape.Rounded,strength=1,center=Vector3.one*0.5f,extents=Vector3.one*0.5f};
+        Dictionary<Vector3Int,ShapeInfo> shapes;
+        // The guide a new build grows from: centred on the seed cell.
+        public static BlockGuide SeedGuide=>new BlockGuide{shape=BlockShape.Rounded,strength=1,center=Vector3.one*0.5f,extents=Vector3.one*0.5f};
+        BlockGuide guide=SeedGuide;
         public BlockGuide Guide=>guide;
         public bool RelaxationPending=>false;
         public IEnumerable<Vector3Int> Cells=>cells;
@@ -100,7 +121,56 @@ namespace DeathStar
         {
             cells=next.cells;families=next.families;corners=next.corners;ChangedCells=next.ChangedCells;
             LastMaxMovement=next.LastMaxMovement;LastSafetyScale=next.LastSafetyScale;LastError=null;
-            guide=next.guide;
+            guide=next.guide;shapes=next.shapes;
+        }
+        // Corners never move while their cell exists, so a cell's shape is fixed until it is removed.
+        public ShapeInfo Shape(Vector3Int cell)
+        {
+            if(!cells.Contains(cell))return default;
+            shapes??=new Dictionary<Vector3Int,ShapeInfo>();
+            if(!shapes.TryGetValue(cell,out var s)){s=ShapeOf(cell);shapes.Add(cell,s);}
+            return s;
+        }
+        public const float FoldDegrees=40;
+        ShapeInfo ShapeOf(Vector3Int cell)
+        {
+            var p=new Vector3[8];var center=Vector3.zero;
+            for(int i=0;i<8;i++){p[i]=Corner(cell+CornerOffset(i))*TileBuilder.Cell;center+=p[i]*0.125f;}
+            var n=new Vector3[6];
+            for(int f=0;f<6;f++)
+            {
+                Vector3 a=p[FaceCorners[f,0]],b=p[FaceCorners[f,1]],c=p[FaceCorners[f,2]],d=p[FaceCorners[f,3]];
+                n[f]=Vector3.Cross(c-a,d-b).normalized;
+                if(Vector3.Dot(n[f],(a+b+c+d)*0.25f-center)<0)n[f]=-n[f];
+            }
+            // Adjacent faces whose normals nearly agree have folded into one roof (on spheres: under 35° or over 50°).
+            int roof=0,merged=0,axes=0;float limit=Mathf.Cos(FoldDegrees*Mathf.Deg2Rad);
+            for(int f=0;f<6;f++)for(int g=f+1;g<6;g++)if(f>>1!=g>>1&&Vector3.Dot(n[f],n[g])>limit)roof|=1<<f|1<<g;
+            for(int f=0;f<6;f++)if((roof>>f&1)!=0){merged++;axes|=1<<(f>>1);}
+            var kind=merged>=3?CellShape.Apex:merged==2?CellShape.Wedge:CellShape.Box;
+            int spine=kind==CellShape.Wedge?(axes==3?2:axes==5?1:0):-1;
+            float min=float.MaxValue,max=0;
+            for(int i=0;i<8;i++)for(int a=0;a<3;a++)if((i>>a&1)==0)
+            {float e=(p[i|1<<a]-p[i]).magnitude;min=Mathf.Min(min,e);max=Mathf.Max(max,e);}
+            return new ShapeInfo(kind,spine,(byte)roof,min,max);
+        }
+        public CellExposure Exposure(Vector3Int cell,out bool gable)
+        {
+            gable=false;var s=Shape(cell);
+            if(!cells.Contains(cell)||s.kind==CellShape.Box)return CellExposure.Box;
+            int roofs=0,roofOpen=0,slopeOpen=0;
+            for(int f=0;f<6;f++)
+            {
+                bool open=!Solid(cell+Steps[f]);
+                if((s.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
+                else if(f>>1==s.spine)gable|=open;
+                else if(open)slopeOpen++;
+            }
+            bool wedge=s.kind==CellShape.Wedge;
+            if(roofOpen==roofs)return wedge?CellExposure.Ridge:CellExposure.Crown;
+            if(roofOpen>0)return CellExposure.Half;
+            if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
+            return CellExposure.Buried;
         }
         // Preview and commit use the same result. Hovering never changes the live construction.
         public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull)
@@ -144,11 +214,12 @@ namespace DeathStar
             foreach(var cell in all){bounds.Encapsulate(cell);bounds.Encapsulate((Vector3)cell+Vector3.one);}
             return new BlockGuide{shape=BlockShape.Rounded,strength=1,center=bounds.center,extents=Vector3.Max(bounds.extents,Vector3.one*0.5f)};
         }
-        public static BlockConstruction FromCells(IEnumerable<Vector3Int> input)
+        // Without a guide, the sphere is fitted to the cells' bounds; pass SeedGuide to match a build grown from the seed.
+        public static BlockConstruction FromCells(IEnumerable<Vector3Int> input,BlockGuide? fixedGuide=null)
         {
             var all=new HashSet<Vector3Int>(input);
             if(all.Count==0||all.Count>MaxBlocks)throw new ArgumentException("Unsupported block count.");
-            var model=new BlockConstruction{cells=all,guide=FitGuide(all)};model.corners.Clear();
+            var model=new BlockConstruction{cells=all,guide=fixedGuide??FitGuide(all)};model.corners.Clear();
             foreach(var cell in all)
             {
                 if(!InRange(cell))throw new ArgumentException("Block outside build bounds.");
@@ -157,9 +228,9 @@ namespace DeathStar
             if(!model.GeometryIsValid())throw new ArgumentException("The sphere guide produced invalid cells.");
             model.ChangedCells=new HashSet<Vector3Int>(all);return model;
         }
-        public static BlockConstruction FromFamilies(IReadOnlyDictionary<Vector3Int,TileFamily> input)
+        public static BlockConstruction FromFamilies(IReadOnlyDictionary<Vector3Int,TileFamily> input,BlockGuide? fixedGuide=null)
         {
-            var model=FromCells(input.Keys);
+            var model=FromCells(input.Keys,fixedGuide);
             foreach(var pair in input)
             {
                 if(!Enum.IsDefined(typeof(TileFamily),pair.Value))throw new ArgumentException("Unknown tile family.");

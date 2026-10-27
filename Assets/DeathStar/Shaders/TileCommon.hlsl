@@ -24,6 +24,8 @@ struct TileAttributes
 float _TileClay;
 // Global: 1 tints every tile with its family's overlay colour (planning view).
 float _TileOverlay;
+// Per renderer: alpha 1 replaces the family colour with this one (the Foundry's shape view).
+float4 _TileOverlayTint;
 
 float TileHash(float2 p)
 {

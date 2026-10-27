@@ -13,11 +13,16 @@ namespace DeathStar
         public Material hullMaterial, previewMaterial;
         public TileLibrary tileLibrary;
         public TileFamily SelectedFamily {get;set;}=TileFamily.Habitat;
-        [SerializeField] bool debugColors;
+        [SerializeField,UnityEngine.Serialization.FormerlySerializedAs("debugColors")] DebugView debugView;
+        public DebugView DebugMode
+        {
+            get=>debugView;
+            set{debugView=value;Settlement?.SetDebugView(value);}
+        }
         public bool ColorCoding
         {
-            get=>debugColors;
-            set{debugColors=value;Settlement?.SetColorCoding(value);}
+            get=>debugView!=DebugView.Off;
+            set=>DebugMode=value?DebugView.Family:DebugView.Off;
         }
         public FoundrySettlement Settlement {get;private set;}
         Material[] generatedMaterials;
@@ -102,7 +107,7 @@ namespace DeathStar
                 materials=generatedMaterials;
             }
             Settlement=new FoundrySettlement(transform,materials);
-            Settlement.SetColorCoding(debugColors);
+            Settlement.SetDebugView(debugView);
             settlementLights=new GameObject("Settlement lighting");settlementLights.transform.SetParent(transform,false);
             TileLook.AddLights(settlementLights.transform);savedEnvironment=TileLook.ApplyEnvironment(tileLibrary);
             if(tileLibrary!=null&&tileLibrary.post!=null)
@@ -224,6 +229,7 @@ namespace DeathStar
         {
             Remember(Model.Capture());
             if(example==4){Model=SettlementExamples.Foundry();RebuildAll();FrameBuild();Notice("Families grow into a curved settlement. Add or remove cells to reshape it.");return;}
+            if(example==5){Model=SettlementExamples.Ridges();RebuildAll();FrameBuild();Notice("Three ridges meet at a crown above a cube corner. Press C twice for the shape view.");return;}
             var cells=new List<Vector3Int>();
             int n=example==2?12:8, height=example==0?2:example==1?6:12;
             for(int z=0;z<n;z++)for(int y=0;y<height;y++)for(int x=0;x<n;x++)
@@ -311,7 +317,7 @@ namespace DeathStar
                 if(keys.tabKey.wasPressedThisFrame)showHud=!showHud;
                 if(keys.homeKey.wasPressedThisFrame)FrameBuild();
                 bool ctrl=keys.leftCtrlKey.isPressed||keys.rightCtrlKey.isPressed;
-                if(!ctrl&&keys.cKey.wasPressedThisFrame)ColorCoding=!ColorCoding;
+                if(!ctrl&&keys.cKey.wasPressedThisFrame)CycleDebugView();
                 if(ctrl&&keys.zKey.wasPressedThisFrame){if(shift)Redo();else Undo();}
                 if(ctrl&&keys.yKey.wasPressedThisFrame)Redo();
                 if(ctrl&&keys.sKey.wasPressedThisFrame)SaveBuild();
@@ -407,7 +413,7 @@ namespace DeathStar
                 Panel(new Rect(x+1,y+6,10,10),color.a>0?color.gamma:new Color(0.55f,0.55f,0.55f));
                 if(GUI.Button(new Rect(x+15,y,104,22),FamilyName(families[i]),SelectedFamily==families[i]?active:button))SelectedFamily=families[i];
             }
-            if(GUI.Button(new Rect(36,371,246,28),"Debug colours [C]: "+(ColorCoding?"On":"Off"),ColorCoding?active:button))ColorCoding=!ColorCoding;
+            if(GUI.Button(new Rect(36,371,246,28),"Debug view [C]: "+debugView,ColorCoding?active:button))CycleDebugView();
             GUI.enabled=undo.Count>0;
             if(GUI.Button(new Rect(36,414,119,28),"Undo",button))Undo();
             GUI.enabled=redo.Count>0;
@@ -417,15 +423,26 @@ namespace DeathStar
             for(int i=0;i<3;i++)if(GUI.Button(new Rect(36+i*84,478,78,28),examples[i],button))LoadExample(i);
             if(GUI.Button(new Rect(36,515,78,28),"Sphere",button))LoadExample(3);
             if(GUI.Button(new Rect(120,515,78,28),"Settlement",button))LoadExample(4);
-            if(GUI.Button(new Rect(204,515,78,28),"New build",button))NewBuild();
-            if(GUI.Button(new Rect(36,565,119,27),"Save build",button))SaveBuild();
-            if(GUI.Button(new Rect(163,565,119,27),"Load build",button))LoadBuild();
+            if(GUI.Button(new Rect(204,515,78,28),"Ridges",button))LoadExample(5);
+            if(GUI.Button(new Rect(36,565,78,27),"New build",button))NewBuild();
+            if(GUI.Button(new Rect(120,565,78,27),"Save build",button))SaveBuild();
+            if(GUI.Button(new Rect(204,565,78,27),"Load build",button))LoadBuild();
             GUI.Label(new Rect(36,609,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel",small);
             GUI.Label(new Rect(36,674,246,36),$"{Model.Count:N0} blocks  /  {ExposedFaces:N0} exposed faces\nCtrl Z / Y: undo / redo · Ctrl S: save",kicker);
             float width=Screen.width/UiScale;
             string status=Time.unscaledTime<messageUntil?message:hasHover?(removeMode?"Click to remove the highlighted block":"Click to attach a block · Shift + click to remove"):"Choose a face to begin · Right drag to orbit";
-            if(ColorCoding&&hasHover&&Settlement.Structure.TryGet(hovered.cell,out var placed))
+            if(debugView==DebugView.Family&&hasHover&&Settlement.Structure.TryGet(hovered.cell,out var placed))
                 status=$"{TileGallery.Title(placed.family)} · cell {hovered.cell} · axis {placed.axis} · main face {Settlement.Structure.Primary(hovered.cell,placed)}";
+            if(debugView==DebugView.Shape)
+            {
+                status="Grey box · red box under "+ShapeInfo.SmallEdge+" m · orange wedge · magenta apex";
+                if(hasHover&&Model.Contains(hovered.cell))
+                {
+                    var shape=Model.Shape(hovered.cell);var exposure=Model.Exposure(hovered.cell,out bool gable);
+                    string kind=shape.kind==CellShape.Box?(shape.Small?"Small box":"Box"):$"{shape.kind} {exposure}{(gable?" + gable":"")}{(shape.spine>=0?" · spine "+"xyz"[shape.spine]:"")}";
+                    status=$"{kind} · edges {shape.minEdge:0.0}–{shape.maxEdge:0.0} m · cell {hovered.cell}";
+                }
+            }
             Panel(new Rect(325,Screen.height/UiScale-65,Mathf.Max(200,width-345),42),new Color(0.025f,0.04f,0.055f,0.87f));
             GUI.Label(new Rect(341,Screen.height/UiScale-56,Mathf.Max(180,width-375),32),status,body);
             GUI.matrix=previous;
@@ -442,6 +459,7 @@ namespace DeathStar
             transitionFrom.Clear();animatedChunks.Clear();previewModel=null;previewRevision=-1;
             undo.Clear();redo.Clear();Model=null;
         }
+        void CycleDebugView()=>DebugMode=(DebugView)(((int)debugView+1)%3);
         static string FamilyName(TileFamily f)=>f==TileFamily.LifeSupport?"Life Support":f==TileFamily.Pad?"Landing Pad":f.ToString();
         static void Release(UnityEngine.Object o){if(o==null)return;if(Application.isPlaying)Destroy(o);else DestroyImmediate(o);}
     }

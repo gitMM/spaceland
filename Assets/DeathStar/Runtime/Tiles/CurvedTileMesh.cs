@@ -11,6 +11,9 @@ namespace DeathStar
         readonly Dictionary<Vector3Int,Vector3[]> cubes=new Dictionary<Vector3Int,Vector3[]>();
         readonly Dictionary<(Vector3Int,Vector4),Vector3[]> faceNormals=new Dictionary<(Vector3Int,Vector4),Vector3[]>();
         readonly Dictionary<(Vector4,Vector4),Matrix4x4> metricFrames=new Dictionary<(Vector4,Vector4),Matrix4x4>();
+        // Consecutive vertices nearly always share a cell and frame: check the last key before hashing.
+        Vector3Int lastCube=new Vector3Int(int.MinValue,0,0);Vector3[] lastCorners;
+        (Vector3Int,Vector4) lastFace=(new Vector3Int(int.MinValue,0,0),default);Vector3[] lastNormals;
         public CurvedTileMesh(BlockConstruction model){this.model=model;}
 
         public Vector3 Map(Vector3 station)
@@ -19,15 +22,21 @@ namespace DeathStar
         {
             var grid=station/TileBuilder.Cell+Vector3.one*0.5f;
             var cell=Vector3Int.FloorToInt(grid);var uvw=grid-(Vector3)cell;
-            if(!cubes.TryGetValue(cell,out var corners))
+            Vector3[] corners;
+            if(cell==lastCube)corners=lastCorners;
+            else
             {
-                corners=new Vector3[8];
-                for(int i=0;i<8;i++)
+                if(!cubes.TryGetValue(cell,out corners))
                 {
-                    var key=cell+BlockConstruction.CornerOffset(i);
-                    corners[i]=(model.HasCorner(key)?model.Corner(key):model.Guide.Map(key))*TileBuilder.Cell;
+                    corners=new Vector3[8];
+                    for(int i=0;i<8;i++)
+                    {
+                        var key=cell+BlockConstruction.CornerOffset(i);
+                        corners[i]=(model.HasCorner(key)?model.Corner(key):model.Guide.Map(key))*TileBuilder.Cell;
+                    }
+                    cubes.Add(cell,corners);
                 }
-                cubes.Add(cell,corners);
+                lastCube=cell;lastCorners=corners;
             }
             var a=Vector3.LerpUnclamped(corners[0],corners[1],uvw.x);var b=Vector3.LerpUnclamped(corners[2],corners[3],uvw.x);
             var c=Vector3.LerpUnclamped(corners[4],corners[5],uvw.x);var d=Vector3.LerpUnclamped(corners[6],corners[7],uvw.x);
@@ -63,15 +72,21 @@ namespace DeathStar
             var basePoint=station-n*height;
             int axis=n.x!=0?0:n.y!=0?1:2,ua=(axis+1)%3,va=(axis+2)%3;
             var grid=basePoint/5+Vector3.one*0.5f;var cell=Vector3Int.FloorToInt(grid);
-            if(!faceNormals.TryGetValue((cell,frame),out var nn))
+            Vector3[] nn;
+            if(cell==lastFace.Item1&&frame==lastFace.Item2)nn=lastNormals;
+            else
             {
-                nn=new Vector3[4];var u=Vector3.zero;u[ua]=0.02f;var v=Vector3.zero;v[va]=0.02f;
-                for(int k=0;k<4;k++)
+                if(!faceNormals.TryGetValue((cell,frame),out nn))
                 {
-                    var q=basePoint;q[ua]=(cell[ua]+(k&1)-0.5f)*5;q[va]=(cell[va]+(k>>1)-0.5f)*5;
-                    nn[k]=Vector3.Cross(Map(q+u)-Map(q-u),Map(q+v)-Map(q-v)).normalized*n[axis];
+                    nn=new Vector3[4];var u=Vector3.zero;u[ua]=0.02f;var v=Vector3.zero;v[va]=0.02f;
+                    for(int k=0;k<4;k++)
+                    {
+                        var q=basePoint;q[ua]=(cell[ua]+(k&1)-0.5f)*5;q[va]=(cell[va]+(k>>1)-0.5f)*5;
+                        nn[k]=Vector3.Cross(Map(q+u)-Map(q-u),Map(q+v)-Map(q-v)).normalized*n[axis];
+                    }
+                    faceNormals.Add((cell,frame),nn);
                 }
-                faceNormals.Add((cell,frame),nn);
+                lastFace=(cell,frame);lastNormals=nn;
             }
             float s=grid[ua]-cell[ua],t=grid[va]-cell[va];
             var raw=Vector3.LerpUnclamped(Vector3.LerpUnclamped(nn[0],nn[1],s),Vector3.LerpUnclamped(nn[2],nn[3],s),t);
@@ -84,13 +99,21 @@ namespace DeathStar
             Vector3 Derivative(int a,Vector3 d)=>a==axis?normal*n[axis]:d+height*(a==ua?ns:nt);
             dx=Derivative(0,dx);dy=Derivative(1,dy);dz=Derivative(2,dz);
         }
-        public void Bend(Mesh mesh,Vector3Int cell)
+        // A far mesh starts with the same vertices as its near mesh (TileMesh.SharedVertices): copy those already bent.
+        public void Bend(Mesh mesh,Vector3Int cell,Mesh bentNear=null,int shared=0)
         {
             var vertices=mesh.vertices;var normals=mesh.normals;var tangents=mesh.tangents;
             var frames=new List<Vector4>();mesh.GetUVs(4,frames);
             var anchors=new List<Vector4>();mesh.GetUVs(5,anchors);
             var origin=TileStructure.Center(cell);
-            for(int i=0;i<vertices.Length;i++)
+            int start=0;
+            if(bentNear!=null&&shared>0)
+            {
+                start=Mathf.Min(shared,vertices.Length);
+                System.Array.Copy(bentNear.vertices,vertices,start);System.Array.Copy(bentNear.normals,normals,start);
+                System.Array.Copy(bentNear.tangents,tangents,start);
+            }
+            for(int i=start;i<vertices.Length;i++)
             {
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;

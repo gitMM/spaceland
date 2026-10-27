@@ -82,7 +82,39 @@ namespace DeathStar.EditorTools
                 Require(Mathf.Abs(distance-0.1f)<0.01f,"Human-scale metric compensation failed");
             }
             checks++;
-            return $"PASS: {checks} settlement checks; family preview/save/migration/atomicity; 24 rotations; insertion order; open connectors and junctions; exact eight-corner warp; seamless metric relief; diagonal invalidation.";
+            ShapeClasses();checks++;
+            return $"PASS: {checks} settlement checks; family preview/save/migration/atomicity; 24 rotations; insertion order; open connectors and junctions; exact eight-corner warp; seamless metric relief; diagonal invalidation; shape classes and exposures.";
+        }
+        // On a ball grown from the seed, cells on the cube's edge diagonals (two coordinates tie for the largest
+        // magnitude) are wedges along the third axis, the corner diagonals apexes, everything else boxes.
+        static void ShapeClasses()
+        {
+            var ball=new List<Vector3Int>();
+            for(int x=-3;x<=3;x++)for(int y=-3;y<=3;y++)for(int z=-3;z<=3;z++)ball.Add(new Vector3Int(x,y,z));
+            var grown=BlockConstruction.FromCells(ball,BlockConstruction.SeedGuide);
+            foreach(var c in ball)
+            {
+                int m=Mathf.Max(Mathf.Abs(c.x),Mathf.Max(Mathf.Abs(c.y),Mathf.Abs(c.z))),ties=0,odd=-1;
+                for(int a=0;a<3;a++)if(Mathf.Abs(c[a])==m)ties++;else odd=a;
+                var expected=m==0||ties==1?CellShape.Box:ties==2?CellShape.Wedge:CellShape.Apex;
+                var s=grown.Shape(c);
+                Require(s.kind==expected,$"Cell {c} is a {s.kind}, expected a {expected}");
+                if(expected==CellShape.Wedge)Require(s.spine==odd,$"Wedge {c} runs along {s.spine}, expected {odd}");
+            }
+            Require(grown.Exposure(new Vector3Int(3,3,0),out bool gable)==CellExposure.Ridge&&!gable,"Outer wedge is not a ridge");
+            Require(grown.Exposure(new Vector3Int(3,3,3),out _)==CellExposure.Crown,"Outer apex is not a crown");
+            Require(grown.Exposure(new Vector3Int(2,2,0),out _)==CellExposure.Buried,"Inner wedge is exposed");
+            Require(grown.Exposure(new Vector3Int(1,0,0),out _)==CellExposure.Box,"Box reported an exposure");
+            Require(grown.TryEdit(new Vector3Int(4,3,0),false,out var walled),"Wall placement failed");
+            Require(walled.Exposure(new Vector3Int(3,3,0),out _)==CellExposure.Half,"Half-covered roof not reported");
+            Require(grown.TryEdit(new Vector3Int(3,3,1),true,out var cut),"Ridge cut failed");
+            Require(cut.Exposure(new Vector3Int(3,3,0),out gable)==CellExposure.Ridge&&gable,"Ridge end lost its gable");
+            Require(walled.Shape(new Vector3Int(3,3,0)).kind==CellShape.Wedge,"An edit changed a neighbour's shape");
+            var ridges=SettlementExamples.Ridges();
+            const int R=SettlementExamples.RidgeRadius;
+            Require(ridges.Exposure(SettlementExamples.RidgeCell(R-1,R-1,1),out _)==CellExposure.Keel,"Ridges example lost its keel");
+            Require(ridges.Exposure(SettlementExamples.RidgeCell(R,SettlementExamples.RidgeLow,R),out _)==CellExposure.Half,"Ridges example lost its half-covered roof");
+            Require(ridges.Exposure(SettlementExamples.RidgeCell(R,R,R),out _)==CellExposure.Crown,"Ridges example lost its crown");
         }
         public static string FoundryInteraction(TileLibrary library)
         {

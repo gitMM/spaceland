@@ -64,8 +64,8 @@ namespace DeathStar.EditorTools
             if(mode=="foundry")
             {
                 var checks=new List<(bool ok,string text)>();var shots=new List<(string file,string what)>();
-                FoundryReport(rig,checks,shots);
-                return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text));
+                var notes=FoundryReport(rig,checks,shots);
+                return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text).Concat(notes));
             }
             return Report(rig);
         }
@@ -168,7 +168,11 @@ namespace DeathStar.EditorTools
                 shots.Add((sheet,what+": left to right, top to bottom: Habitat, Industrial, Power, Life Support / Storage, Defense, Command, Corridor / Landing Pad, Conduit, Hull; each specimen sits in a different orientation"));
             }
 
-            FoundryReport(rig,checks,shots);
+            var foundryNotes=FoundryReport(rig,checks,shots);
+            md.AppendLine("## Foundry: cell shapes and rebuild time");
+            md.AppendLine();
+            foreach(var note in foundryNotes)md.AppendLine("- "+note);
+            md.AppendLine();
             md.AppendLine("## Pictures");
             md.AppendLine();
             foreach(var (file,what) in shots)md.AppendLine($"- `{file}`: {what}");
@@ -212,8 +216,43 @@ namespace DeathStar.EditorTools
         }
 
         static string Swatch(Color c)=>c.a<0.5f?"grey":"#"+ColorUtility.ToHtmlStringRGB(c.gamma);
-        static void FoundryReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots)
+        static string Split(FoundrySettlement.Timings t,int n=1)=>
+            $"solve {t.solve/n:0.0}, forms and relief {t.forms/n:0.0}, carving and meshes {t.meshes/n:0.0}, bend {t.bend/n:0.0}, scene objects {t.objects/n:0.0} ms";
+        static string ShapeCounts(BlockConstruction model)
         {
+            var counts=new SortedDictionary<string,int>();int gables=0;
+            foreach(var c in model.Cells)
+            {
+                var s=model.Shape(c);var e=model.Exposure(c,out bool gable);if(gable)gables++;
+                string key=s.kind==CellShape.Box?(s.Small?"small box":"box"):(s.kind+" "+e).ToLowerInvariant();
+                counts[key]=counts.TryGetValue(key,out var n)?n+1:1;
+            }
+            return string.Join(", ",counts.Select(p=>$"{p.Key} {p.Value}"))+$"; {gables} with an open gable";
+        }
+        // Ten additions on open faces, each removed again, through the same TryEdit and incremental rebuild as a click.
+        static string EditTimings(ref BlockConstruction model,FoundrySettlement view)
+        {
+            var open=new SortedSet<Vector3Int>(Comparer<Vector3Int>.Create(BlockConstruction.Compare));
+            foreach(var c in model.Cells)foreach(var step in BlockConstruction.Steps)if(model.CanAdd(c+step))open.Add(c+step);
+            var picks=open.ToList();var ms=new List<double>();var sum=new FoundrySettlement.Timings();
+            for(int i=0;i<10;i++)
+            {
+                var cell=picks[i*picks.Count/10];
+                foreach(bool remove in new[]{false,true})
+                {
+                    var sw=Stopwatch.StartNew();
+                    if(!model.TryEdit(cell,remove,out var next,TileGallery.Families[i%TileGallery.Families.Length]))break;
+                    view.Rebuild(next,next.ChangedCells);ms.Add(sw.Elapsed.TotalMilliseconds);sum.Add(view.LastTimings);model=next;
+                }
+            }
+            if(ms.Count==0)return "Edits: none succeeded";
+            var sorted=ms.OrderBy(v=>v).ToList();double P(double q)=>sorted[Mathf.Clamp(Mathf.CeilToInt((float)(q*sorted.Count))-1,0,sorted.Count-1)];
+            return $"Edits ({ms.Count}: 10 additions on open faces, each removed again): p50 {P(0.5):0} ms, p95 {P(0.95):0} ms, max {sorted[sorted.Count-1]:0} ms; "+
+                $"{sum.tiles/(float)ms.Count:0.0} tiles rebuilt per edit; per edit {Split(sum,ms.Count)}";
+        }
+        static List<string> FoundryReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots)
+        {
+            var notes=new List<string>();
             checks.Add((true,SettlementValidation.Run()));
             checks.Add((true,SettlementValidation.FoundryInteraction(rig.Library)));
             rig.Stage.root.SetActive(false);
@@ -223,6 +262,9 @@ namespace DeathStar.EditorTools
             {
                 var timer=Stopwatch.StartNew();view.Rebuild(model);
                 checks.Add((view.MeshCount>0,$"Foundry: {model.Count} family cells, {view.MeshCount} visible tiles, built in {timer.ElapsedMilliseconds} ms"));
+                var full=view.LastTimings;
+                notes.Add($"Foundry example, cells: {ShapeCounts(model)}");
+                notes.Add($"Foundry example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
                 TileLook.AddLights(root.transform);
                 var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
                 var warp=new CurvedTileMesh(model);
@@ -255,6 +297,11 @@ namespace DeathStar.EditorTools
                 view.SetColorCoding(false);SettlementValidation.CheckDebugRenderers(root,false);
                 foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(-1);
                 shots.Add(("foundry-coded-far.png","same family colours with every tile forced to its far LOD"));
+                view.SetDebugView(DebugView.Shape);
+                var shaped=rig.Shoot(views[0].Item2,W,H);Save(shaped,Path.Combine(Dir,"foundry-shapes.png"));UnityEngine.Object.DestroyImmediate(shaped);
+                view.SetDebugView(DebugView.Off);
+                shots.Add(("foundry-shapes.png","cell shapes: grey box, red box with an edge under 3.2 m, orange wedge, magenta apex"));
+                notes.Add(EditTimings(ref model,view));
                 var padTarget=warp.Map(new Vector3(0.5f,1.5f,-3.5f)*5);
                 var padView=new TileGallery.View(padTarget+new Vector3(-10,14,-15),padTarget,Vector3.up,43);
                 var complete=rig.Shoot(padView,W,H);Save(complete,Path.Combine(Dir,"foundry-pad-complete.png"));UnityEngine.Object.DestroyImmediate(complete);
@@ -264,7 +311,44 @@ namespace DeathStar.EditorTools
                 shots.Add(("foundry-pad-complete.png","four family cells form one pad with a shared hatch"));
                 shots.Add(("foundry-pad-incomplete.png","removing a quarter restores three separate pads"));
             }
-            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);rig.Stage.root.SetActive(true);}
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
+            try{RidgesReport(rig,checks,shots,notes);}
+            finally{rig.Stage.root.SetActive(true);}
+            return notes;
+        }
+        // The cap round a cube corner: every family on a ridge, a crown, a keel inside, a half-covered roof, gables.
+        static void RidgesReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)
+        {
+            var root=new GameObject("Ridges lab");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var model=SettlementExamples.Ridges();var view=new FoundrySettlement(root.transform,rig.Library.materials);
+            try
+            {
+                view.Rebuild(model);var full=view.LastTimings;
+                notes.Add($"Ridges example, cells: {ShapeCounts(model)}");
+                notes.Add($"Ridges example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
+                TileLook.AddLights(root.transform);
+                const int R=SettlementExamples.RidgeRadius;
+                var warp=new CurvedTileMesh(model);
+                Vector3 At(int x,int y,int z)=>warp.Map((Vector3)SettlementExamples.RidgeCell(x,y,z)*5);
+                var crown=At(R,R,R);var outward=crown.normalized;
+                var side=Vector3.Cross(outward,Vector3.up).normalized;
+                var cap=new TileGallery.View(crown+(outward+side*0.7f).normalized*80,crown-outward*10,Vector3.up,48);
+                var keel=At(R-1,R-1,1);
+                var inside=new TileGallery.View(keel*0.25f+side*6,keel,Vector3.up,60);
+                var t=rig.Shoot(cap,320,180);UnityEngine.Object.DestroyImmediate(t);
+                var plain=rig.Shoot(cap,W,H);Save(plain,Path.Combine(Dir,"ridges.png"));
+                shots.Add(("ridges.png","three ridges meet at a crown above a cube corner, one two-cell run per family (today's box tiles, before the shape kits)"));
+                view.SetDebugView(DebugView.Shape);
+                var shaped=rig.Shoot(cap,W,H);Save(shaped,Path.Combine(Dir,"ridges-shapes.png"));
+                view.SetDebugView(DebugView.Off);
+                float changed=ChangedPixels(plain,shaped);
+                checks.Add((changed>0.005f,$"Ridges shape view visibly changes {changed:P1} of pixels"));
+                UnityEngine.Object.DestroyImmediate(plain);UnityEngine.Object.DestroyImmediate(shaped);
+                shots.Add(("ridges-shapes.png","the same in the shape view: wedges orange, the crown magenta, small boxes red"));
+                t=rig.Shoot(inside,W,H);Save(t,Path.Combine(Dir,"ridges-keel.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("ridges-keel.png","from inside the cap: a run of wedges under the z ridge shows its sharp keel"));
+            }
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }
         static void Save(Texture2D t,string path)=>File.WriteAllBytes(path,t.EncodeToPNG());
         static float Mean(Texture2D t){var px=t.GetPixels32();double s=0;foreach(var p in px)s+=(p.r*0.2126+p.g*0.7152+p.b*0.0722)/255.0;return (float)(s/px.Length);}

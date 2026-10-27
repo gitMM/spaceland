@@ -111,9 +111,15 @@ Measured on 2026-10-26 in the Editor on an NVIDIA GeForce RTX 4080 Laptop GPU: t
 The neighbourhood solver chooses orientation, joins compatible forms, and bends the result onto the shared sphere
 grid. The **Settlement** example demonstrates pads, a hangar, vaults, turret towers, bridges, a trench and an arch.
 Remove cells or undo to see assemblies split and reform. Saves retain family choices; old saves load as Hull.
-Press **C** or click **Debug colours** to tint the architecture by family. Swatches beside the family buttons
-are the legend (Hull stays grey); hovering in debug view shows the family, cell, axis and main face. The switch
-applies to both LODs, survives placement and undo, and does not change the gallery's colour setting.
+Press **C** or click **Debug view** to cycle Off → Family → Shape. Family tints the architecture by family; swatches
+beside the family buttons are the legend (Hull stays grey) and hovering shows the family, cell, axis and main face.
+Shape tints each cell by the shape the sphere map gives it: grey box, red box with an edge under 3.2 m, orange
+wedge (two faces folded flat into one roof, on the cube's edge diagonals), magenta apex (three faces, on the corner
+diagonals). Hovering shows the shape, how it meets open space (ridge, half, keel, crown, spike, gable), the ridge's
+axis and the edge lengths in metres. Both views apply to both LODs, survive placement and undo, and do not change
+the gallery's colour setting. The **Ridges** example is a cap round one cube corner: three ridges meet at a crown,
+with every family on a ridge, a keel inside, a half-covered roof and gables. `BlockConstruction.Shape` and
+`Exposure` classify cells from their eight corners; see `doc/curved-grid-tiles-plan.md`.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
 
@@ -204,4 +210,7 @@ family choices on curved cells. `validate` exercises the real
 Foundry placement/undo/picking path and geometric invariants without entering Play mode; `foundry` renders just
 the new construction views and runs the settlement checks.
 `foundry-coded.png` and `foundry-coded-far.png` exercise the Foundry's own debug switch, with image checks that
-the colours actually change the render on both detail levels.
+the colours actually change the render on both detail levels. `foundry-shapes.png`, `ridges.png`,
+`ridges-shapes.png` and `ridges-keel.png` show the cell shapes. The report's "Foundry: cell shapes and rebuild time"
+section counts shapes and exposures, splits a full rebuild into solve, forms, carving and meshes, bend and scene
+objects, and times 20 scripted edits (p50/p95).

@@ -157,7 +157,8 @@ Shader "DeathStar/Tile Surface"
                 half3 emission = _Emission.rgb * i.color.rgb;
                 if (_TileClay > 0.5) { albedo = 0.36; metallic = 0; smooth = 0.25; emission = 0; }
                 // Planning overlay: family colour over the relief's own light and shade; untyped hull dims a little.
-                if (_TileOverlay > 0.5) albedo = i.overlay.a > 0.5 ? albedo * i.overlay.rgb * 1.7 : albedo * 0.75;
+                half4 overlay = _TileOverlayTint.a > 0.5 ? (half4)_TileOverlayTint : i.overlay;
+                if (_TileOverlay > 0.5) albedo = overlay.a > 0.5 ? albedo * overlay.rgb * 1.7 : albedo * 0.75;
 
                 InputData input = (InputData)0;
                 input.positionWS = i.positionWS;
