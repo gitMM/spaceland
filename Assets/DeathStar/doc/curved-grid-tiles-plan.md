@@ -403,6 +403,26 @@ rebuild 1.84 s, single edits p50 0.56 s).
 - **Every solid family now has its own kit on special cells.** Corridors and conduits keep their tubes there (see
   batch A).
 
+## Triangle budget results
+
+2026-10-27. The lab now measures the special tile budget (≤ 8k triangles near, ≤ 2.5k far) on every wedge and apex
+tile of all five examples (Foundry, Ridges, Limit, Station, Truss) and on the crown in every family; 61/61 checks pass.
+
+- **Near was always within budget** (most: Corridor ridge 6.2k, Power crown 6.3k, Truss crown 6.1k). **Far was not:**
+  the far mesh only dropped the carving, so kits kept their full detail. Over 2.5k: Truss crown 6.1k, Truss ridge 3.1k,
+  Command crown 3.1k, Pad crown 2.7k.
+- **Fix: a far level for kit parts.** `TileMesh.Detail` builds the kit twice, as it is for the near mesh and coarse for
+  the far one: a third of the sides on revolutions (never under six to the turn), fewer profile steps on spheres,
+  dishes, tanks and capsules, no chamfers, armour plain. It is the tail of the tile, so `ToMeshes` swaps it for the
+  coarse build and the far mesh still shares (and copies the bending of) everything before it. Wedge and apex kits
+  and whole truss frames use it; truss tiles, which have no carving, now get a LOD group too.
+- **Now:** most far 1.8k (Truss crown), mean far 0.5k (was 0.8k); near unchanged. Full Foundry rebuild 1.87–2.06 s
+  over repeat runs (2.45 s on the first run after a recompile), single edits p50 0.56–0.60 s.
+- **Box tiles are not held to it.** The heaviest is a Power box at 20.2k near (mostly carving, which its far level
+  drops) and a Life Support box at 3.0k far.
+- **Lab:** `ridges-lod.png` (near and far side by side), `crowns-far.png`; `tools/tile-lab.sh budget` runs only the
+  budget.
+
 ## Phases
 
 | Phase | Size | Work | Exit |

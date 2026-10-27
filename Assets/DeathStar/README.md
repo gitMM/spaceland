@@ -226,8 +226,10 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
   the plates under them flatten.
 - **Triangle budget.** Faces lying on a tile's own wall and facing in are not built, and carving waits until the tile
   is done so plates under other boxes and hexahedra are left out. Each tile with carving gets a LOD group: from about
-  110 m (a 5 m cube under ~45 px at 1080p) it swaps to a far mesh with the armour plain. The showcase is ~950k
-  triangles near and ~380k far.
+  110 m (a 5 m cube under ~45 px at 1080p) it swaps to a far mesh with the armour plain. Wedge and apex kits and
+  truss frames are built twice (`TileMesh.Detail`): as they are for the near mesh, and coarse for the far one (a third
+  of the sides on round parts, no chamfers, armour plain). A wedge or apex tile stays within 8k triangles near and
+  2.5k far. The showcase is ~960k triangles near and ~390k far.
 - **Connections and slopes.** A corridor arriving at a face plugs into an octagonal socket on it, and a conduit into
   a manifold block; either takes that face over. Hull walls rising from a surface get a sloped fillet along the foot,
   continued along neighbours, so steps read as battered walls.
@@ -260,6 +262,7 @@ tools/tile-lab.sh validate
 tools/tile-lab.sh foundry
 tools/tile-lab.sh limit
 tools/tile-lab.sh truss
+tools/tile-lab.sh budget
 tools/tile-lab.sh snap view=Trench
 tools/tile-lab.sh snap family=Defense back=1
 ```
@@ -284,7 +287,10 @@ class). Checks hold those parts within 5% and the rebuild, edit and triangle cou
 conduit cross-sections must come out within 2% of true size at every tube end, and tubes meeting across a face within
 1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge); every open wedge and apex cell must
 build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
-`crowns-sheet.png` the crown in each family with a kit). `station.png`, `station-coded.png`, `station-shapes.png`,
+`crowns-sheet.png` the crown in each family with a kit, `crowns-far.png` the same at the far level, `ridges-lod.png`
+near and far side by side). Every wedge and apex tile of every example, and the crown in every family, must stay
+within 8k triangles near and 2.5k far; the report lists the most of each family and exposure, and the heaviest box
+tile (`tools/tile-lab.sh budget` runs just this). `station.png`, `station-coded.png`, `station-shapes.png`,
 `station-back.png` and `station-inside.png` show the Station example; the validation checks that it holds every
 shape and exposure, every family on a ridge and every solid family on a crown, and that every family can be put
 back into every surface cell of a ball (boxes, small boxes, wedges, apexes) and the corners and ridges stay valid out

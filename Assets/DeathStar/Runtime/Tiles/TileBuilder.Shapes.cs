@@ -97,7 +97,7 @@ namespace DeathStar
             }
             m.surfaceFrame=Vector4.zero;
             m.PushMatrix(Matrix4x4.Translate(-c));
-            ShapeKit(m,cell,p,sh);
+            var place=p;var shape=sh;m.Detail(t=>ShapeKit(t,cell,place,shape));
             m.Pop();
         }
         // The shape's kit from the cell's real corners, in world space less the cell's centre: a crest on a ridge, a keel

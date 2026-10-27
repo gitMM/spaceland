@@ -100,6 +100,21 @@ namespace DeathStar
         // Any local transform on the stack (e.g. undoing a cell's stretch along a tube's run).
         public void PushMatrix(Matrix4x4 local){stack.Push(matrix);matrix=matrix*local;}
 
+        // Kit parts have a far level of their own: Detail builds them twice, as they are for the near mesh and coarse
+        // for the far one. They must be the last thing the tile builds: ToMeshes swaps that tail of the mesh for the
+        // coarse build. Coarse: a third of the sides on revolutions (never under six to the turn), no chamfers, armour
+        // plain.
+        public bool coarse;
+        TileMesh farDetail;int detailVertices,detailJobs;readonly int[] detailIndices=new int[SlotCount];
+        public void Detail(System.Action<TileMesh> build)
+        {
+            detailVertices=positions.Count;detailJobs=jobs.Count;for(int i=0;i<SlotCount;i++)detailIndices[i]=indices[i].Count;
+            farDetail=new TileMesh{stationOffset=stationOffset,cellHalf=cellHalf,retainWarpData=retainWarpData,courseAxis=courseAxis,
+                courseSide=courseSide,seed=seed,overlay=overlay,surfaceFrame=surfaceFrame,metricAnchor=metricAnchor,coarse=true,matrix=matrix,panes=panes};
+            build(this);build(farDetail);
+        }
+        int Sides(int n,float arc=Mathf.PI*2)=>coarse?Mathf.Max(Mathf.CeilToInt(6*arc/(Mathf.PI*2)-1e-3f),Mathf.CeilToInt(n/3f)):n;
+
         // Frame on one face of the box min..max. Side faces put y=0 at the tile's ground so heights read the same on
         // every face; the top face has y towards the back (+Z).
         public void PushFace(int face,Vector3 min,Vector3 max)
@@ -146,7 +161,7 @@ namespace DeathStar
         public void Quad(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 d,Vector3 n,Vector3 t)
         {
             if(Hidden(a,b,c,d,n))return;
-            if(f.pattern==TilePattern.Armour&&Carve(f,a,b,c,d,n))return;
+            if(f.pattern==TilePattern.Armour&&!coarse&&Carve(f,a,b,c,d,n))return;
             Vector4 t4=t;t4.w=1;
             Emit(f.slot,Vertex(a,n,t4,f),Vertex(b,n,t4,f),Vertex(c,n,t4,f),Vertex(d,n,t4,f),Flip(a,b,c,d,n));
         }
@@ -175,7 +190,7 @@ namespace DeathStar
 
         public void Box(in Finish f,Vector3 center,Vector3 size,float chamfer=0)
         {
-            Vector3 h=size*0.5f;
+            Vector3 h=size*0.5f;if(coarse)chamfer=0;
             SolidBox(center,h);
             ChamferedBox(f,center,h,Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f),true);
         }
@@ -211,7 +226,7 @@ namespace DeathStar
         // A chamfered box whose side and top walls have rectangular holes (in each face's frame). No bottom.
         public void Shell(in Finish f,Vector3 min,Vector3 max,float chamfer,List<Rect>[] holes)
         {
-            Vector3 h=(max-min)*0.5f;
+            Vector3 h=(max-min)*0.5f;if(coarse)chamfer=0;
             float c=Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f);
             ChamferedBox(f,(min+max)*0.5f,h,c,false);
             for(int face=0;face<5;face++)
@@ -306,7 +321,7 @@ namespace DeathStar
         // Part of a revolution: from start (perpendicular to axis) through arc radians towards cross(axis,start).
         public void Lathe(in Finish f,Vector3 origin,Vector3 axis,IList<Vector2> profile,int segments,bool smooth,Vector3 start,float arc)
         {
-            axis.Normalize();
+            axis.Normalize();segments=Sides(segments,arc);
             Vector3 u=Vector3.ProjectOnPlane(start,axis).normalized,w=Vector3.Cross(axis,u);
             int n=profile.Count;var seg=new Vector2[n-1];
             for(int i=0;i<n-1;i++){Vector2 d=profile[i+1]-profile[i];seg[i]=new Vector2(d.y,-d.x).normalized;}
@@ -328,7 +343,7 @@ namespace DeathStar
 
         public void Cylinder(in Finish f,Vector3 a,Vector3 b,float r,int segments=16,bool capA=true,bool capB=true,float chamfer=0)
         {
-            float len=(b-a).magnitude;float c=Mathf.Min(chamfer,Mathf.Min(r*0.5f,len*0.25f));
+            float len=(b-a).magnitude;if(coarse)chamfer=0;float c=Mathf.Min(chamfer,Mathf.Min(r*0.5f,len*0.25f));
             var p=new List<Vector2>();
             if(capA){p.Add(new Vector2(0,0));if(c>0){p.Add(new Vector2(r-c,0));p.Add(new Vector2(r,c));}else p.Add(new Vector2(r,0));}
             else p.Add(new Vector2(r,0));
@@ -343,32 +358,33 @@ namespace DeathStar
             axis.Normalize();
             Lathe(f,bottom,axis,new[]{new Vector2(0,0),new Vector2(r,0),new Vector2(r,body)},segments,false);
             var cap=new List<Vector2>();
-            for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;cap.Add(new Vector2(r*Mathf.Cos(t),body+dome*Mathf.Sin(t)));}
+            int steps=coarse?3:6;
+            for(int k=0;k<=steps;k++){float t=k/(float)steps*Mathf.PI*0.5f;cap.Add(new Vector2(r*Mathf.Cos(t),body+dome*Mathf.Sin(t)));}
             Lathe(f,bottom,axis,cap,segments,true);
         }
         // Horizontal vessel: domes at both ends.
         public void Capsule(in Finish f,Vector3 a,Vector3 b,float r,float dome,int segments=24)
         {
             Vector3 axis=(b-a).normalized;float len=(b-a).magnitude;
-            var p=new List<Vector2>();
-            for(int k=0;k<=6;k++){float t=-Mathf.PI*0.5f+k/6f*Mathf.PI*0.5f;p.Add(new Vector2(r*Mathf.Cos(t),dome+dome*Mathf.Sin(t)));}
+            var p=new List<Vector2>();int steps=coarse?3:6;
+            for(int k=0;k<=steps;k++){float t=-Mathf.PI*0.5f+k/(float)steps*Mathf.PI*0.5f;p.Add(new Vector2(r*Mathf.Cos(t),dome+dome*Mathf.Sin(t)));}
             Lathe(f,a-axis*dome,axis,p,segments,true);
             Lathe(f,a,axis,new[]{new Vector2(r,0),new Vector2(r,len)},segments,false);
             var q=new List<Vector2>();
-            for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;q.Add(new Vector2(r*Mathf.Cos(t),len+dome*Mathf.Sin(t)));}
+            for(int k=0;k<=steps;k++){float t=k/(float)steps*Mathf.PI*0.5f;q.Add(new Vector2(r*Mathf.Cos(t),len+dome*Mathf.Sin(t)));}
             Lathe(f,a,axis,q,segments,true);
         }
         public void Sphere(in Finish f,Vector3 center,float r,int segments=16)
         {
-            var p=new List<Vector2>();
-            for(int k=0;k<=8;k++){float t=-Mathf.PI*0.5f+k/8f*Mathf.PI;p.Add(new Vector2(r*Mathf.Cos(t),r*Mathf.Sin(t)));}
-            p[0]=new Vector2(0,-r);p[8]=new Vector2(0,r);
+            var p=new List<Vector2>();int steps=coarse?4:8;
+            for(int k=0;k<=steps;k++){float t=-Mathf.PI*0.5f+k/(float)steps*Mathf.PI;p.Add(new Vector2(r*Mathf.Cos(t),r*Mathf.Sin(t)));}
+            p[0]=new Vector2(0,-r);p[steps]=new Vector2(0,r);
             Lathe(f,center,Vector3.up,p,segments,true);
         }
         // Part of a torus: tube radius r round a circle of radius R about axis through center, swept from start.
         public void Torus(in Finish f,Vector3 center,Vector3 axis,Vector3 start,float arc,float R,float r,int segments=20,int tube=12)
         {
-            var p=new List<Vector2>();
+            var p=new List<Vector2>();tube=Sides(tube);
             for(int k=0;k<=tube;k++){float t=k/(float)tube*Mathf.PI*2;p.Add(new Vector2(R+r*Mathf.Cos(t),r*Mathf.Sin(t)));}
             Lathe(f,center,axis,p,segments,true,start,arc);
         }
@@ -377,8 +393,9 @@ namespace DeathStar
         {
             const float thickness=0.035f;
             var back=new List<Vector2>();var front=new List<Vector2>();
-            for(int i=0;i<=6;i++){float r=radius*i/6f;back.Add(new Vector2(r,depth*(r/radius)*(r/radius)));}
-            for(int i=6;i>=0;i--){float r=radius*i/6f;front.Add(new Vector2(r,depth*(r/radius)*(r/radius)+thickness));}
+            int steps=coarse?3:6;
+            for(int i=0;i<=steps;i++){float r=radius*i/steps;back.Add(new Vector2(r,depth*(r/radius)*(r/radius)));}
+            for(int i=steps;i>=0;i--){float r=radius*i/steps;front.Add(new Vector2(r,depth*(r/radius)*(r/radius)+thickness));}
             Lathe(f,center,axis,back,segments,true);
             Lathe(f,center,axis,new[]{new Vector2(radius,depth),new Vector2(radius,depth+thickness)},segments,false);
             Lathe(f,center,axis,front,segments,true);
@@ -434,29 +451,53 @@ namespace DeathStar
         public Mesh ToMesh(string name){Flush();return Build(name);}
         // Vertices at the start of both meshes from the last ToMeshes: identical in near and far.
         public int SharedVertices {get;private set;}
-        // The mesh with the armour carved, and a far level of detail with the armour plain (null if nothing is carved).
+        // The mesh with the armour carved, and a far level of detail with the armour plain and the coarse kit parts
+        // (null if nothing is carved and there is no Detail).
         public (Mesh near,Mesh far) ToMeshes(string name)
         {
             SharedVertices=0;
-            if(jobs.Count==0)return (Build(name),null);
-            int mark=positions.Count;var marks=new int[SlotCount];for(int i=0;i<SlotCount;i++)marks[i]=indices[i].Count;
+            if(jobs.Count==0&&farDetail==null)return (Build(name),null);
+            bool detail=farDetail!=null;
+            int mark=detail?detailVertices:positions.Count,jobMark=detail?detailJobs:jobs.Count;
+            var marks=new int[SlotCount];for(int i=0;i<SlotCount;i++)marks[i]=detail?detailIndices[i]:indices[i].Count;
             SharedVertices=mark;
-            foreach(var j in jobs)
+            // The far mesh: everything before the detail, the coarse detail, then the armour plain.
+            var nearDetail=new TileMesh();MoveTail(nearDetail,mark,marks);
+            if(detail){farDetail.MoveTail(this,0,new int[SlotCount]);farDetail=null;}
+            for(int k=0;k<jobMark;k++)
             {
+                var j=jobs[k];
                 surfaceFrame=j.frame;
                 metricAnchor=j.anchor;
                 Vector4 t4=(j.B-j.A).normalized;t4.w=1;
                 Emit(j.f.slot,Raw(j.A,j.N,t4,j.f),Raw(j.B,j.N,t4,j.f),Raw(j.C,j.N,t4,j.f),Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
             }
             var far=Build(name+" far");
-            int n=positions.Count-mark;
-            positions.RemoveRange(mark,n);normals.RemoveRange(mark,n);tangents.RemoveRange(mark,n);codes.RemoveRange(mark,n);
-            local.RemoveRange(mark,n);extent.RemoveRange(mark,n);colors.RemoveRange(mark,n);overlays.RemoveRange(mark,n);
-            surfaceFrames.RemoveRange(mark,n);
-            metricAnchors.RemoveRange(mark,n);
-            for(int i=0;i<SlotCount;i++)indices[i].RemoveRange(marks[i],indices[i].Count-marks[i]);
+            Truncate(mark,marks);nearDetail.MoveTail(this,0,new int[SlotCount]);
             Flush();
             return (Build(name),far);
+        }
+        // Moves the vertices from v0 on, and the triangles from i0 on in each slot (which use only those), to the end
+        // of another mesh.
+        void MoveTail(TileMesh to,int v0,int[] i0)
+        {
+            int n=positions.Count-v0,offset=to.positions.Count-v0;
+            to.positions.AddRange(positions.GetRange(v0,n));to.normals.AddRange(normals.GetRange(v0,n));
+            to.tangents.AddRange(tangents.GetRange(v0,n));to.codes.AddRange(codes.GetRange(v0,n));
+            to.local.AddRange(local.GetRange(v0,n));to.extent.AddRange(extent.GetRange(v0,n));
+            to.colors.AddRange(colors.GetRange(v0,n));to.overlays.AddRange(overlays.GetRange(v0,n));
+            to.surfaceFrames.AddRange(surfaceFrames.GetRange(v0,n));to.metricAnchors.AddRange(metricAnchors.GetRange(v0,n));
+            for(int i=0;i<SlotCount;i++)for(int k=i0[i];k<indices[i].Count;k++)to.indices[i].Add(indices[i][k]+offset);
+            Truncate(v0,i0);
+        }
+        void Truncate(int v0,int[] i0)
+        {
+            int n=positions.Count-v0;
+            positions.RemoveRange(v0,n);normals.RemoveRange(v0,n);tangents.RemoveRange(v0,n);codes.RemoveRange(v0,n);
+            local.RemoveRange(v0,n);extent.RemoveRange(v0,n);colors.RemoveRange(v0,n);overlays.RemoveRange(v0,n);
+            surfaceFrames.RemoveRange(v0,n);
+            metricAnchors.RemoveRange(v0,n);
+            for(int i=0;i<SlotCount;i++)indices[i].RemoveRange(i0[i],indices[i].Count-i0[i]);
         }
         // A vertex already in mesh space.
         int Raw(Vector3 p,Vector3 n,Vector4 t,in Finish f){var saved=matrix;matrix=Matrix4x4.identity;int i=Vertex(p,n,t,f);matrix=saved;return i;}

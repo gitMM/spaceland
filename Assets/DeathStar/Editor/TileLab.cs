@@ -58,6 +58,14 @@ namespace DeathStar.EditorTools
             var lib=TileGalleryMenu.EnsureLibrary();
             Directory.CreateDirectory(Dir);
             if(mode=="validate")return "DONE "+SettlementValidation.Run()+"\n"+SettlementValidation.FoundryInteraction(lib)+"\n"+BlockFoundryValidation.Run();
+            if(mode=="budget")
+            {
+                var checks=new List<(bool ok,string text)>();var notes=new List<string>();
+                foreach(var (name,model) in new[]{("Foundry",SettlementExamples.Foundry()),("Ridges",SettlementExamples.Ridges()),("Limit",SettlementExamples.Limit()),
+                    ("Station",SettlementExamples.Station()),("Truss",SettlementExamples.Truss())})TriangleBudget(name,model,checks,notes);
+                CrownBudget(checks,notes);
+                return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text).Concat(notes));
+            }
             using var rig=new Rig(lib);
             if(mode=="warmup"){var t=rig.Shoot(TileGallery.Fragment,320,180);UnityEngine.Object.DestroyImmediate(t);return "DONE warmup";}
             if(mode=="snap")return Snap(rig,opts);
@@ -326,6 +334,62 @@ namespace DeathStar.EditorTools
             checks.Add((missing==0&&forms==0,$"{example}: every open wedge and apex cell builds its kit and no box forms ({missing} missing a part, {forms} with box forms)"));
         }
 
+        // Plan budget (doc/curved-grid-tiles-plan.md, Phase 4): a special tile (wedge or apex cell) stays at or under 8k
+        // triangles near and 2.5k far. Every tile of the example is built as the Foundry builds it; a tile without a far
+        // level draws its near mesh at every distance. Box tiles are reported, not held to it.
+        const int BudgetSpecialNear=8000,BudgetSpecialFar=2500;
+        static (int near,int far) Triangles(TileBuilder builder,Vector3Int cell)
+        {
+            var source=builder.Build(cell);if(source.VertexCount==0)return (0,0);
+            var (near,far)=source.ToMeshes("budget");
+            int tn=TileGallery.Triangles(near),tf=far!=null?TileGallery.Triangles(far):tn;
+            UnityEngine.Object.DestroyImmediate(near);if(far!=null)UnityEngine.Object.DestroyImmediate(far);
+            return (tn,tf);
+        }
+        static string K((int near,int far) t)=>$"{t.near/1000f:0.0}k/{t.far/1000f:0.0}k";
+        static bool Over((int near,int far) t)=>t.near>BudgetSpecialNear||t.far>BudgetSpecialFar;
+        static string Overs(List<string> over)=>over.Count==0?"":$" ({over.Count} over: "+string.Join(", ",over.Take(12))+(over.Count>12?", …":"")+")";
+        static void TriangleBudget(string example,BlockConstruction model,List<(bool ok,string text)> checks,List<string> notes)
+        {
+            var structure=SettlementSolver.Solve(model);var builder=new TileBuilder(structure,new CurvedTileMesh(model));
+            var worst=new SortedDictionary<string,(int n,int near,int far)>();var over=new List<string>();
+            int special=0;long sumNear=0,sumFar=0;(int near,int far) box=(0,0);string boxNear="",boxFar="";
+            foreach(var cell in structure.cells.Keys)
+            {
+                var t=Triangles(builder,cell);if(t.near==0)continue;
+                string family=structure.cells[cell].family.ToString();
+                if(!structure.special.ContainsKey(cell))
+                {
+                    if(t.near>box.near){box.near=t.near;boxNear=family;}
+                    if(t.far>box.far){box.far=t.far;boxFar=family;}
+                    continue;
+                }
+                special++;sumNear+=t.near;sumFar+=t.far;
+                string key=family+" "+model.Exposure(cell,out _).ToString().ToLowerInvariant();
+                (int n,int near,int far) w=worst.TryGetValue(key,out var o)?o:(0,0,0);worst[key]=(w.n+1,Mathf.Max(w.near,t.near),Mathf.Max(w.far,t.far));
+                if(Over(t))over.Add($"{key} {cell} {K(t)}");
+            }
+            if(special==0){notes.Add($"{example} example: no special tiles");return;}
+            notes.Add($"{example} example, triangles per special tile (near/far, most of each family and exposure): "+
+                string.Join(", ",worst.Select(p=>$"{p.Key} ×{p.Value.n} {K((p.Value.near,p.Value.far))}"))+
+                $"; mean {K(((int)(sumNear/special),(int)(sumFar/special)))}; box tiles at most {box.near/1000f:0.0}k near ({boxNear}), {box.far/1000f:0.0}k far ({boxFar})");
+            checks.Add((over.Count==0,$"{example}: all {special} special tiles within {BudgetSpecialNear/1000}k triangles near and {BudgetSpecialFar/1000f:0.0}k far"+Overs(over)));
+        }
+        // The Ridges crown rebuilt in every family (the examples hold only some families' crowns).
+        static void CrownBudget(List<(bool ok,string text)> checks,List<string> notes)
+        {
+            var crown=SettlementExamples.RidgeCell(SettlementExamples.RidgeRadius,SettlementExamples.RidgeRadius,SettlementExamples.RidgeRadius);
+            var each=new List<string>();var over=new List<string>();
+            foreach(var family in TileGallery.Families)
+            {
+                var model=SettlementExamples.Ridges(family);
+                var t=Triangles(new TileBuilder(SettlementSolver.Solve(model),new CurvedTileMesh(model)),crown);
+                each.Add($"{family} {K(t)}");if(Over(t))over.Add($"{family} {K(t)}");
+            }
+            notes.Add("Crown in every family (near/far): "+string.Join(", ",each));
+            checks.Add((over.Count==0,$"the crown in all {TileGallery.Families.Length} families within {BudgetSpecialNear/1000}k triangles near and {BudgetSpecialFar/1000f:0.0}k far"+Overs(over)));
+        }
+
         // Ten additions on open faces, each removed again, through the same TryEdit and incremental rebuild as a click.
         static (string text,double p50,double p95) EditTimings(ref BlockConstruction model,FoundrySettlement view)
         {
@@ -366,6 +430,7 @@ namespace DeathStar.EditorTools
                 ScaleCheck("Foundry",view,checks,notes);
                 ConnectorCheck("Foundry",model,checks,notes);
                 KitCheck("Foundry",model,checks,notes);
+                TriangleBudget("Foundry",model,checks,notes);
                 TileLook.AddLights(root.transform);
                 var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
                 var warp=new CurvedTileMesh(model);
@@ -430,6 +495,7 @@ namespace DeathStar.EditorTools
                 notes.Add($"Station example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
                 ScaleCheck("Station",view,checks,notes);
                 KitCheck("Station",model,checks,notes);
+                TriangleBudget("Station",model,checks,notes);
                 var landmarks=new[]{"dish","reactor","sphere tank","pad quarter"};
                 var missing=landmarks.Where(l=>!view.fixedPartSizes.Exists(p=>p.name.StartsWith(l))).ToList();
                 checks.Add((missing.Count==0,"Station: the 2 x 2 landmarks build (dish, reactor, sphere tank, big pad)"+(missing.Count>0?"; missing "+string.Join(", ",missing):"")));
@@ -468,6 +534,7 @@ namespace DeathStar.EditorTools
                 notes.Add($"Truss example, cells: {ShapeCounts(model)}");
                 notes.Add($"Truss example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
                 KitCheck("Truss",model,checks,notes);
+                TriangleBudget("Truss",model,checks,notes);
                 // Every truss cell builds a frame; none builds a fixed-size part; triangles per truss tile.
                 var structure=SettlementSolver.Solve(model);var builder=new TileBuilder(structure,new CurvedTileMesh(model));
                 int cells=0,empty=0,fixedParts=0,most=0;long total=0;
@@ -549,6 +616,7 @@ namespace DeathStar.EditorTools
                 ScaleCheck("Limit",view,checks,notes);
                 ConnectorCheck("Limit",model,checks,notes);
                 KitCheck("Limit",model,checks,notes);
+                TriangleBudget("Limit",model,checks,notes);
                 var small=new[]{"pad M","pad S","pad quarter M","pad quarter S"};
                 checks.Add((view.fixedPartSizes.Exists(p=>small.Contains(p.name)),"Limit: pads on narrow faces take a smaller size class"));
                 TileLook.AddLights(root.transform);
@@ -643,9 +711,22 @@ namespace DeathStar.EditorTools
                 t=rig.Shoot(new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45),W,H);
                 Save(t,Path.Combine(Dir,"ridges-crown.png"));UnityEngine.Object.DestroyImmediate(t);
                 shots.Add(("ridges-crown.png","the crown: a hub and beacon where the three ridges' crests meet"));
+                // Near and far levels side by side, the far one forced: the cap, and the crown close up.
+                var crownClose=new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45);
+                var lodSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                for(int i=0;i<4;i++)
+                {
+                    foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(i%2==0?0:1);
+                    t=rig.Shoot(i<2?cap:crownClose,W/2,H/2);
+                    lodSheet.SetPixels(i%2*(W/2),(1-i/2)*(H/2),W/2,H/2,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(-1);
+                lodSheet.Apply();Save(lodSheet,Path.Combine(Dir,"ridges-lod.png"));UnityEngine.Object.DestroyImmediate(lodSheet);
+                shots.Add(("ridges-lod.png","near level (left) and far level forced (right), the cap and the crown close up: the far level drops the carving and builds kits coarse"));
                 ScaleCheck("Ridges",view,checks,notes);
                 ConnectorCheck("Ridges",model,checks,notes);
                 KitCheck("Ridges",model,checks,notes);
+                TriangleBudget("Ridges",model,checks,notes);CrownBudget(checks,notes);
                 // Each run on the ridges close up, in RidgeRuns order (x ridge, y ridge, z ridge; four runs each).
                 var runSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);int idx=0;
                 for(int axis=0;axis<3;axis++)for(int run=0;run<4;run++,idx++)
@@ -661,15 +742,23 @@ namespace DeathStar.EditorTools
                 // The crown in each family with a kit of its own, rebuilt in place.
                 var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power,TileFamily.LifeSupport,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial,TileFamily.Truss};
                 var crownSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);crownSheet.SetPixels32(new Color32[W*H]);
-                var crownView=new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45);
+                var crownFar=new Texture2D(W,H,TextureFormat.RGBA32,false);crownFar.SetPixels32(new Color32[W*H]);
                 for(int i=0;i<crowns.Length;i++)
                 {
                     view.Rebuild(SettlementExamples.Ridges(crowns[i]),new[]{SettlementExamples.RidgeCell(R,R,R)});
-                    t=rig.Shoot(crownView,W/4,H/3);
-                    crownSheet.SetPixels(i%4*(W/4),(2-i/4)*(H/3),W/4,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                    foreach(var (into,level) in new[]{(crownSheet,-1),(crownFar,1)})
+                    {
+                        foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(level);
+                        t=rig.Shoot(crownClose,W/4,H/3);
+                        into.SetPixels(i%4*(W/4),(2-i/4)*(H/3),W/4,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                    }
+                    foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(-1);
                 }
+                const string order="left to right and top to bottom: Hull, Habitat, Defense, Command / Power, Life Support, Storage, Landing Pad / Industrial, Truss (lattice tower)";
                 crownSheet.Apply();Save(crownSheet,Path.Combine(Dir,"crowns-sheet.png"));UnityEngine.Object.DestroyImmediate(crownSheet);
-                shots.Add(("crowns-sheet.png","the crown in each family, left to right and top to bottom: Hull, Habitat, Defense, Command / Power, Life Support, Storage, Landing Pad / Industrial, Truss (lattice tower)"));
+                shots.Add(("crowns-sheet.png","the crown in each family, "+order));
+                crownFar.Apply();Save(crownFar,Path.Combine(Dir,"crowns-far.png"));UnityEngine.Object.DestroyImmediate(crownFar);
+                shots.Add(("crowns-far.png","the same with every tile forced to its far level: coarse kits, no carving"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

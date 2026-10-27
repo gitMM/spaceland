@@ -57,8 +57,12 @@ namespace DeathStar
         {
             m.surfaceFrame=Vector4.zero;
             m.PushMatrix(Matrix4x4.Translate(-TileStructure.Center(cell)));
-            using(m.BeginWorld("truss"))TrussFrame(m,cell);
-            if(curved!=null&&s.special.TryGetValue(cell,out var shape))ShapeKit(m,cell,p,shape);
+            ShapeInfo shape=default;bool special=curved!=null&&s.special.TryGetValue(cell,out shape);var place=p;
+            m.Detail(t=>
+            {
+                using(t.BeginWorld("truss"))TrussFrame(t,cell);
+                if(special)ShapeKit(t,cell,place,shape);
+            });
             m.Pop();
         }
 
