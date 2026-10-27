@@ -103,7 +103,7 @@ namespace DeathStar
                 var (a,sa)=FaceAxis(roofs[0]);var (b,sb)=FaceAxis(roofs[1]);
                 var s0=MakeSection(cell,sh.spine,0,a,sa,b,sb);var s1=MakeSection(cell,sh.spine,1,a,sa,b,sb);
                 if(exposure==CellExposure.Ridge)
-                    using(m.BeginWorld("crest"))CrestFor(m,p.family,cell,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
+                    using(m.BeginWorld("crest"))CrestFor(m,p.family,cell,sh.spine,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
                 if(exposure==CellExposure.Keel)
                     using(m.BeginWorld("keel"))Keel(m,s0,s1);
                 var along=(s1.crest-s0.crest).normalized;
@@ -235,7 +235,7 @@ namespace DeathStar
                 var start=new Section{crest=o,up=up,across=(end.across-up*Vector3.Dot(end.across,up)).normalized};
                 // the arm starts inside the hub, in the crown's family's crest
                 var from=start;from.crest=Vector3.Lerp(o,end.crest,Mathf.Min(0.5f,1f/Mathf.Max(0.5f,Vector3.Distance(o,end.crest))));
-                CrestFor(m,family,cell,from,end,true,CrestJoins(cell,ax,-sg));
+                CrestFor(m,family,cell,ax,from,end,true,CrestJoins(cell,ax,-sg));
                 arms[i]=end.crest-o;
             }
             HubFor(m,family,o,up,arms);

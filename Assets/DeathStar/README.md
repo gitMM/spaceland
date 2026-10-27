@@ -127,7 +127,12 @@ its ridge's crest; an armour plate and hatch on open gables; a lit keel strip; a
 Defense and Command have kits of their own (`TileBuilder.Kits.cs`): a glazed A-frame gallery, a glazed lantern, a
 glazed gable and window rows on slopes; a battlement rail with a turret on every other cell, a three-turret bastion, a
 gun port and casemates; a phased-array spine, a spire with three dishes, an antenna mast and a bridge window strip.
-Crests join only within a family. Other families build the Hull kit; corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
+Power, Life Support, Storage and Landing Pad follow in `TileBuilder.KitsB.cs`: a wave of tilted radiator fins, a
+three-winged radiator round a glowing core, a transformer, radiator panels; a glazed greenhouse barrel, a faceted dome
+on a windowed drum, a round window, squat tanks; a monorail of containers, three silos under a gantry, a hangar door,
+racked crates; a docking cradle holding a pod over every pair of cells, a mooring mast with a pod docked nose-in,
+an approach light bar, hoses and lights. Crests join only within a family. Hull and Industrial build the Hull kit;
+corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
 on without seams.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
@@ -246,5 +251,5 @@ class). Checks hold those parts within 5% and the rebuild, edit and triangle cou
 conduit cross-sections must come out within 2% of true size at every tube end, and tubes meeting across a face within
 1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge); every open wedge and apex cell must
 build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
-`crowns-sheet.png` the crown as Hull, Habitat, Defense and Command). The script submits the lab as a
+`crowns-sheet.png` the crown in each family with a kit). The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

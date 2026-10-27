@@ -16,13 +16,18 @@ namespace DeathStar
         static readonly Finish Panel=new Finish(TileSlot.Dark);
         static readonly Finish Slit=new Finish(TileSlot.Recess);
 
-        void CrestFor(TileMesh m,TileFamily family,Vector3Int cell,in Section s0,in Section s1,bool join0,bool join1)
+        // spine: the lattice axis the run follows, so parts can pace themselves along it (cell[spine]).
+        void CrestFor(TileMesh m,TileFamily family,Vector3Int cell,int spine,in Section s0,in Section s1,bool join0,bool join1)
         {
             switch(family)
             {
                 case TileFamily.Habitat:Gallery(m,s0,s1,join0,join1);break;
                 case TileFamily.Defense:Battlement(m,s0,s1,join0,join1,(cell.x+cell.y+cell.z&1)==0);break;
                 case TileFamily.Command:SensorSpine(m,s0,s1,join0,join1);break;
+                case TileFamily.Power:FinSpine(m,s0,s1,join0,join1,cell[spine]);break;
+                case TileFamily.LifeSupport:Greenhouse(m,s0,s1,join0,join1);break;
+                case TileFamily.Storage:Monorail(m,s0,s1,join0,join1,Hash(cell));break;
+                case TileFamily.Pad:Cradle(m,s0,s1,join0,join1,(cell[spine]&1)==0&&join1);break;
                 default:Crest(m,s0,s1,join0,join1);break;
             }
         }
@@ -33,6 +38,10 @@ namespace DeathStar
                 case TileFamily.Habitat:Gable(m,s,outward);GlassGable(m,s,outward);break;
                 case TileFamily.Defense:Gable(m,s,outward);GunPort(m,s,outward);break;
                 case TileFamily.Command:Gable(m,s,outward);Mast(m,s);break;
+                case TileFamily.Power:Gable(m,s,outward);Transformer(m,s,outward);break;
+                case TileFamily.LifeSupport:Gable(m,s,outward);RoundWindow(m,s,outward);break;
+                case TileFamily.Storage:HangarDoor(m,s,outward);break;
+                case TileFamily.Pad:Gable(m,s,outward);LightBar(m,s,outward);break;
                 default:Gable(m,s,outward);break;
             }
         }
@@ -43,11 +52,15 @@ namespace DeathStar
                 case TileFamily.Habitat:Lantern(m,o,up,arms);break;
                 case TileFamily.Defense:Bastion(m,o,up,arms);break;
                 case TileFamily.Command:Spire(m,o,up,arms);break;
+                case TileFamily.Power:Triskelion(m,o,up,arms);break;
+                case TileFamily.LifeSupport:Dome(m,o,up,arms);break;
+                case TileFamily.Storage:Silos(m,o,up,arms);break;
+                case TileFamily.Pad:MooringMast(m,o,up,arms);break;
                 default:Hub(m,o,up);break;
             }
         }
         // Families whose slopes carry a form of their own (left bare of relief); the rest get a hatch.
-        static bool SlopeForm(TileFamily family)=>family==TileFamily.Habitat||family==TileFamily.Defense||family==TileFamily.Command;
+        static bool SlopeForm(TileFamily family)=>family!=TileFamily.Hull&&family!=TileFamily.Industrial;
         void SlopeFor(Face f,TileFamily family)
         {
             f.metric=f.Local(0,0);
@@ -56,6 +69,10 @@ namespace DeathStar
                 case TileFamily.Habitat:Habitat(f);break;
                 case TileFamily.Command:WindowRow(f,HighSill,HighHead);break;
                 case TileFamily.Defense:Casemates(f);break;
+                case TileFamily.Power:Radiators(f);break;
+                case TileFamily.LifeSupport:Tanks(f);break;
+                case TileFamily.Storage:Racks(f);break;
+                case TileFamily.Pad:Service(f);break;
                 default:Hatch(f,0,0,0.6f);break;
             }
         }

@@ -31,9 +31,10 @@ namespace DeathStar
             m.Lathe(Dark,Vector3.zero,Vector3.up,new[]{new Vector2(r+0.18f,0),new Vector2(r+0.18f,height),new Vector2(r,height),new Vector2(r,0)},20,false);
 
         // About 6 m long, 2.6 m wide: a sloped-nose cabin with a window, an engine block with two nozzles, skids.
-        public static TileMesh Pod()
+        public static TileMesh Pod(){var m=new TileMesh();Pod(m);return m;}
+        // The pod built into m under its current transform (a pod docked on a kit part).
+        public static void Pod(TileMesh m)
         {
-            var m=new TileMesh();
             m.Hexa(Shell,Wedge(-1.3f,1.3f,0.45f,1.95f,-2.3f,1.8f,-2.0f,0.6f,-1.0f,1.0f));
             var n=new Vector3(0,1.2f,1.5f).normalized;var up=new Vector3(0,1.5f,-1.2f).normalized;
             Pane(m,new Vector3(0,1.25f,1.18f)+n*0.01f,n,up,1.3f,0.75f);
@@ -47,7 +48,6 @@ namespace DeathStar
                 foreach(float z in new[]{-1.2f,0.9f})m.Box(Dark,new Vector3(x*0.95f,0.3f,z),new Vector3(0.12f,0.42f,0.12f),0.02f);
             }
             HatchRing(m,0.62f,0.45f);
-            return m;
         }
 
         // About 11 m long with a 10 m span: sloped-nose hull, cockpit window, wings angled down, tail fin, three

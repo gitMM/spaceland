@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phases 0–3 and Phase 4 batch A are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results), [3](#phase-3-results) and [4A](#phase-4-batch-a-results) results); batches B and C are not started. The
+2026-10-27. **Phases 0–3 and Phase 4 batches A and B are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results), [3](#phase-3-results), [4A](#phase-4-batch-a-results) and [4B](#phase-4-batch-b-results) results); batch C is not started. The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -362,6 +362,26 @@ because special cells no longer build box forms (full Foundry 1.75 s, Ridges exa
   shows up.
 - **Lab:** `ridges-sheet.png` (every ridge run close up) and `crowns-sheet.png` (the crown rebuilt in place as Hull,
   Habitat, Defense and Command). The kit check covers all families.
+
+## Phase 4 batch B results
+
+2026-10-27. The tile lab passes 42/42 checks; the flat gallery is unchanged; timings within budget (full Foundry
+rebuild 1.8–2.2 s between runs, single edits p50 0.59 s).
+
+- **Power** (`TileBuilder.KitsB.cs`): a spine of radiator fins about 0.6 m apart, alternately tilted. Their heights
+  follow a wave in the cell's place along the run, so the wave carries on across cells. The crown is three tall
+  ribbed radiator wings, one along each ridge, round a core with a glowing band. A transformer with insulators and
+  warning lights sits on gables; slopes get radiator panels.
+- **Life Support:** a glazed half-barrel greenhouse on a sill. Its panes are planar glass facets per bay, it has
+  arched ribs about every 1.25 m, and a half dome closes it where the run stops. The crown is a faceted dark dome on
+  a drum ringed with windows. Gables get a round window; slopes get squat tanks.
+- **Storage:** a monorail of clamped 2.4 m containers in three paints, with some bays left empty by hash. The crown
+  is three silos under a triangular gantry. Gables get a hangar door, slopes racked crates.
+- **Landing Pad:** a docking cradle (arms from both sides, a crest hatch, a gangway). A pod lies in it over every
+  pair of cells; `Craft.Pod` now also builds into an existing mesh. The crown is a mooring mast with a docking ring
+  and a pod docked nose-in. Gables get an approach light bar; slopes get hoses and landing lights.
+- **Lab:** the crowns sheet now shows all eight families with a kit (Hull, Habitat, Defense, Command, Power, Life
+  Support, Storage, Landing Pad).
 
 ## Phases
 
