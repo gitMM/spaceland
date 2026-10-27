@@ -485,17 +485,17 @@ namespace DeathStar.EditorTools
                 runSheet.Apply();Save(runSheet,Path.Combine(Dir,"ridges-sheet.png"));UnityEngine.Object.DestroyImmediate(runSheet);
                 shots.Add(("ridges-sheet.png","every ridge run close up: x ridge Habitat, Defense, Command, Power; y ridge Hull, Storage, Pad, Industrial; z ridge Corridor, Conduit, Life Support, Habitat"));
                 // The crown in each family with a kit of its own, rebuilt in place.
-                var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power,TileFamily.LifeSupport,TileFamily.Storage,TileFamily.Pad};
+                var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power,TileFamily.LifeSupport,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial};
                 var crownSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
                 var crownView=new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45);
                 for(int i=0;i<crowns.Length;i++)
                 {
                     view.Rebuild(SettlementExamples.Ridges(crowns[i]),new[]{SettlementExamples.RidgeCell(R,R,R)});
-                    t=rig.Shoot(crownView,W/4,H/2);
-                    crownSheet.SetPixels(i%4*(W/4),(1-i/4)*(H/2),W/4,H/2,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                    t=rig.Shoot(crownView,W/3,H/3);
+                    crownSheet.SetPixels(i%3*(W/3),(2-i/3)*(H/3),W/3,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
                 }
                 crownSheet.Apply();Save(crownSheet,Path.Combine(Dir,"crowns-sheet.png"));UnityEngine.Object.DestroyImmediate(crownSheet);
-                shots.Add(("crowns-sheet.png","the crown in each family with a kit, left to right: Hull, Habitat, Defense, Command / Power, Life Support, Storage, Landing Pad"));
+                shots.Add(("crowns-sheet.png","the crown in each family, left to right and top to bottom: Hull, Habitat, Defense / Command, Power, Life Support / Storage, Landing Pad, Industrial"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

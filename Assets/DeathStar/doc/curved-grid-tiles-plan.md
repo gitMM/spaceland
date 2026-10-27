@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phases 0–3 and Phase 4 batches A and B are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results), [3](#phase-3-results), [4A](#phase-4-batch-a-results) and [4B](#phase-4-batch-b-results) results); batch C is not started. The
+2026-10-27. **All phases are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results), [3](#phase-3-results), [4A](#phase-4-batch-a-results), [4B](#phase-4-batch-b-results) and [4C](#phase-4-batch-c-results) results). The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -383,6 +383,23 @@ rebuild 1.8–2.2 s between runs, single edits p50 0.59 s).
 - **Lab:** the crowns sheet now shows all eight families with a kit (Hull, Habitat, Defense, Command, Power, Life
   Support, Storage, Landing Pad).
 
+## Phase 4 batch C results
+
+2026-10-27. The tile lab passes 42/42 checks; the flat gallery is unchanged; timings within budget (full Foundry
+rebuild 1.84 s, single edits p50 0.56 s).
+
+- **Industrial** (`TileBuilder.KitsC.cs`): twin crane rails on a bed along the ridge, with a gantry crane on every
+  other cell (hazard-striped legs and bridge, a trolley and hook). The crown is a tripod derrick: lattice legs down
+  the three seams, braces, and a boom with a hook out along one ridge. Gables get a loading bay door and a jib crane;
+  slopes get a conveyor along the upper edge with two chutes.
+- **Hull polish:** open slopes carry two chevron armour courses pointing at the crest and a hatch below them (the
+  default slope form for any family without its own); keel strips get a hatch on every second cell. A slope's relief
+  is now always left bare, since every family has a slope form.
+- **Lab:** the crowns sheet shows all nine solid families (Hull, Habitat, Defense, Command, Power, Life Support,
+  Storage, Landing Pad, Industrial).
+- **Every solid family now has its own kit on special cells.** Corridors and conduits keep their tubes there (see
+  batch A).
+
 ## Phases
 
 | Phase | Size | Work | Exit |
@@ -391,7 +408,7 @@ rebuild 1.8–2.2 s between runs, single edits p50 0.59 s).
 | **1. Fixed-size parts** (done) | M | Anchor scope, the per-family conversion list, count-fit, size classes, margins, placement rules and preview text | Fixed-part scale check passes; `foundry-scale.png` shows one family on a face-centre cell beside the same family near a ridge; budgets hold |
 | **2. Connectors** (done) | M | Corridor and conduit tubes with a true-size cross-section, fixed sockets, ports and junctions (the special-cell build path moved to Phase 3) | Tubes meeting across a face match within 1 mm; corridor and conduit width ±2% everywhere; per-edit time ≤ baseline |
 | **3. Generic special skins** (done) | M | `ShapeFrame` and rigid kit parts placed in it; relief closing at special cells; the Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
-| **4. Family kits** | L, 3 batches | A: Habitat, Defense, Command, Corridor/Conduit forms (most visible, human scale). B: Power, Life Support, Storage, Pad (cradle and pod). C: Industrial, Hull polish | Each batch adds `ridges-sheet.png` (each family's ridge run) and `crowns-sheet.png` (each family's crown on the same apex, rebuilding one tile per shot); triangle budget; scale check |
+| **4. Family kits** (done) | L, 3 batches | A: Habitat, Defense, Command, Corridor/Conduit forms (most visible, human scale). B: Power, Life Support, Storage, Pad (cradle and pod). C: Industrial, Hull polish | Each batch adds `ridges-sheet.png` (each family's ridge run) and `crowns-sheet.png` (each family's crown on the same apex, rebuilding one tile per shot); triangle budget; scale check |
 
 Phase 3 makes every special cell look intentional, so Phase 4 can stop after any batch.
 

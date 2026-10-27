@@ -123,7 +123,7 @@ with every family on a ridge, a keel inside, a half-covered roof and gables. `Bl
 the skin and relief on their open faces but build no family forms. Instead they build their shape's kit in curved
 space from their real corners (`TileBuilder.Shapes.cs`, `TileMesh.BeginWorld`). The Hull kit: an armoured crest
 spine with ribs and running lights along each ridge; a hub and beacon on a crown, with an arm along each seam into
-its ridge's crest; an armour plate and hatch on open gables; a lit keel strip; a hatch on open slopes. Habitat,
+its ridge's crest; an armour plate and hatch on open gables; a lit keel strip; chevron courses on open slopes. Habitat,
 Defense and Command have kits of their own (`TileBuilder.Kits.cs`): a glazed A-frame gallery, a glazed lantern, a
 glazed gable and window rows on slopes; a battlement rail with a turret on every other cell, a three-turret bastion, a
 gun port and casemates; a phased-array spine, a spire with three dishes, an antenna mast and a bridge window strip.
@@ -131,8 +131,10 @@ Power, Life Support, Storage and Landing Pad follow in `TileBuilder.KitsB.cs`: a
 three-winged radiator round a glowing core, a transformer, radiator panels; a glazed greenhouse barrel, a faceted dome
 on a windowed drum, a round window, squat tanks; a monorail of containers, three silos under a gantry, a hangar door,
 racked crates; a docking cradle holding a pod over every pair of cells, a mooring mast with a pod docked nose-in,
-an approach light bar, hoses and lights. Crests join only within a family. Hull and Industrial build the Hull kit;
-corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
+an approach light bar, hoses and lights. Industrial (`TileBuilder.KitsC.cs`): twin crane rails with a gantry crane on
+every other cell, a tripod derrick with a boom, a loading bay with a jib crane, a conveyor with chutes. Hull slopes
+carry chevron armour courses and a hatch, and keel strips a hatch on every second cell. Crests join only within a
+family. Corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
 on without seams.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.

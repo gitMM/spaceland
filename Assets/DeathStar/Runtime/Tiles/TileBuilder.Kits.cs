@@ -2,8 +2,8 @@ using UnityEngine;
 
 namespace DeathStar
 {
-    // Family kits for wedge and apex cells (doc: Ridges, keels and crowns), batch A. Other families build the Hull kit
-    // (TileBuilder.Shapes.cs). Parts are in metres in rigid local frames placed on the cell's real corners: x across
+    // Family kits for wedge and apex cells (doc: Ridges, keels and crowns): batch A here, B and C in KitsB and KitsC.
+    // Hull is the default (TileBuilder.Shapes.cs). Parts are in metres in rigid local frames placed on the cell's real corners: x across
     // the ridge, y up out of the roof, z along the ridge (FrameAt). Runs share sections with same-family neighbours.
     //   Habitat  crest: a glazed A-frame gallery lit from inside; crown: a three-sided glazed lantern on a deck;
     //            gable: a glazed triangular window wall; slope: the deck window rows
@@ -28,6 +28,7 @@ namespace DeathStar
                 case TileFamily.LifeSupport:Greenhouse(m,s0,s1,join0,join1);break;
                 case TileFamily.Storage:Monorail(m,s0,s1,join0,join1,Hash(cell));break;
                 case TileFamily.Pad:Cradle(m,s0,s1,join0,join1,(cell[spine]&1)==0&&join1);break;
+                case TileFamily.Industrial:CraneRails(m,s0,s1,join0,join1,cell[spine]);break;
                 default:Crest(m,s0,s1,join0,join1);break;
             }
         }
@@ -42,6 +43,7 @@ namespace DeathStar
                 case TileFamily.LifeSupport:Gable(m,s,outward);RoundWindow(m,s,outward);break;
                 case TileFamily.Storage:HangarDoor(m,s,outward);break;
                 case TileFamily.Pad:Gable(m,s,outward);LightBar(m,s,outward);break;
+                case TileFamily.Industrial:Gable(m,s,outward);LoadingBay(m,s,outward);break;
                 default:Gable(m,s,outward);break;
             }
         }
@@ -56,11 +58,10 @@ namespace DeathStar
                 case TileFamily.LifeSupport:Dome(m,o,up,arms);break;
                 case TileFamily.Storage:Silos(m,o,up,arms);break;
                 case TileFamily.Pad:MooringMast(m,o,up,arms);break;
+                case TileFamily.Industrial:Derrick(m,o,up,arms);break;
                 default:Hub(m,o,up);break;
             }
         }
-        // Families whose slopes carry a form of their own (left bare of relief); the rest get a hatch.
-        static bool SlopeForm(TileFamily family)=>family!=TileFamily.Hull&&family!=TileFamily.Industrial;
         void SlopeFor(Face f,TileFamily family)
         {
             f.metric=f.Local(0,0);
@@ -73,7 +74,8 @@ namespace DeathStar
                 case TileFamily.LifeSupport:Tanks(f);break;
                 case TileFamily.Storage:Racks(f);break;
                 case TileFamily.Pad:Service(f);break;
-                default:Hatch(f,0,0,0.6f);break;
+                case TileFamily.Industrial:Conveyor(f);break;
+                default:Chevrons(f);break;
             }
         }
 

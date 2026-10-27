@@ -10,8 +10,8 @@ namespace DeathStar
     //   crest   an armoured spine along a ridge's fold line, ribs on a ~1.25 m pitch and running lights
     //   crown   a hub with a beacon where three ridges meet, and an arm along each seam into its ridge's crest
     //   gable   an armour plate and a round hatch on an open triangular end
-    //   keel    a lit armoured strip along the edge of a wedge hanging into space
-    //   slope   a maintenance hatch on an open slope
+    //   keel    a lit armoured strip along the edge of a wedge hanging into space, a hatch on every second cell
+    //   slope   armour courses in chevrons and a maintenance hatch on an open slope (TileBuilder.KitsC.cs)
     // A part crossing into the next cell ends on a section taken from the shared face's four corners only, so both
     // cells build the same vertices there and runs join without a seam.
     public sealed partial class TileBuilder
@@ -105,7 +105,7 @@ namespace DeathStar
                 if(exposure==CellExposure.Ridge)
                     using(m.BeginWorld("crest"))CrestFor(m,p.family,cell,sh.spine,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
                 if(exposure==CellExposure.Keel)
-                    using(m.BeginWorld("keel"))Keel(m,s0,s1);
+                    using(m.BeginWorld("keel"))Keel(m,s0,s1,(cell[sh.spine]&1)==0);
                 var along=(s1.crest-s0.crest).normalized;
                 if(open0)using(m.BeginWorld("gable"))GableFor(m,p.family,s0,-along);
                 if(open1)using(m.BeginWorld("gable"))GableFor(m,p.family,s1,along);
@@ -145,8 +145,7 @@ namespace DeathStar
                     list.Add(Span(b0,lo0,hi0,b1,lo1,hi1));
                 }
             }
-            else if(sh.kind==CellShape.Wedge&&a==sh.spine||s.TryGet(cell,out var p)&&SlopeForm(p.family))list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));
-            else list.Add(new Rect(c[ua]-1.2f,c[va]-1.2f,2.4f,2.4f));
+            else list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));   // a gable's plate, or a slope's form
             return list;
         }
 
@@ -194,7 +193,7 @@ namespace DeathStar
             for(int k=1;k<ribs;k++){float t=k/(float)ribs;Loft(m,RunningLight,s0,s1,light,t-lw,t+lw,true,true);}
         }
         // Along the keel: the section turned over, its origin on the keel corner and up pointing into open space.
-        static void Keel(TileMesh m,in Section s0,in Section s1)
+        static void Keel(TileMesh m,in Section s0,in Section s1,bool hatch)
         {
             Section Turn(in Section s)=>new Section{crest=s.keel,keel=s.crest,up=-s.up,across=s.across};
             var k0=Turn(s0);var k1=Turn(s1);
@@ -202,6 +201,12 @@ namespace DeathStar
             float length=Mathf.Max(0.5f,Vector3.Distance(k0.crest,k1.crest));
             int lights=Mathf.Max(1,Mathf.RoundToInt(length/1.25f));float lw=0.2f/length;
             for(int k=0;k<lights;k++){float t=(k+0.5f)/lights;Loft(m,RunningLight,k0,k1,KeelLight,t-lw,t+lw,true,true);}
+            if(!hatch)return;
+            // a hatch on the strip of every second cell, between its lights
+            m.PushMatrix(FrameAt(k0,k1,lights>1?1f/lights:0.5f));
+            m.Lathe(Smooth,new Vector3(0,0.28f,0),Vector3.up,new[]{new Vector2(0.42f,0),new Vector2(0.42f,0.1f),new Vector2(0.3f,0.1f),new Vector2(0.3f,0)},16,false);
+            m.Lathe(Smooth,new Vector3(0,0.28f,0),Vector3.up,new[]{new Vector2(0,0),new Vector2(0.3f,0),new Vector2(0.3f,0.05f),new Vector2(0,0.05f)},16,false);
+            m.Pop();
         }
         // An armour plate inset on the triangular end and a round hatch in it.
         static void Gable(TileMesh m,in Section s,Vector3 outward)
