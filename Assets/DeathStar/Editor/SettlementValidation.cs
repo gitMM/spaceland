@@ -148,6 +148,12 @@ namespace DeathStar.EditorTools
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R-1,R-1,1),out _)==CellExposure.Keel,"Ridges example lost its keel");
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R,SettlementExamples.RidgeLow,R),out _)==CellExposure.Half,"Ridges example lost its half-covered roof");
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R,R,R),out _)==CellExposure.Crown,"Ridges example lost its crown");
+            // The truss example has a truss crown, a truss ridge with a gable at the cut edge, and a frame on a Habitat wall.
+            var truss=SettlementExamples.Truss();
+            Require(truss.Family(SettlementExamples.RidgeCell(R,R,R))==TileFamily.Truss&&truss.Exposure(SettlementExamples.RidgeCell(R,R,R),out _)==CellExposure.Crown,"Truss example lost its crown");
+            Require(truss.Exposure(SettlementExamples.RidgeCell(SettlementExamples.RidgeLow,R,R),out bool cutEnd)==CellExposure.Ridge&&cutEnd,"Truss example's ridge lost its gable");
+            var trussStructure=SettlementSolver.Solve(truss);var habitat=SettlementExamples.RidgeCell(3,1,R+1);
+            Require(trussStructure.Solid(habitat)&&!trussStructure.Solid(SettlementExamples.RidgeCell(2,1,R+1))&&trussStructure.Covered(SettlementExamples.RidgeCell(2,1,R+1)),"A truss is solid, or doesn't cover what it stands on");
             // The station example has every shape and exposure, every family on a ridge and every solid family on a crown.
             var station=SettlementExamples.Station();
             var seen=new HashSet<string>();var onRidge=new HashSet<TileFamily>();var onCrown=new HashSet<TileFamily>();
@@ -161,7 +167,7 @@ namespace DeathStar.EditorTools
             foreach(TileFamily f in Enum.GetValues(typeof(TileFamily)))
             {
                 Require(onRidge.Contains(f),"Station example lacks "+f+" on a ridge");
-                if(f!=TileFamily.Corridor&&f!=TileFamily.Conduit)Require(onCrown.Contains(f),"Station example lacks a "+f+" crown");
+                if(!TileStructure.IsOpen(f))Require(onCrown.Contains(f),"Station example lacks a "+f+" crown");
             }
         }
         static bool Builds(Vector3Int[] cells,BlockGuide guide)

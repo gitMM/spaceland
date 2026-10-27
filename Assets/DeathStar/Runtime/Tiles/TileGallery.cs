@@ -215,6 +215,7 @@ namespace DeathStar
                 for(int i=0;i<stage.specimens.Count&&i<9;i++)if(kb[Key.Digit1+i].wasPressedThisFrame)Go(SpecimenView(stage.specimens[i],false),false);
                 if(kb.minusKey.wasPressedThisFrame&&stage.specimens.Count>9)Go(SpecimenView(stage.specimens[9],false),false);
                 if(kb.equalsKey.wasPressedThisFrame&&stage.specimens.Count>10)Go(SpecimenView(stage.specimens[10],false),false);
+                if(kb.backspaceKey.wasPressedThisFrame&&stage.specimens.Count>11)Go(SpecimenView(stage.specimens[11],false),false);
                 if(kb.digit0Key.wasPressedThisFrame||kb.homeKey.wasPressedThisFrame)Go(Fragment,false);
                 if(kb.oKey.wasPressedThisFrame)Go(Station,false);
                 if(kb.tKey.wasPressedThisFrame)Go(Trench,false);
@@ -263,7 +264,7 @@ namespace DeathStar
             }
             GUI.Label(new Rect(22*s,18*s,350*s,140*s),
                 "<b>Settlement tiles — phase 1: massing</b>\n"+
-                "1–9 - = specimens · 0 fragment · O station · T trench · U underside\n"+
+                "1–9 - = Backspace specimens · 0 fragment · O station · T trench · U underside\n"+
                 "Right drag tumble · Q/E roll · middle drag pan · scroll zoom\n"+
                 $"C colour code {(coded?"on":"off")} · L labels {(showLabels?"on":"off")} · G greyscale {(gray?"on":"off")}\n"+
                 $"{stage.tiles} tiles, {stage.triangles/1000}k triangles · Tab hides this",hudStyle);

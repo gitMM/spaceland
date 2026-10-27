@@ -232,6 +232,7 @@ namespace DeathStar
             if(example==4){Model=SettlementExamples.Foundry();RebuildAll();FrameBuild();Notice("Families grow into a curved settlement. Add or remove cells to reshape it.");return;}
             if(example==5){Model=SettlementExamples.Ridges();RebuildAll();FrameBuild();Notice("Three ridges meet at a crown above a cube corner. Press C twice for the shape view.");return;}
             if(example==6){Model=SettlementExamples.Station();RebuildAll();FrameBuild();Notice("A whole station: every family on every shape. C cycles family and shape colours.");return;}
+            if(example==7){Model=SettlementExamples.Truss();RebuildAll();FrameBuild();Notice("Space frames: a girder ridge to a lattice tower, a boom, a frame, a pit and a bridge.");return;}
             var cells=new List<Vector3Int>();
             int n=example==2?12:8, height=example==0?2:example==1?6:12;
             for(int z=0;z<n;z++)for(int y=0;y<height;y++)for(int x=0;x<n;x++)
@@ -429,6 +430,7 @@ namespace DeathStar
             if(GUI.Button(new Rect(120,515,78,28),"Settlement",button))LoadExample(4);
             if(GUI.Button(new Rect(204,515,78,28),"Ridges",button))LoadExample(5);
             if(GUI.Button(new Rect(36,552,78,28),"Station",button))LoadExample(6);
+            if(GUI.Button(new Rect(120,552,78,28),"Truss",button))LoadExample(7);
             if(GUI.Button(new Rect(36,595,78,27),"New build",button))NewBuild();
             if(GUI.Button(new Rect(120,595,78,27),"Save build",button))SaveBuild();
             if(GUI.Button(new Rect(204,595,78,27),"Load build",button))LoadBuild();

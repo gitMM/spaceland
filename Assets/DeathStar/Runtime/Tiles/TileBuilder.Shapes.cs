@@ -51,7 +51,7 @@ namespace DeathStar
             open0=open1=false;int roofs=0,roofOpen=0,slopeOpen=0;
             for(int f=0;f<6;f++)
             {
-                bool open=!s.Solid(cell+TileStructure.Directions[f]);
+                bool open=!s.Covered(cell+TileStructure.Directions[f]);
                 if((sh.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
                 else if(f>>1==sh.spine){if(open){if((f&1)==0)open1=true;else open0=true;}}
                 else if(open)slopeOpen++;
@@ -84,7 +84,8 @@ namespace DeathStar
                 var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=y,curved=curved};f.x=TileStructure.Cross(f.y,-n);
                 m.Push((Vector3)n*Half,Quaternion.LookRotation(-(Vector3)n,(Vector3)y));
                 bool slope=(sh.roof>>i&1)==0&&(sh.kind==CellShape.Apex||i>>1!=sh.spine);
-                if(slope)SlopeFor(f,p.family);
+                if(IsTruss(cell+n))Bearing(f);
+                else if(slope)SlopeFor(f,p.family);
                 m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),f.recess);
                 m.Pop();
                 int a=AxisOf(n),ua=(a+1)%3,va=(a+2)%3;
@@ -95,23 +96,34 @@ namespace DeathStar
                 GreebleField.Build(m,gf,Relief);
             }
             m.surfaceFrame=Vector4.zero;
+            m.PushMatrix(Matrix4x4.Translate(-c));
+            ShapeKit(m,cell,p,sh);
+            m.Pop();
+        }
+        // The shape's kit from the cell's real corners, in world space less the cell's centre: a crest on a ridge, a keel
+        // strip, gables on open ends, a crown. Trusses build theirs over their frame (TileBuilder.Truss.cs).
+        void ShapeKit(TileMesh m,Vector3Int cell,in TilePlacement p,in ShapeInfo sh)
+        {
             var exposure=Exposure(cell,sh,out bool open0,out bool open1);
             var roofs=RoofFaces(sh);
-            m.PushMatrix(Matrix4x4.Translate(-c));
             if(sh.kind==CellShape.Wedge)
             {
                 var (a,sa)=FaceAxis(roofs[0]);var (b,sb)=FaceAxis(roofs[1]);
                 var s0=MakeSection(cell,sh.spine,0,a,sa,b,sb);var s1=MakeSection(cell,sh.spine,1,a,sa,b,sb);
-                if(exposure==CellExposure.Ridge)
+                bool ridge=exposure==CellExposure.Ridge;
+                if(ridge)
                     using(m.BeginWorld("crest"))CrestFor(m,p.family,cell,sh.spine,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
                 if(exposure==CellExposure.Keel)
-                    using(m.BeginWorld("keel"))Keel(m,s0,s1,(cell[sh.spine]&1)==0);
+                    using(m.BeginWorld("keel"))
+                    {
+                        if(p.family==TileFamily.Truss)KeelChord(m,s0,s1);
+                        else Keel(m,s0,s1,(cell[sh.spine]&1)==0);
+                    }
                 var along=(s1.crest-s0.crest).normalized;
-                if(open0)using(m.BeginWorld("gable"))GableFor(m,p.family,s0,-along);
-                if(open1)using(m.BeginWorld("gable"))GableFor(m,p.family,s1,along);
+                if(open0)using(m.BeginWorld("gable"))GableFor(m,p.family,s0,-along,ridge&&p.family==TileFamily.Truss&&ClearBeyond(cell,sh.spine,-1));
+                if(open1)using(m.BeginWorld("gable"))GableFor(m,p.family,s1,along,ridge&&p.family==TileFamily.Truss&&ClearBeyond(cell,sh.spine,1));
             }
             else if(exposure==CellExposure.Crown)using(m.BeginWorld("crown"))Crown(m,p.family,cell,roofs);
-            m.Pop();
         }
 
         // Relief stays clear of the kit: strips along a roof face's fold edges (the crest) and the corner an apex's hub
@@ -146,6 +158,7 @@ namespace DeathStar
                 }
             }
             else list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));   // a gable's plate, or a slope's form
+            if(IsTruss(cell+n))list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));   // a bearing plate
             return list;
         }
 

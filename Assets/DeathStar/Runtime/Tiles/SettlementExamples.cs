@@ -45,7 +45,7 @@ namespace DeathStar
         {
             new[]{TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power},          // along x
             new[]{TileFamily.Hull,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial},            // along y
-            new[]{TileFamily.Corridor,TileFamily.Conduit,TileFamily.LifeSupport,TileFamily.Habitat},   // along z
+            new[]{TileFamily.Corridor,TileFamily.Conduit,TileFamily.LifeSupport,TileFamily.Truss},     // along z
         };
         public static readonly (int y,int z,TileFamily family)[] ScaleCells=
             {(0,0,TileFamily.Defense),(RidgeRadius-1,2,TileFamily.Defense),(0,3,TileFamily.Command),(RidgeRadius-1,4,TileFamily.Command)};
@@ -90,13 +90,13 @@ namespace DeathStar
         }
 
         // A whole station: a sphere grown from the seed, two layers thick and hollow, with every family on every shape.
-        //   ridges   all 12, each in one family: all eleven, with Hull twice
+        //   ridges   all 12, each in one family
         //   crowns   the 8 corners in the 8 other solid families, each joined by its own family's ridge, and a sunken
         //            Hull crown: the inner corner bared by a pit beside the Habitat crown
         //   faces    2 x 2 landmarks at five face centres (dish, reactor, sphere tank, hangar, big pad); window bands,
         //            a vault row, a fin row and a storage row; turret towers, a command tower, industrial pits, single
         //            pads; a corridor out into space; a conduit on saddles from a power block to a habitat
-        //   others   a wall half-covering a Hull ridge's roof; a gap in the other Hull ridge, opening two gables, and
+        //   others   a wall half-covering the Truss ridge's roof; a gap in the Hull ridge, opening two gables, and
         //            a keel under it inside; a spike inside under the Life Support crown; small boxes near the
         //            diagonals and buried wedges and apexes in the inner layer come with the sphere
         // Face cells are given as (face axis, face sign, u, v, layer): u along axis+1, v along axis+2, layer 0 the
@@ -104,7 +104,7 @@ namespace DeathStar
         public const int StationRadius=5;
         public static readonly (int axis,int s1,int s2,TileFamily family)[] StationRidges=
         {
-            (0,1,1,TileFamily.Hull),(0,1,-1,TileFamily.Habitat),(0,-1,1,TileFamily.Storage),(0,-1,-1,TileFamily.Pad),
+            (0,1,1,TileFamily.Truss),(0,1,-1,TileFamily.Habitat),(0,-1,1,TileFamily.Storage),(0,-1,-1,TileFamily.Pad),
             (1,1,1,TileFamily.Defense),(1,1,-1,TileFamily.LifeSupport),(1,-1,1,TileFamily.Industrial),(1,-1,-1,TileFamily.Command),
             (2,1,1,TileFamily.Hull),(2,1,-1,TileFamily.Corridor),(2,-1,1,TileFamily.Power),(2,-1,-1,TileFamily.Conduit),
         };
@@ -114,6 +114,31 @@ namespace DeathStar
             (new Vector3Int(1,1,1),TileFamily.Defense),(new Vector3Int(-1,-1,-1),TileFamily.Pad),(new Vector3Int(1,-1,1),TileFamily.Storage),
             (new Vector3Int(1,-1,-1),TileFamily.Industrial),(new Vector3Int(-1,-1,1),TileFamily.LifeSupport),
         };
+        // Trusses on a cap round a cube corner like Ridges: the x ridge is a truss girder from the cut edge, where a jib
+        // reaches out, to a truss crown with its lattice tower; the y ridge stays Hull to compare. On the faces: a tower
+        // with a cantilevered boom out over the z ridge; a 2 x 2 frame standing on the surface beside a Habitat wall it
+        // bears on; a two-cell truss pit in the skin; a truss bridge between two Hull piers. Coordinates for the
+        // (+x, +y, +z) corner, mirrored by RidgeCell like Ridges.
+        public static readonly Vector3Int TrussTower=new Vector3Int(1,RidgeRadius+1,1);
+        public static BlockConstruction Truss()
+        {
+            const int R=RidgeRadius;
+            var cells=new Dictionary<Vector3Int,TileFamily>();
+            void Put(int x,int y,int z,TileFamily f)=>cells[RidgeCell(x,y,z)]=f;
+            for(int x=RidgeLow;x<=R;x++)for(int y=RidgeLow;y<=R;y++)for(int z=RidgeLow;z<=R;z++)
+                if(Mathf.Max(x,Mathf.Max(y,z))>=R-1)Put(x,y,z,TileFamily.Hull);
+            for(int x=RidgeLow;x<=R;x++)Put(x,R,R,TileFamily.Truss);
+            var t=TrussTower;
+            for(int h=0;h<3;h++)Put(t.x,t.y+h,t.z,TileFamily.Truss);
+            for(int x=t.x+1;x<=t.x+3;x++)Put(x,t.y+2,t.z,TileFamily.Truss);
+            for(int x=1;x<=2;x++)for(int y=1;y<=2;y++)Put(x,y,R+1,TileFamily.Truss);
+            Put(3,1,R+1,TileFamily.Habitat);Put(3,2,R+1,TileFamily.Habitat);
+            Put(R,2,2,TileFamily.Truss);Put(R,2,3,TileFamily.Truss);
+            foreach(int z in new[]{-1,3})for(int x=R+1;x<=R+2;x++)Put(x,-1,z,TileFamily.Hull);
+            for(int z=0;z<=2;z++)Put(R+2,-1,z,TileFamily.Truss);
+            return BlockConstruction.FromFamilies(cells,BlockConstruction.SeedGuide);
+        }
+
         public static BlockConstruction Station()
         {
             const int R=StationRadius;
@@ -135,10 +160,12 @@ namespace DeathStar
             Block(1,-1,TileFamily.Power);
             Put(1,-1,-4,-3,1,TileFamily.Power);for(int u=-3;u<=1;u++)Put(1,-1,u,-3,1,TileFamily.Conduit);Put(1,-1,2,-3,1,TileFamily.Habitat);
             Put(1,-1,3,3,0,TileFamily.Pad);
-            // +x: sphere tank, a vault row, a corridor out into space with its docking collar
+            // +x: sphere tank, a vault row, a corridor out into space with its docking collar, a truss tower with a boom
             Block(0,1,TileFamily.LifeSupport);
             for(int u=-1;u<=1;u++)Put(0,1,u,-3,0,TileFamily.LifeSupport);
             Put(0,1,-3,3,1,TileFamily.Corridor);Put(0,1,-3,3,2,TileFamily.Corridor);
+            for(int layer=1;layer<=3;layer++)Put(0,1,3,0,layer,TileFamily.Truss);
+            for(int v=-1;v>=-3;v--)Put(0,1,3,v,3,TileFamily.Truss);
             // -x: hangar mouth, a storage row, a command tower
             Block(0,-1,TileFamily.Storage);
             for(int u=-2;u<=0;u++)Put(0,-1,u,3,0,TileFamily.Storage);
@@ -151,9 +178,9 @@ namespace DeathStar
             Put(2,-1,-2,-2,0,TileFamily.Industrial);Put(2,-1,2,-2,0,TileFamily.Industrial);
             for(int u=-1;u<=1;u++)Put(2,-1,u,3,0,TileFamily.Power);
             Put(2,-1,-3,3,1,TileFamily.Hull);Put(2,-1,-3,3,2,TileFamily.Defense);
-            // A wall half-covering the first Hull ridge's roof.
+            // A wall half-covering the Truss ridge's roof.
             for(int t=-1;t<=0;t++)cells[Ridge(0,1,1,t,1,0)]=TileFamily.Hull;
-            // A gap in the second Hull ridge (two gables), and a keel under it inside: the inner layer cleared beside
+            // A gap in the Hull ridge (two gables), and a keel under it inside: the inner layer cleared beside
             // the wedges below.
             cells.Remove(Ridge(2,1,1,0));
             for(int t=-3;t<=-1;t++){cells.Remove(Ridge(2,1,1,t,-2,-1));cells.Remove(Ridge(2,1,1,t,-1,-2));}

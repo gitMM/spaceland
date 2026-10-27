@@ -19,8 +19,8 @@ namespace DeathStar
         public bool SameAs(in TilePlacement o)=>family==o.family&&axis==o.axis&&side==o.side&&spatial==o.spatial&&anchor==o.anchor&&tether==o.tether;
     }
 
-    // Cells of a station. Cell c is a 5 m cube centred on c*5 in station space. Corridors and conduits are open
-    // connectors, not solid: the faces next to them stay exposed.
+    // Cells of a station. Cell c is a 5 m cube centred on c*5 in station space. Corridors, conduits and trusses are
+    // open, not solid: the faces next to them stay exposed. A truss still covers what it stands on (Covered).
     public sealed class TileStructure
     {
         public bool automatic;
@@ -33,7 +33,11 @@ namespace DeathStar
         public static Vector3 Center(Vector3Int c)=>(Vector3)c*TileBuilder.Cell;
         public static Vector3Int Cross(Vector3Int a,Vector3Int b)=>new Vector3Int(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);
 
-        public bool Solid(Vector3Int c)=>cells.TryGetValue(c,out var p)&&p.family!=TileFamily.Corridor&&p.family!=TileFamily.Conduit;
+        public static bool IsOpen(TileFamily f)=>f==TileFamily.Corridor||f==TileFamily.Conduit||f==TileFamily.Truss;
+        public bool Solid(Vector3Int c)=>cells.TryGetValue(c,out var p)&&!IsOpen(p.family);
+        // Solid, or a truss: the face beside it is a bearing plate the frame stands on, so no family form or kit goes
+        // there and the face doesn't count as open for main faces, joined rows or a wedge's exposure.
+        public bool Covered(Vector3Int c)=>cells.TryGetValue(c,out var p)&&(p.family==TileFamily.Truss||!IsOpen(p.family));
         public bool TryGet(Vector3Int c,out TilePlacement p)=>cells.TryGetValue(c,out p);
         public void Set(Vector3Int c,TileFamily f,Vector3Int axis,Vector3Int side)=>cells[c]=new TilePlacement(f,axis,side);
         public void Fill(Vector3Int a,Vector3Int b,TileFamily f,Vector3Int axis,Vector3Int side)
@@ -52,22 +56,23 @@ namespace DeathStar
         {
             // A stack of Defense cells is one tower. Only the exposed tip carries the turret.
             if(automatic&&p.family==TileFamily.Defense)return p.axis;
-            if(!Solid(c+p.axis))return p.axis;
+            if(!Covered(c+p.axis))return p.axis;
             var t=p.Third;
-            foreach(var d in new[]{p.side,-p.side,t,-t})if(!Solid(c+d))return d;
+            foreach(var d in new[]{p.side,-p.side,t,-t})if(!Covered(c+d))return d;
             return -p.axis;
         }
         // Whether the neighbour across an in-plane step carries the same family form on the same face.
         public bool Continues(Vector3Int c,in TilePlacement p,Vector3Int face,Vector3Int step)
         {
             var d=c+step;
-            return TryGet(d,out var q)&&q.SameAs(p)&&!Solid(d+face);
+            return TryGet(d,out var q)&&q.SameAs(p)&&!Covered(d+face);
         }
 
         public List<Vector3Int> CorridorLinks(Vector3Int c,in TilePlacement p)
         {
             var links=new List<Vector3Int>();
-            if(automatic)foreach(var d in Directions)if(cells.ContainsKey(c+d))links.Add(d);
+            // Corridors link to every neighbour but a truss, which is not pressurised.
+            if(automatic)foreach(var d in Directions)if(cells.TryGetValue(c+d,out var q)&&q.family!=TileFamily.Truss)links.Add(d);
             if(links.Count==0){links.Add(p.axis);links.Add(-p.axis);}
             else if(links.Count==1)links.Add(-links[0]);
             return links;
@@ -134,15 +139,17 @@ namespace DeathStar
 
             // Specimens, lit from the sun's side whatever their orientation.
             var fam=(TileFamily[])System.Enum.GetValues(typeof(TileFamily));
-            var ups=new[]{(Y,X),(-X,Z),(new Vector3Int(0,0,-1),Y),(Y,Z),(-X,-Y),(new Vector3Int(0,0,-1),-X),(Y,-X),(-X,Y),(Y,X),(new Vector3Int(0,0,-1),-Y),(new Vector3Int(0,0,-1),X)};
+            var ups=new[]{(Y,X),(-X,Z),(new Vector3Int(0,0,-1),Y),(Y,Z),(-X,-Y),(new Vector3Int(0,0,-1),-X),(Y,-X),(-X,Y),(Y,X),(new Vector3Int(0,0,-1),-Y),(new Vector3Int(0,0,-1),X),(Y,Z)};
             for(int i=0;i<fam.Length;i++)
             {
                 var (up,side)=ups[i];var third=Cross(side,up);
                 var o=new Vector3Int(-8+(i%6)*6,2,-16-(i/6)*7);
                 for(int a=-1;a<=1;a++)for(int b=-1;b<=1;b++)s.Set(o+side*a+third*b,TileFamily.Hull,up,side);
-                // A corridor specimen lies along the slab; a conduit turns a corner on it; everything else stands on it.
+                // A corridor specimen lies along the slab; a conduit turns a corner on it; a truss is a two-cell tower
+                // with a boom out over the slab's edge; everything else stands on it.
                 if(fam[i]==TileFamily.Corridor)s.Set(o+up,fam[i],side,up);
                 else if(fam[i]==TileFamily.Conduit){s.Set(o+up,fam[i],up,side);s.Set(o+up-side,fam[i],up,side);s.Set(o+up+third,fam[i],up,side);}
+                else if(fam[i]==TileFamily.Truss)foreach(var c in new[]{o+up,o+up*2,o+up*2+side,o+up*2+side*2,o+up*2+side*3})s.Set(c,fam[i],up,side);
                 else s.Set(o+up,fam[i],up,side);
                 specimens?.Add(new Specimen(fam[i],o,up,side));
             }

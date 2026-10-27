@@ -40,7 +40,7 @@ namespace DeathStar
                         bool Same(Vector3Int d)=>model.Contains(c+d)&&model.Family(c+d)==family;
                         int Count(Vector3Int d)=>(Same(d)?1:0)+(Same(-d)?1:0);
                         int along=Count(axis),across=Count(side),row=Count(third);
-                        bool front=model.Solid(c+axis),back=model.Solid(c-axis);
+                        bool front=model.Covered(c+axis),back=model.Covered(c-axis);
                         int support=back&&!Same(-axis)?1:0;
                         if(family==TileFamily.Corridor)
                             score+=along*24+(front?4:0)+(back?4:0);

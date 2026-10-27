@@ -39,6 +39,7 @@ namespace DeathStar
             TileFamily.Corridor=>new Color(1f,0.45f,0.75f),
             TileFamily.Pad=>new Color(0.6f,1f,0.12f),
             TileFamily.Conduit=>new Color(0.55f,0.32f,0.18f),
+            TileFamily.Truss=>new Color(1f,0.95f,0.15f),
             _=>Color.clear
         };
 

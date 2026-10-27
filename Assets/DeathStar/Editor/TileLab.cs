@@ -61,7 +61,7 @@ namespace DeathStar.EditorTools
             using var rig=new Rig(lib);
             if(mode=="warmup"){var t=rig.Shoot(TileGallery.Fragment,320,180);UnityEngine.Object.DestroyImmediate(t);return "DONE warmup";}
             if(mode=="snap")return Snap(rig,opts);
-            if(mode=="foundry"||mode=="limit")
+            if(mode=="foundry"||mode=="limit"||mode=="truss")
             {
                 var checks=new List<(bool ok,string text)>();var shots=new List<(string file,string what)>();
                 List<string> notes;
@@ -69,7 +69,7 @@ namespace DeathStar.EditorTools
                 else
                 {
                     notes=new List<string>();rig.Stage.root.SetActive(false);
-                    try{LimitReport(rig,checks,shots,notes);}finally{rig.Stage.root.SetActive(true);}
+                    try{if(mode=="limit")LimitReport(rig,checks,shots,notes);else TrussReport(rig,checks,shots,notes);}finally{rig.Stage.root.SetActive(true);}
                 }
                 return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text).Concat(notes));
             }
@@ -172,7 +172,7 @@ namespace DeathStar.EditorTools
                     UnityEngine.Object.DestroyImmediate(t);
                 }
                 tex.Apply();Save(tex,Path.Combine(Dir,sheet));UnityEngine.Object.DestroyImmediate(tex);
-                shots.Add((sheet,what+": left to right, top to bottom: Habitat, Industrial, Power, Life Support / Storage, Defense, Command, Corridor / Landing Pad, Conduit, Hull; each specimen sits in a different orientation"));
+                shots.Add((sheet,what+": left to right, top to bottom: Habitat, Industrial, Power, Life Support / Storage, Defense, Command, Corridor / Landing Pad, Conduit, Hull, Truss; each specimen sits in a different orientation"));
             }
 
             var foundryNotes=FoundryReport(rig,checks,shots);
@@ -414,7 +414,7 @@ namespace DeathStar.EditorTools
                 shots.Add(("foundry-pad-incomplete.png","removing a quarter restores three separate pads"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
-            try{RidgesReport(rig,checks,shots,notes);LimitReport(rig,checks,shots,notes);StationReport(rig,checks,shots,notes);}
+            try{RidgesReport(rig,checks,shots,notes);LimitReport(rig,checks,shots,notes);StationReport(rig,checks,shots,notes);TrussReport(rig,checks,shots,notes);}
             finally{rig.Stage.root.SetActive(true);}
             return notes;
         }
@@ -453,6 +453,82 @@ namespace DeathStar.EditorTools
                 var spike=warp.Map((Vector3)new Vector3Int(-1,-1,1)*(R-1)*5);
                 t=rig.Shoot(new TileGallery.View(spike*0.15f+Vector3.up*3,spike,Vector3.up,70),W,H);Save(t,Path.Combine(Dir,"station-inside.png"));UnityEngine.Object.DestroyImmediate(t);
                 shots.Add(("station-inside.png","inside the hollow: the spike under the Life Support crown"));
+            }
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
+        }
+        // Trusses on a cap round a cube corner (SettlementExamples.Truss): a girder ridge with a jib, a lattice-tower
+        // crown, a tower and boom, a frame on the surface, a pit and a bridge.
+        static void TrussReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)
+        {
+            var root=new GameObject("Truss lab");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var model=SettlementExamples.Truss();var view=new FoundrySettlement(root.transform,rig.Library.materials);
+            try
+            {
+                view.Rebuild(model);var full=view.LastTimings;
+                notes.Add($"Truss example, cells: {ShapeCounts(model)}");
+                notes.Add($"Truss example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
+                KitCheck("Truss",model,checks,notes);
+                // Every truss cell builds a frame; none builds a fixed-size part; triangles per truss tile.
+                var structure=SettlementSolver.Solve(model);var builder=new TileBuilder(structure,new CurvedTileMesh(model));
+                int cells=0,empty=0,fixedParts=0,most=0;long total=0;
+                foreach(var pair in structure.cells)
+                {
+                    if(pair.Value.family!=TileFamily.Truss)continue;
+                    var mesh=builder.Build(pair.Key);cells++;total+=mesh.TriangleCount;most=Mathf.Max(most,mesh.TriangleCount);
+                    if(!mesh.kitParts.Exists(k=>k.name=="truss"))empty++;
+                    fixedParts+=mesh.fixedParts.Count;
+                }
+                notes.Add($"Truss example: {cells} truss tiles, {total/Mathf.Max(1,cells):N0} triangles each on average, {most:N0} at most");
+                checks.Add((cells>0&&empty==0&&fixedParts==0,$"Truss: every truss tile builds its frame and no fixed-size parts ({empty} without a frame, {fixedParts} fixed parts)"));
+                checks.Add((most<=12000,$"Truss: at most 12k triangles in a truss tile ({most:N0})"));
+                TileLook.AddLights(root.transform);
+                const int R=SettlementExamples.RidgeRadius;
+                var warp=new CurvedTileMesh(model);
+                Vector3 At(float x,float y,float z)=>warp.Map(Vector3.Scale(new Vector3(x,y,z),new Vector3(-5,5,-5)));
+                var crown=At(R,R,R);var outward=crown.normalized;
+                var side=Vector3.Cross(outward,Vector3.up).normalized;
+                var cap=new TileGallery.View(crown+(outward+side*0.7f).normalized*80,crown-outward*10,Vector3.up,48);
+                var t=rig.Shoot(cap,320,180);UnityEngine.Object.DestroyImmediate(t);
+                t=rig.Shoot(cap,W,H);Save(t,Path.Combine(Dir,"truss.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("truss.png","trusses on a cap round a cube corner: the x ridge a girder to a lattice-tower crown, a tower with a boom, a frame on the surface, a pit and a bridge"));
+                view.SetDebugView(DebugView.Family);t=rig.Shoot(cap,W,H);Save(t,Path.Combine(Dir,"truss-coded.png"));UnityEngine.Object.DestroyImmediate(t);view.SetDebugView(DebugView.Off);
+                shots.Add(("truss-coded.png","the same by family: trusses yellow"));
+                var towerTop=crown+outward*8;
+                t=rig.Shoot(new TileGallery.View(towerTop+(outward*0.35f+side*0.8f+Vector3.Cross(side,outward)*0.45f).normalized*26,towerTop,outward,50),W,H);
+                Save(t,Path.Combine(Dir,"truss-crown.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("truss-crown.png","the crown: a lattice tower where the three girders meet, platform, mast and beacon"));
+                Vector3 r0=At(SettlementExamples.RidgeLow-1.5f,R,R),r1=At(2,R,R),mid=(r0+r1)*0.5f,ridgeUp=mid.normalized;
+                var ridgeAcross=Vector3.Cross(ridgeUp,(r1-r0).normalized).normalized;
+                t=rig.Shoot(new TileGallery.View(mid+ridgeUp*12+ridgeAcross*16,mid+ridgeUp*1.5f,ridgeUp,50),W,H);
+                Save(t,Path.Combine(Dir,"truss-ridge.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("truss-ridge.png","along the x ridge: the triangular girder on the truss wedges, the end flange and the jib out over the cut edge"));
+                var tw=SettlementExamples.TrussTower;var tower=At(tw.x+1,tw.y+1.5f,tw.z);var towerUp=At(tw.x,tw.y,tw.z).normalized;
+                var towerSide=Vector3.Cross(towerUp,Vector3.forward).normalized;
+                t=rig.Shoot(new TileGallery.View(tower+towerUp*8+towerSide*18-Vector3.Cross(towerSide,towerUp)*10,tower,towerUp,50),W,H);
+                Save(t,Path.Combine(Dir,"truss-boom.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("truss-boom.png","a three-cell truss tower with a cantilevered boom, the 2 x 2 frame on the surface beyond"));
+                // Close-ups, each looking at a target with the surface's outward normal up: from where (side), how far
+                // and how high.
+                TileGallery.View Close(Vector3 target,Vector3 toward,float dist,float height)
+                {
+                    var n=target.normalized;var s=(toward-target);s=(s-n*Vector3.Dot(s,n)).normalized;
+                    return new TileGallery.View(target+s*dist+n*height,target,n,50);
+                }
+                var details=new[]
+                {
+                    Close(At(R+0.5f,2,2.5f),At(R+0.5f,-1,5),9,11),
+                    Close(At(R+2,-1,1),At(R+2,-4,1.5f),16,4),
+                    Close(At(2.5f,1.5f,R+1),At(-1,-2,R+1),13,8),
+                    Close(At(SettlementExamples.RidgeLow-2,R+0.5f,R+0.5f),At(SettlementExamples.RidgeLow-2,R-3,R+3),11,5),
+                };
+                var detailSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                for(int i=0;i<details.Length;i++)
+                {
+                    t=rig.Shoot(details[i],W/2,H/2);
+                    detailSheet.SetPixels(i%2*(W/2),(1-i/2)*(H/2),W/2,H/2,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                detailSheet.Apply();Save(detailSheet,Path.Combine(Dir,"truss-details.png"));UnityEngine.Object.DestroyImmediate(detailSheet);
+                shots.Add(("truss-details.png","close up: a two-cell truss pit in the skin on bearing plates; a truss bridge between Hull piers / a 2 x 2 frame on the surface leaning on a Habitat wall; the jib at the girder's cut end"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }
@@ -581,19 +657,19 @@ namespace DeathStar.EditorTools
                     runSheet.SetPixels(idx%4*(W/4),(2-idx/4)*(H/3),W/4,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
                 }
                 runSheet.Apply();Save(runSheet,Path.Combine(Dir,"ridges-sheet.png"));UnityEngine.Object.DestroyImmediate(runSheet);
-                shots.Add(("ridges-sheet.png","every ridge run close up: x ridge Habitat, Defense, Command, Power; y ridge Hull, Storage, Pad, Industrial; z ridge Corridor, Conduit, Life Support, Habitat"));
+                shots.Add(("ridges-sheet.png","every ridge run close up: x ridge Habitat, Defense, Command, Power; y ridge Hull, Storage, Pad, Industrial; z ridge Corridor, Conduit, Life Support, Truss"));
                 // The crown in each family with a kit of its own, rebuilt in place.
-                var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power,TileFamily.LifeSupport,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial};
-                var crownSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command,TileFamily.Power,TileFamily.LifeSupport,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial,TileFamily.Truss};
+                var crownSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);crownSheet.SetPixels32(new Color32[W*H]);
                 var crownView=new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45);
                 for(int i=0;i<crowns.Length;i++)
                 {
                     view.Rebuild(SettlementExamples.Ridges(crowns[i]),new[]{SettlementExamples.RidgeCell(R,R,R)});
-                    t=rig.Shoot(crownView,W/3,H/3);
-                    crownSheet.SetPixels(i%3*(W/3),(2-i/3)*(H/3),W/3,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                    t=rig.Shoot(crownView,W/4,H/3);
+                    crownSheet.SetPixels(i%4*(W/4),(2-i/4)*(H/3),W/4,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
                 }
                 crownSheet.Apply();Save(crownSheet,Path.Combine(Dir,"crowns-sheet.png"));UnityEngine.Object.DestroyImmediate(crownSheet);
-                shots.Add(("crowns-sheet.png","the crown in each family, left to right and top to bottom: Hull, Habitat, Defense / Command, Power, Life Support / Storage, Landing Pad, Industrial"));
+                shots.Add(("crowns-sheet.png","the crown in each family, left to right and top to bottom: Hull, Habitat, Defense, Command / Power, Life Support, Storage, Landing Pad / Industrial, Truss (lattice tower)"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

@@ -96,7 +96,9 @@ namespace DeathStar
         public static Vector3Int CornerOffset(int corner)=>new Vector3Int(corner&1,(corner>>1)&1,(corner>>2)&1);
         public bool Contains(Vector3Int p)=>cells.Contains(p);
         public TileFamily Family(Vector3Int p)=>families.TryGetValue(p,out var f)?f:TileFamily.Hull;
-        public bool Solid(Vector3Int p)=>Contains(p)&&Family(p)!=TileFamily.Corridor&&Family(p)!=TileFamily.Conduit;
+        public bool Solid(Vector3Int p)=>Contains(p)&&!TileStructure.IsOpen(Family(p));
+        // Solid or a truss (TileStructure.Covered): what a wedge's exposure and a family's main face go by.
+        public bool Covered(Vector3Int p)=>Contains(p)&&(Family(p)==TileFamily.Truss||!TileStructure.IsOpen(Family(p)));
         public bool HasCorner(Vector3Int key)=>corners.ContainsKey(key);
         public Vector3 Corner(Vector3Int key)=>corners.TryGetValue(key,out var p)?p:(Vector3)key;
         public bool CanAdd(Vector3Int p)
@@ -161,7 +163,7 @@ namespace DeathStar
             int roofs=0,roofOpen=0,slopeOpen=0;
             for(int f=0;f<6;f++)
             {
-                bool open=!Solid(cell+Steps[f]);
+                bool open=!Covered(cell+Steps[f]);
                 if((s.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
                 else if(f>>1==s.spine)gable|=open;
                 else if(open)slopeOpen++;

@@ -29,13 +29,16 @@ namespace DeathStar
                 case TileFamily.Storage:Monorail(m,s0,s1,join0,join1,Hash(cell));break;
                 case TileFamily.Pad:Cradle(m,s0,s1,join0,join1,(cell[spine]&1)==0&&join1);break;
                 case TileFamily.Industrial:CraneRails(m,s0,s1,join0,join1,cell[spine]);break;
+                case TileFamily.Truss:Girder(m,s0,s1,join0,join1);break;
                 default:Crest(m,s0,s1,join0,join1);break;
             }
         }
-        static void GableFor(TileMesh m,TileFamily family,in Section s,Vector3 outward)
+        // reach: a truss ridge with two clear cells beyond its end, room for a jib.
+        static void GableFor(TileMesh m,TileFamily family,in Section s,Vector3 outward,bool reach=false)
         {
             switch(family)
             {
+                case TileFamily.Truss:EndPortal(m,s,outward);if(reach)Jib(m,s,outward);break;
                 case TileFamily.Habitat:Gable(m,s,outward);GlassGable(m,s,outward);break;
                 case TileFamily.Defense:Gable(m,s,outward);GunPort(m,s,outward);break;
                 case TileFamily.Command:Gable(m,s,outward);Mast(m,s);break;
@@ -59,6 +62,7 @@ namespace DeathStar
                 case TileFamily.Storage:Silos(m,o,up,arms);break;
                 case TileFamily.Pad:MooringMast(m,o,up,arms);break;
                 case TileFamily.Industrial:Derrick(m,o,up,arms);break;
+                case TileFamily.Truss:LatticeTower(m,o,up,arms);break;
                 default:Hub(m,o,up);break;
             }
         }

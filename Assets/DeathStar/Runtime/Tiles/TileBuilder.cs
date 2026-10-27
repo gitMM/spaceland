@@ -4,8 +4,8 @@ using UnityEngine;
 namespace DeathStar
 {
     // The core families of the modular settlement (doc/modular-settlement-tile-design.md), plus landing pads for
-    // small craft and conduits for big pipe runs.
-    public enum TileFamily { Habitat, Industrial, Power, LifeSupport, Storage, Defense, Command, Corridor, Pad, Conduit, Hull }
+    // small craft, conduits for big pipe runs and trusses for open space frames. Saves store the number: append only.
+    public enum TileFamily { Habitat, Industrial, Power, LifeSupport, Storage, Defense, Command, Corridor, Pad, Conduit, Hull, Truss }
 
     // Settlement tiles, massing level. A tile is a 5 m cube of armour; every exposed face gets the station-wide
     // greeble relief (GreebleField) plus its family's large form. Faces against solid neighbours are not built, so
@@ -22,6 +22,7 @@ namespace DeathStar
     //   Corridor    an open ribbed tube with portholes; a docking collar and hatch where it ends in space
     //   Pad         a round landing pad on struts with an airlock hatch in its centre; 2 x 2 pads make one big pad
     //   Conduit     a bundle of big pipes on saddles, turning on elbows and plugging into the tiles it reaches
+    //   Truss       an open space frame of heavy box chords and cast nodes; solid faces under it are bearing plates
     // Towers and turret mounts get angled buttresses where they stand on a surface.
     public sealed partial class TileBuilder
     {
@@ -114,7 +115,7 @@ namespace DeathStar
                 var dx=Vector3Int.zero;dx[ax]=stepX;var dy=Vector3Int.zero;dy[ay]=stepY;
                 c=new Vector2(stepX*x[ax]*Half,stepY*y[ay]*Half);anchor=stepX>0&&stepY>0;
                 var place=p;var face=n;var st=s;
-                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Solid(q+face)&&st.Primary(q,o)==face&&!st.special.ContainsKey(q);
+                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Covered(q+face)&&st.Primary(q,o)==face&&!st.special.ContainsKey(q);
                 return primary&&!st.special.ContainsKey(cell)&&Same(cell+dx)&&Same(cell+dy)&&Same(cell+dx+dy);
             }
         }
@@ -129,6 +130,7 @@ namespace DeathStar
             m.overlay=TileLook.FamilyColor(p.family);
             if(p.family==TileFamily.Corridor){Corridor(m,cell,p);return m;}
             if(p.family==TileFamily.Conduit){Conduit(m,cell,p);return m;}
+            if(p.family==TileFamily.Truss){Truss(m,cell,p);return m;}
             if(curved!=null&&s.special.TryGetValue(cell,out var shape)){Special(m,cell,p,shape);return m;}
             var primary=s.Primary(cell,p);
             var c=TileStructure.Center(cell);
@@ -204,6 +206,7 @@ namespace DeathStar
             {
                 if(nb.family==TileFamily.Corridor&&s.CorridorLinks(cell+n,nb).Contains(-n)){Socket(f);return f;}
                 if(nb.family==TileFamily.Conduit&&ConduitLinks(cell+n,nb).Contains(-n)){Port(f,nb);return f;}
+                if(nb.family==TileFamily.Truss){Bearing(f);return f;}
             }
             switch(p.family)
             {

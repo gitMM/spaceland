@@ -122,8 +122,8 @@ with every family on a ridge, a keel inside, a half-covered roof and gables. The
 two-layer hollow sphere with every family on every shape:
 - all 12 ridges, each in one family;
 - 8 crowns in the 8 non-Hull solid families, each met by its own family's ridge, plus a sunken Hull crown in a pit;
-- 2 × 2 landmarks at five face centres, with rows, towers, pits, pads, a corridor out into space and a conduit on
-  saddles;
+- 2 × 2 landmarks at five face centres, with rows, towers, pits, pads, a corridor out into space, a conduit on
+  saddles and a truss tower with a cantilevered boom;
 - a half-covered roof, a gap with two gables, and a keel and a spike inside.
 
 It takes several seconds to build. `BlockConstruction.Shape` and
@@ -144,6 +144,20 @@ every other cell, a tripod derrick with a boom, a loading bay with a jib crane, 
 carry chevron armour courses and a hatch, and keel strips a hatch on every second cell. Crests join only within a
 family. Corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
 on without seams.
+
+**Truss** (`TileBuilder.Truss.cs`) is an open family, like Corridor and Conduit: a heavy space frame of 0.8 m box
+chords with splice bands, 1.3 m cast nodes and flat diagonal braces with gusset plates, brutalist rather than
+aerospace. Trusses side by side make one frame: each chord and node is built once, by the first truss round it, and
+pushed in from its lattice line until it is flush with the trusses' outer surface, so nothing reaches into a
+neighbour. Faces onto open space are braced, the diagonal alternating with the cell's parity so runs zigzag; faces
+between trusses stay open, so a run is a hollow girder; a solid face beside a truss becomes a bearing plate of carved
+armour with no relief or family form (`TileStructure.Covered`: a truss covers what it stands on, for main faces,
+joined rows and a wedge's exposure). The frame is built from the cells' real corners at true size (members thin in
+cells under 4.2 m), so a wedge becomes a triangular girder with a king post and an apex an inverted pyramid. Its kit:
+a triangular lattice girder with cast nodes, a walkway and saddles along the crest; a heavy end flange on a gable,
+and a tapered 7.5 m jib where the next two cells along the ridge are clear; a heavy keel chord with lights; on a crown
+a 13 m lattice tower (three legs from the girders, X-braced, a platform with a blockhouse, a mast and a beacon).
+Corridors don't link into trusses. The **Truss** example button loads `SettlementExamples.Truss`.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
 
@@ -170,7 +184,7 @@ lengths ≥ 0.001; the flattest cell, at shell 63, measures 0.0033). Before, it 
 shell 13 and its ridges a cell further each shell after that.
 
 **Death Star → Open Tile Gallery** opens `Scenes/TileGallery.unity`: a floating station fragment (80 × 30 × 60 m) and
-eleven specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. The stage shows
+twelve specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. The stage shows
 silhouettes, armour, windows, equipment and how cubes combine. The stage is
 generated on enable, in edit mode too; nothing generated is saved with the scene.
 
@@ -193,7 +207,8 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
   even station cells make one 9 m pad); Conduit an open cell carrying a bundle of big pipes on saddles that links to
   its neighbours, turns on elbows and plugs into the tiles it reaches. A conduit group that would plug in nowhere (a
   closed loop, or runs ending in space) is tethered: its run ends turn into the solid tiles beside them and its elbows
-  branch into them, while straight runs stay clean. Corridor and Conduit are not solid.
+  branch into them, while straight runs stay clean; Truss an open space frame of heavy box chords, cast nodes and
+  braced faces, standing on bearing plates (see above). Corridor, Conduit and Truss are not solid.
 - **2 x 2 landmarks.** Four tiles of one family on even station cells, all showing the same main face, merge into
   one landmark: Command a 9 m dish, Power a reactor dome between radiator wings, Life Support a sphere tank, Storage
   one big hangar mouth, Landing Pad one 9 m pad. On their own, Life Support tiles show grouped upright tanks and tank
@@ -224,10 +239,10 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
 - **Breaking the blocks:** the relief adds ramps, drums, domes, rings and big arcs several tiles across; towers and
   turret mounts get angled buttress fins where they stand on a surface.
 
-In Play: 1–9, - and = specimens, 0 the fragment, O the whole station, T down the trench, U underneath. Right drag tumbles
+In Play: 1–9, -, = and Backspace specimens, 0 the fragment, O the whole station, T down the trench, U underneath. Right drag tumbles
 (about the camera's own axes), Q/E roll, middle drag pans, scroll zooms. C toggles the family colour code (on by default; Hull stays grey, the panel shows the legend), L labels,
 G greyscale, Tab the panel. Colours: Habitat amber, Industrial orange, Power red, Life Support green, Storage teal,
-Defense violet, Command blue, Corridor pink (`TileLook.FamilyColor`, carried per vertex in uv3).
+Defense violet, Command blue, Corridor pink, Truss yellow (`TileLook.FamilyColor`, carried per vertex in uv3).
 
 - `Runtime/Tiles/TileStructure.cs`: cells, placements (axis and side), and the showcase layout.
 - `Runtime/Tiles/TileBuilder.cs`: per-tile faces and family forms. `Runtime/Tiles/GreebleField.cs`: the relief.
@@ -244,6 +259,7 @@ tools/tile-lab.sh report
 tools/tile-lab.sh validate
 tools/tile-lab.sh foundry
 tools/tile-lab.sh limit
+tools/tile-lab.sh truss
 tools/tile-lab.sh snap view=Trench
 tools/tile-lab.sh snap family=Defense back=1
 ```
@@ -276,5 +292,8 @@ to shell 63. The Limit example is a cap round a cube corner at shell 63, where c
 `limit.png` along its surface, `limit-plan-coded.png` / `limit-plan-shapes.png` from above (a corridor beside the x
 ridge, single pads and a 2 × 2 pad on small boxes), `limit-narrow.png` down the corridor's 2.4 m slot; its checks
 cover fixed-part sizes, tube widths and joints, kits and the pads' smaller classes. `tools/tile-lab.sh limit` runs just
-that example. The script submits the lab as a
+that example. The Truss example (`tools/tile-lab.sh truss` runs just it): `truss.png` and `truss-coded.png` over the
+cap, `truss-crown.png` the lattice tower, `truss-ridge.png` the girder and jib, `truss-boom.png` the tower and boom,
+`truss-details.png` the pit, the bridge, a frame against a Habitat wall and the jib; its checks: every wedge and apex
+builds its kit, every truss tile its frame and no fixed-size parts, at most 12k triangles a truss tile. The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

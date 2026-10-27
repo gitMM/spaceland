@@ -304,6 +304,14 @@ Conduits link to neighbouring conduits that share the same surface. A single lin
 
 Conduits make the relationship between Power and the tiles it feeds physical. Their long tubes and round elbows also break up the blocky massing.
 
+### Truss
+
+An open cell, like a Corridor or Conduit, holding a heavy space frame: massive and brutalist rather than a modern station's light lattice. Chords are 0.8 m box beams with raised splice bands, joints are 1.3 m cast nodes, and diagonal braces are flat members with gusset plates at their ends.
+
+Trusses side by side make one frame. Each member is built once and stays inside the truss cells, flush with their outer surface, so nothing reaches into a neighbour's armour. Faces onto open space are braced, the diagonal alternating from cell to cell so a run zigzags; faces between trusses stay open. A solid face beside a truss becomes a plain armour bearing plate the frame stands on, with no relief or family form, and a truss counts as covering it, so main faces and joined rows avoid it. Corridors do not link into trusses.
+
+A run reads as a hollow girder, a stack as a lattice tower, a cantilever as a boom. The frame is built from the cells' real corners, so it follows wedge and apex cells too: a wedge becomes a triangular girder with a king post, an apex an inverted pyramid. Members keep their size in cells 4.2 m and wider and thin in proportion below that.
+
 ### Hull and Structure
 
 Hull carries the station-wide relief and nothing else. This family establishes the supporting mass and gives the more distinctive tiles room to stand out. Where hull cubes stand free of side neighbours as columns, they become towers and get angled buttresses at their base.
@@ -451,6 +459,7 @@ The 12 ridges and 8 crowns are the station's large-scale structure, like the spi
 | Landing Pad | Docking cradle: arms from both slopes hold a pod on its side, gangway to a crest hatch (the pod appears on runs of two or more cells) | Service hoses and landing lights | Approach light bar | Mooring mast: a pod docks nose-in on a ring at the top |
 | Corridor | Along the ridge, an A-frame glazed gallery profile; across it, the usual octagonal tube | — (open cell) | Docking collar with hatch | Three-way pressure node, collars at 120° |
 | Conduit | Pipe bundle on saddles, expansion loops rising every few cells | — (open cell) | Capped flange | Y-manifold valve tower with wheel valves |
+| Truss | Triangular lattice girder with walkway on saddles | — (open cell; the frame braces it) | End frame, and a tapered jib where clear | 13 m lattice tower with platform, mast and beacon |
 
 Rules:
 
