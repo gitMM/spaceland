@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phases 0–2 are done** (see [Phase 0](#phase-0-results), [Phase 1](#phase-1-results) and [Phase 2](#phase-2-results) results); Phases 3–4 are not started. The
+2026-10-27. **Phases 0–3 are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results) and [3](#phase-3-results) results); Phase 4 is not started. The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -311,6 +311,35 @@ unchanged (full Foundry rebuild 1.89–1.95 s, single edits p50 ≈ 0.6 s).
   - `ridges-connectors.png` shows the z ridge's corridor and conduit runs.
   - `tools/tile-lab.sh` submits the lab as a detached job (`unity job wait`), so it can run past 30 s.
 
+## Phase 3 results
+
+2026-10-27. The tile lab passes 42/42 checks; the flat gallery is unchanged (947,310 triangles); rebuilds are faster
+because special cells no longer build box forms (full Foundry 1.75 s, Ridges example 1.74 s, single edits p50 0.55 s).
+
+- **Skins needed nothing new.** A wedge or apex keeps the box path's skin and station-space relief on its open
+  faces: they already map exactly onto its corners, and the relief runs on from the neighbouring faces. The relief
+  closes at the fold, under the crest. Only family forms are dropped. So the plan's "relief boundary at special cells"
+  turned out unnecessary. Relief holes keep it clear of the kit: strips along fold edges, the hub corner, open gables
+  and slope hatches.
+- **World-space kit parts** (`TileMesh.BeginWorld`: anchor w 3, passed through by `Bend`) are built from the cell's
+  real corners. A ridge section at a lattice face (crest, keel, eaves, up, across) is computed from that face's four
+  corners only (`TileBuilder.MakeSection`), so two cells sharing it build identical vertices. Lofts interpolate
+  between a cell's two end sections.
+- **The Hull kit for every family:**
+  - Crest: a spine, ribs on a ~1.25 m pitch and amber running lights between them, continuing into neighbouring ridge
+    wedges and the crown.
+  - Crown: a drum hub and beacon on the outer corner, and three arms along the seams that end on the adjacent wedges'
+    sections.
+  - Gable: an inset armour plate and a round hatch.
+  - Keel: a lit armoured strip.
+  - Slope: a maintenance hatch (the box path's rigid `Hatch`).
+- **Connectors are unchanged:** corridors and conduits on special cells keep their tube build (they are open cells).
+- **Not done here:** carving on kit parts runs in world-offset coordinates (plates still come out; their courses
+  don't follow station axes); fine at this scale, revisit in Phase 4 if it shows. The design doc's line "Until then
+  special cells build the box forms" is now out of date and needs agreeing before it is changed.
+- **Lab:** the kit check (each open wedge or apex cell has its crest, crown, keel and gable parts and no box forms);
+  `ridges-crown.png`.
+
 ## Phases
 
 | Phase | Size | Work | Exit |
@@ -318,7 +347,7 @@ unchanged (full Foundry rebuild 1.89–1.95 s, single edits p50 ≈ 0.6 s).
 | **0. Baseline and shapes** (done) | S | `CellShape`/`ShapeInfo` cached in `BlockConstruction`; exposure helper. The C key cycles Off → Family → Shape (Box grey, Wedge orange, Apex magenta, too-small red). `SettlementExamples.Ridges()`: an octant of a radius-6 skin (three ridges and a crown) with a keel run underneath, a half-covered roof and gables, families in 2-cell runs (three ridges of 8 cells hold 12 runs). Lab: shape counts, timing splits, per-edit p50/p95 over 20 scripted edits. Fix the top hotspot if it is local | Numbers in `report.md`; no visual change; all existing checks pass |
 | **1. Fixed-size parts** (done) | M | Anchor scope, the per-family conversion list, count-fit, size classes, margins, placement rules and preview text | Fixed-part scale check passes; `foundry-scale.png` shows one family on a face-centre cell beside the same family near a ridge; budgets hold |
 | **2. Connectors** (done) | M | Corridor and conduit tubes with a true-size cross-section, fixed sockets, ports and junctions (the special-cell build path moved to Phase 3) | Tubes meeting across a face match within 1 mm; corridor and conduit width ±2% everywhere; per-edit time ≤ baseline |
-| **3. Generic special skins** | M | `ShapeFrame` and rigid kit parts placed in it; relief closing at special cells; the Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
+| **3. Generic special skins** (done) | M | `ShapeFrame` and rigid kit parts placed in it; relief closing at special cells; the Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
 | **4. Family kits** | L, 3 batches | A: Habitat, Defense, Command, Corridor/Conduit forms (most visible, human scale). B: Power, Life Support, Storage, Pad (cradle and pod). C: Industrial, Hull polish | Each batch adds `ridges-sheet.png` (each family's ridge run) and `crowns-sheet.png` (each family's crown on the same apex, rebuilding one tile per shot); triangle budget; scale check |
 
 Phase 3 makes every special cell look intentional, so Phase 4 can stop after any batch.

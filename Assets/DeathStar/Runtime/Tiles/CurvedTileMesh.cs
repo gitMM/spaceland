@@ -18,6 +18,8 @@ namespace DeathStar
 
         public Vector3 Map(Vector3 station)
         {Sample(station,out var p,out _,out _,out _);return p;}
+        // A lattice corner in curved space (cell c has corners c + 0/1 on each axis).
+        public Vector3 Corner(Vector3Int key)=>(model.HasCorner(key)?model.Corner(key):model.Guide.Map(key))*TileBuilder.Cell;
         void Sample(Vector3 station,out Vector3 p,out Vector3 dx,out Vector3 dy,out Vector3 dz)
         {
             var grid=station/TileBuilder.Cell+Vector3.one*0.5f;
@@ -172,6 +174,7 @@ namespace DeathStar
             {
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;
+                if(anchor.w>2.5f){vertices[i]=p;continue;}   // kit part, already in curved space (TileMesh.BeginWorld)
                 if(anchor.w>1.5f)
                 {
                     // Tube (TileMesh.BeginTube): a rigid, true-size cross-section round the spine through the anchor

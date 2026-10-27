@@ -23,7 +23,7 @@ namespace DeathStar
     //   Pad         a round landing pad on struts with an airlock hatch in its centre; 2 x 2 pads make one big pad
     //   Conduit     a bundle of big pipes on saddles, turning on elbows and plugging into the tiles it reaches
     // Towers and turret mounts get angled buttresses where they stand on a surface.
-    public sealed class TileBuilder
+    public sealed partial class TileBuilder
     {
         public const float Cell=5f,Half=2.5f;
         // Flat armour is carved into plates (TileMesh.Carving), in courses along the tile's axis; round forms and the
@@ -105,8 +105,8 @@ namespace DeathStar
                 var dx=Vector3Int.zero;dx[ax]=stepX;var dy=Vector3Int.zero;dy[ay]=stepY;
                 c=new Vector2(stepX*x[ax]*Half,stepY*y[ay]*Half);anchor=stepX>0&&stepY>0;
                 var place=p;var face=n;var st=s;
-                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Solid(q+face)&&st.Primary(q,o)==face&&!st.special.Contains(q);
-                return primary&&!st.special.Contains(cell)&&Same(cell+dx)&&Same(cell+dy)&&Same(cell+dx+dy);
+                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Solid(q+face)&&st.Primary(q,o)==face&&!st.special.ContainsKey(q);
+                return primary&&!st.special.ContainsKey(cell)&&Same(cell+dx)&&Same(cell+dy)&&Same(cell+dx+dy);
             }
         }
 
@@ -120,6 +120,7 @@ namespace DeathStar
             m.overlay=TileLook.FamilyColor(p.family);
             if(p.family==TileFamily.Corridor){Corridor(m,cell,p);return m;}
             if(p.family==TileFamily.Conduit){Conduit(m,cell,p);return m;}
+            if(curved!=null&&s.special.TryGetValue(cell,out var shape)){Special(m,cell,p,shape);return m;}
             var primary=s.Primary(cell,p);
             var c=TileStructure.Center(cell);
             foreach(var n in TileStructure.Directions)
@@ -152,6 +153,7 @@ namespace DeathStar
         List<Rect> Holes(Vector3Int cell,Vector3Int n)
         {
             if(fieldHoles.TryGetValue((cell,n),out var list))return list;
+            if(curved!=null&&s.special.TryGetValue(cell,out var shape)){list=SpecialHoles(cell,n,shape);fieldHoles[(cell,n)]=list;return list;}
             s.TryGet(cell,out var p);
             var face=Forms(new TileMesh(),cell,p,n,s.Primary(cell,p));
             face.m.Pop();

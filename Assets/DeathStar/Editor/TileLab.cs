@@ -299,6 +299,27 @@ namespace DeathStar.EditorTools
             checks.Add((gap<=0.001f,$"{example}: tubes meeting across a face line up within 1 mm ({joints} joints, widest gap {gap*1000:0.00} mm)"));
         }
 
+        // Wedge and apex cells build their shape's kit (a crest on every ridge, a hub on every crown, a keel strip and
+        // gable plates where open) and no box family forms (slope hatches aside).
+        static void KitCheck(string example,BlockConstruction model,List<(bool ok,string text)> checks,List<string> notes)
+        {
+            var structure=SettlementSolver.Solve(model);var builder=new TileBuilder(structure,new CurvedTileMesh(model));
+            var counts=new SortedDictionary<string,int>();int cells=0,missing=0,forms=0;
+            foreach(var cell in structure.special.Keys)
+            {
+                if(!structure.TryGet(cell,out var p)||p.family==TileFamily.Corridor||p.family==TileFamily.Conduit)continue;
+                var exposure=model.Exposure(cell,out bool gable);if(exposure==CellExposure.Buried)continue;
+                var mesh=builder.Build(cell);cells++;
+                foreach(var part in mesh.kitParts)counts[part.name]=counts.TryGetValue(part.name,out var n)?n+1:1;
+                bool Has(string name)=>mesh.kitParts.Exists(k=>k.name==name);
+                if(exposure==CellExposure.Ridge&&!Has("crest")||exposure==CellExposure.Crown&&!Has("crown")||
+                   exposure==CellExposure.Keel&&!Has("keel")||gable&&!Has("gable"))missing++;
+                if(mesh.fixedParts.Exists(f=>f.name!="hatch"))forms++;
+            }
+            notes.Add($"{example} example, kits on {cells} open wedge and apex cells: "+string.Join(", ",counts.Select(c=>$"{c.Key} {c.Value}")));
+            checks.Add((missing==0&&forms==0,$"{example}: every open wedge and apex cell builds its kit and no box forms ({missing} missing a part, {forms} with box forms)"));
+        }
+
         // Ten additions on open faces, each removed again, through the same TryEdit and incremental rebuild as a click.
         static (string text,double p50,double p95) EditTimings(ref BlockConstruction model,FoundrySettlement view)
         {
@@ -340,6 +361,7 @@ namespace DeathStar.EditorTools
                 checks.Add((full.Total<=BudgetFoundryMs,$"Foundry full rebuild within budget: {full.Total:0} ms (≤ {BudgetFoundryMs:0})"));
                 ScaleCheck("Foundry",view,checks,notes);
                 ConnectorCheck("Foundry",model,checks,notes);
+                KitCheck("Foundry",model,checks,notes);
                 TileLook.AddLights(root.transform);
                 var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
                 var warp=new CurvedTileMesh(model);
@@ -442,8 +464,14 @@ namespace DeathStar.EditorTools
                 t=rig.Shoot(new TileGallery.View(mid+ridgeUp*15+ridgeAcross*11,mid+ridgeUp*0.5f,ridgeUp,50),W,H);
                 Save(t,Path.Combine(Dir,"ridges-connectors.png"));UnityEngine.Object.DestroyImmediate(t);
                 shots.Add(("ridges-connectors.png","a corridor run and a conduit run along a ridge: true-size tubes, collars and pipes"));
+                // Close-up of the crown, where the three ridges' crests meet at its hub.
+                var crownPoint=At(R,R,R)+outward*2.5f;
+                t=rig.Shoot(new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45),W,H);
+                Save(t,Path.Combine(Dir,"ridges-crown.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("ridges-crown.png","the crown: a hub and beacon where the three ridges' crests meet"));
                 ScaleCheck("Ridges",view,checks,notes);
                 ConnectorCheck("Ridges",model,checks,notes);
+                KitCheck("Ridges",model,checks,notes);
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

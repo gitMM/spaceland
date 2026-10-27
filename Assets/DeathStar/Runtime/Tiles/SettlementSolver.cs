@@ -15,7 +15,7 @@ namespace DeathStar
         public static TileStructure Solve(BlockConstruction model)
         {
             var result=new TileStructure{automatic=true};
-            foreach(var c in model.Cells)if(model.Shape(c).kind!=CellShape.Box)result.special.Add(c);
+            foreach(var c in model.Cells){var shape=model.Shape(c);if(shape.kind!=CellShape.Box)result.special[c]=shape;}
             var remaining=new HashSet<Vector3Int>(model.Cells);
             var sorted=new List<Vector3Int>(remaining);sorted.Sort(BlockConstruction.Compare);
             foreach(var start in sorted)

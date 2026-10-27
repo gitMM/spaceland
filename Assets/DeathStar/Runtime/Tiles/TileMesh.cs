@@ -93,6 +93,10 @@ namespace DeathStar
             public void Dispose()
             {m.metricAnchor=savedAnchor;m.surfaceFrame=savedFrame;if(m.positions.Count>start)list.Add((name,start,m.positions.Count));}
         }
+        // Kit parts of wedge and apex cells, built in curved space from the cell's real corners: positions are world
+        // positions less the tile's station centre, and CurvedTileMesh.Bend leaves them as they are.
+        public readonly List<(string name,int start,int end)> kitParts=new List<(string,int,int)>();
+        public FixedPart BeginWorld(string name)=>new FixedPart(this,name,new Vector4(0,0,0,3),Vector4.zero,kitParts);
         // Any local transform on the stack (e.g. undoing a cell's stretch along a tube's run).
         public void PushMatrix(Matrix4x4 local){stack.Push(matrix);matrix=matrix*local;}
 
