@@ -110,6 +110,22 @@ namespace DeathStar.EditorTools
             Require(grown.TryEdit(new Vector3Int(3,3,1),true,out var cut),"Ridge cut failed");
             Require(cut.Exposure(new Vector3Int(3,3,0),out gable)==CellExposure.Ridge&&gable,"Ridge end lost its gable");
             Require(walled.Shape(new Vector3Int(3,3,0)).kind==CellShape.Wedge,"An edit changed a neighbour's shape");
+            // Placement rules refuse exactly where fixed-size parts would not fit, and say why.
+            int padOk=0,padNo=0,tubeOk=0,tubeNo=0;
+            for(int y=-3;y<=3;y++)for(int z=-3;z<=3;z++)
+            {
+                var at=new Vector3Int(4,y,z);
+                Require(grown.TryEdit(at,false,out var plain),"Hull placement failed at "+at);
+                var face=plain.FaceSize(at,0);bool padFits=Mathf.Min(face.x,face.y)>=BlockConstruction.PadRoom;
+                bool pad=grown.TryEdit(at,false,out _,TileFamily.Pad,0);
+                Require(pad==padFits&&(pad||grown.LastError.Contains("landing pad needs")),$"Pad rule wrong at {at} ({face.x:0.0} × {face.y:0.0} m)");
+                if(pad)padOk++;else padNo++;
+                bool tubeFits=plain.Shape(at).minEdge>=BlockConstruction.CorridorRoom;
+                bool tube=grown.TryEdit(at,false,out _,TileFamily.Corridor);
+                Require(tube==tubeFits&&(tube||grown.LastError.Contains("corridor needs")),"Corridor rule wrong at "+at);
+                if(tube)tubeOk++;else tubeNo++;
+            }
+            Require(padOk>0&&padNo>0&&tubeOk>0&&tubeNo>0,$"Placement rules not exercised both ways (pads {padOk}/{padNo}, corridors {tubeOk}/{tubeNo})");
             var ridges=SettlementExamples.Ridges();
             const int R=SettlementExamples.RidgeRadius;
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R-1,R-1,1),out _)==CellExposure.Keel,"Ridges example lost its keel");

@@ -32,6 +32,9 @@ namespace DeathStar
         public bool ColorCoding=>View!=DebugView.Off;
         public TileStructure Structure {get;private set;}
         public Timings LastTimings {get;private set;}
+        // Lab: while set, rebuilds record how every fixed-size part comes out (CurvedTileMesh.SizeRatio), untimed.
+        public bool measureFixedParts;
+        public readonly List<(string name,float ratio)> fixedPartSizes=new List<(string,float)>();
         public int MeshCount=>tiles.Count;
         public FoundrySettlement(Transform parent,Material[] materials)
         {this.parent=parent;this.materials=materials;debugProperties.SetFloat(OverlayId,0);}
@@ -71,8 +74,18 @@ namespace DeathStar
                 Remove(cell);if(!next.TryGet(cell,out var placement)){timings.objects+=Lap();continue;}
                 timings.objects+=Lap();
                 var source=builder.Build(cell);timings.forms+=Lap();if(source.VertexCount==0)continue;
-                var (near,far)=source.ToMeshes(placement.family+" "+cell);timings.meshes+=Lap();
+                var (near,far)=source.ToMeshes(placement.family+" "+cell);
+                Vector3[] before=null;List<Vector4> frames=null,anchors=null;
+                if(measureFixedParts&&source.fixedParts.Count>0)
+                {before=near.vertices;frames=new List<Vector4>();near.GetUVs(4,frames);anchors=new List<Vector4>();near.GetUVs(5,anchors);}
+                timings.meshes+=Lap();
                 warp.Bend(near,cell);if(far!=null)warp.Bend(far,cell,near,source.SharedVertices);timings.bend+=Lap();
+                if(before!=null)
+                {
+                    var after=near.vertices;
+                    foreach(var (name,start,end) in source.fixedParts)fixedPartSizes.Add((name,warp.SizeRatio(before,after,frames,anchors,start,end)));
+                    clock.Restart();
+                }
                 var root=new GameObject(near.name){hideFlags=HideFlags.DontSave};root.transform.SetParent(parent,false);
                 var tile=new Tile{root=root,near=near,far=far,shape=TileLook.ShapeColor(model.Shape(cell))};tiles.Add(cell,tile);
                 MeshRenderer Add(string name,Mesh mesh)

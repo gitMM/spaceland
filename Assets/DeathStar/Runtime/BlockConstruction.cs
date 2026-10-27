@@ -172,15 +172,17 @@ namespace DeathStar
             if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
             return CellExposure.Buried;
         }
-        // Preview and commit use the same result. Hovering never changes the live construction.
-        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull)
+        // Preview and commit use the same result. Hovering never changes the live construction. face: the new cell's
+        // outward face (the side clicked), which a landing pad would use; -1 checks its best face.
+        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull,int face=-1)
         {
             next=null;LastError=null;
             if(!Enum.IsDefined(typeof(TileFamily),family)){LastError="Unknown tile family.";return false;}
             if(remove?(Count<=1||!Contains(edit)):!CanAdd(edit)){LastError="No available block placement.";return false;}
-            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),families=new Dictionary<Vector3Int,TileFamily>(families),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide};
+            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),families=new Dictionary<Vector3Int,TileFamily>(families),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide,
+                shapes=shapes==null?null:new Dictionary<Vector3Int,ShapeInfo>(shapes)};
             candidate.ChangedCells=new HashSet<Vector3Int>{edit};foreach(var step in Steps)candidate.ChangedCells.Add(edit+step);
-            if(remove){candidate.cells.Remove(edit);candidate.families.Remove(edit);candidate.PruneCorners(edit);}
+            if(remove){candidate.cells.Remove(edit);candidate.families.Remove(edit);candidate.PruneCorners(edit);candidate.shapes?.Remove(edit);}
             else
             {
                 candidate.cells.Add(edit);
@@ -192,8 +194,43 @@ namespace DeathStar
                 }
                 if(!ValidGeometry(candidate.cells,candidate.corners,new[]{edit}))
                 {LastError="This gap cannot be filled safely on the sphere grid.";return false;}
+                var refusal=candidate.Refusal(edit,family,face);
+                if(refusal!=null){LastError=refusal;return false;}
             }
             next=candidate;return true;
+        }
+        // Families whose fixed-size parts need room (design doc: Ridges, keels and crowns), in metres. A single pad's
+        // 4.4 m deck stands on a pedestal and may overhang its cell by up to 0.4 m a side.
+        public const float CorridorRoom=3.2f,PadRoom=3.6f;
+        string Refusal(Vector3Int cell,TileFamily family,int face)
+        {
+            if(family==TileFamily.Corridor)
+            {
+                float narrow=Shape(cell).minEdge;
+                if(narrow<CorridorRoom)return $"A corridor needs {CorridorRoom:0.0} m across; this cell narrows to {narrow:0.0} m.";
+            }
+            if(family==TileFamily.Pad)
+            {
+                var best=Vector2.zero;
+                for(int f=0;f<6;f++)if(face<0||f==face)
+                {var size=FaceSize(cell,f);if(Mathf.Min(size.x,size.y)>Mathf.Min(best.x,best.y))best=size;}
+                if(Mathf.Min(best.x,best.y)<PadRoom)return $"A landing pad needs a {PadRoom:0.0} m face; this one is {best.x:0.0} × {best.y:0.0} m.";
+            }
+            return null;
+        }
+        // A face's size in metres: its mean extent along each of the two lattice axes it spans.
+        public Vector2 FaceSize(Vector3Int cell,int face)
+        {
+            Vector3 P(int i)=>Corner(cell+CornerOffset(FaceCorners[face,i]))*TileBuilder.Cell;
+            Vector3 a=P(0),b=P(1),c=P(2),d=P(3);
+            return new Vector2(((b-a).magnitude+(c-d).magnitude)*0.5f,((d-a).magnitude+(c-b).magnitude)*0.5f);
+        }
+        // "Box 4.6 × 4.8 m", "Wedge ridge 5.3 × 2.7 m": what a cell is and the size of one of its faces.
+        public string Describe(Vector3Int cell,int face)
+        {
+            var s=Shape(cell);var e=Exposure(cell,out _);var size=FaceSize(cell,face);
+            string kind=s.kind==CellShape.Box?(s.Small?"Small box":"Box"):$"{s.kind} {e.ToString().ToLowerInvariant()}";
+            return $"{kind} {size.x:0.0} × {size.y:0.0} m";
         }
         // Compatibility for the previous solver's callers. There is no body refit.
         public bool TryRelax(out BlockConstruction next){next=null;return false;}

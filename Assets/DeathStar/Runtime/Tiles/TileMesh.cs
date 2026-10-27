@@ -66,7 +66,23 @@ namespace DeathStar
         public Bounds Bounds{get{if(positions.Count==0)return default;var b=new Bounds(positions[0],Vector3.zero);foreach(var p in positions)b.Encapsulate(p);return b;}}
 
         public void Push(Vector3 position,Quaternion rotation){stack.Push(matrix);matrix=matrix*Matrix4x4.TRS(position,rotation,Vector3.one);}
+        // Uniform scale about a point of the current frame (equipment size classes).
+        public void PushScale(Vector3 pivot,float scale)
+        {stack.Push(matrix);matrix=matrix*Matrix4x4.TRS(pivot,Quaternion.identity,Vector3.one*scale)*Matrix4x4.Translate(-pivot);}
         public void Pop()=>matrix=stack.Pop();
+
+        // Fixed-size parts: built at true size round an anchor (CurvedTileMesh.Metric). Their vertex ranges let the
+        // lab check the size they come out at. Only free-standing parts: anything that must meet the face's wall or
+        // a cell edge exactly stays in station space.
+        public readonly List<(string name,int start,int end)> fixedParts=new List<(string,int,int)>();
+        public FixedPart BeginFixed(string name,Vector3 anchor)=>new FixedPart(this,name,anchor);
+        public readonly struct FixedPart:System.IDisposable
+        {
+            readonly TileMesh m;readonly string name;readonly int start;readonly Vector4 saved;
+            public FixedPart(TileMesh m,string name,Vector3 at)
+            {this.m=m;this.name=name;start=m.positions.Count;saved=m.metricAnchor;m.metricAnchor=new Vector4(at.x,at.y,at.z,1);}
+            public void Dispose(){m.metricAnchor=saved;if(m.positions.Count>start)m.fixedParts.Add((name,start,m.positions.Count));}
+        }
 
         // Frame on one face of the box min..max. Side faces put y=0 at the tile's ground so heights read the same on
         // every face; the top face has y towards the back (+Z).

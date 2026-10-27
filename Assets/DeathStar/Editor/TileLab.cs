@@ -131,6 +131,7 @@ namespace DeathStar.EditorTools
                 checks.Add((big<=13f,$"{sp.family} stays proportionate to its 5 m cube (≤13 m in any direction): {big:0.0} m"));
             }
             checks.Add((stage.buildMs<15000,$"stage builds in under 15 s ({stage.buildMs:0} ms)"));
+            checks.Add((stage.triangles<=BudgetStageTriangles,$"stage triangles within budget: {stage.triangles:N0} (≤ {BudgetStageTriangles:N0})"));
             md.AppendLine();
 
             var shots=new List<(string file,string what)>();
@@ -229,8 +230,31 @@ namespace DeathStar.EditorTools
             }
             return string.Join(", ",counts.Select(p=>$"{p.Key} {p.Value}"))+$"; {gables} with an open gable";
         }
+        // Phase 0 baseline (doc/curved-grid-tiles-plan.md) and the budgets later phases are held to.
+        // Editor timings vary up to ~25% between runs (slowest just after a recompile, or after the full stage in a
+        // report), so budgets sit 25-30% over Phase 0: a full Foundry rebuild 1.94 s; single edits p50 0.62 s,
+        // p95 0.97-1.15 s.
+        const double BudgetFoundryMs=1940*1.25,BudgetEditP50Ms=800,BudgetEditP95Ms=1450;
+        const long BudgetStageTriangles=(long)(947310*1.1);
+
+        // Every fixed-size part of a full rebuild (measureFixedParts) comes out at its authored size, within 5%.
+        static void ScaleCheck(string example,FoundrySettlement view,List<(bool ok,string text)> checks,List<string> notes)
+        {
+            var sizes=new SortedDictionary<string,(int n,float min,float max)>();
+            foreach(var (name,ratio) in view.fixedPartSizes)
+            {
+                (int n,float min,float max) r=sizes.TryGetValue(name,out var o)?o:(0,float.MaxValue,0f);
+                sizes[name]=(r.n+1,Mathf.Min(r.min,ratio),Mathf.Max(r.max,ratio));
+            }
+            notes.Add($"{example} example, fixed-size parts (true size over authored size): "+
+                string.Join(", ",sizes.Select(p=>$"{p.Key} ×{p.Value.n} {p.Value.min:0.00}–{p.Value.max:0.00}")));
+            var off=sizes.Where(p=>p.Value.min<0.95f||p.Value.max>1.05f).Select(p=>p.Key).ToList();
+            checks.Add((off.Count==0,$"{example}: {sizes.Values.Sum(v=>v.n)} fixed-size parts come out within 5% of their authored size"+
+                (off.Count>0?" (outside: "+string.Join(", ",off)+")":"")));
+        }
+
         // Ten additions on open faces, each removed again, through the same TryEdit and incremental rebuild as a click.
-        static string EditTimings(ref BlockConstruction model,FoundrySettlement view)
+        static (string text,double p50,double p95) EditTimings(ref BlockConstruction model,FoundrySettlement view)
         {
             var open=new SortedSet<Vector3Int>(Comparer<Vector3Int>.Create(BlockConstruction.Compare));
             foreach(var c in model.Cells)foreach(var step in BlockConstruction.Steps)if(model.CanAdd(c+step))open.Add(c+step);
@@ -241,14 +265,16 @@ namespace DeathStar.EditorTools
                 foreach(bool remove in new[]{false,true})
                 {
                     var sw=Stopwatch.StartNew();
-                    if(!model.TryEdit(cell,remove,out var next,TileGallery.Families[i%TileGallery.Families.Length]))break;
+                    // A family refused for lack of room falls back to Hull, as a player would pick another.
+                    if(!model.TryEdit(cell,remove,out var next,TileGallery.Families[i%TileGallery.Families.Length])&&
+                        (remove||!model.TryEdit(cell,false,out next)))break;
                     view.Rebuild(next,next.ChangedCells);ms.Add(sw.Elapsed.TotalMilliseconds);sum.Add(view.LastTimings);model=next;
                 }
             }
-            if(ms.Count==0)return "Edits: none succeeded";
+            if(ms.Count==0)return ("Edits: none succeeded",double.MaxValue,double.MaxValue);
             var sorted=ms.OrderBy(v=>v).ToList();double P(double q)=>sorted[Mathf.Clamp(Mathf.CeilToInt((float)(q*sorted.Count))-1,0,sorted.Count-1)];
-            return $"Edits ({ms.Count}: 10 additions on open faces, each removed again): p50 {P(0.5):0} ms, p95 {P(0.95):0} ms, max {sorted[sorted.Count-1]:0} ms; "+
-                $"{sum.tiles/(float)ms.Count:0.0} tiles rebuilt per edit; per edit {Split(sum,ms.Count)}";
+            return ($"Edits ({ms.Count}: 10 additions on open faces, each removed again): p50 {P(0.5):0} ms, p95 {P(0.95):0} ms, max {sorted[sorted.Count-1]:0} ms; "+
+                $"{sum.tiles/(float)ms.Count:0.0} tiles rebuilt per edit; per edit {Split(sum,ms.Count)}",P(0.5),P(0.95));
         }
         static List<string> FoundryReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots)
         {
@@ -260,11 +286,13 @@ namespace DeathStar.EditorTools
             var model=SettlementExamples.Foundry();var view=new FoundrySettlement(root.transform,rig.Library.materials);
             try
             {
-                var timer=Stopwatch.StartNew();view.Rebuild(model);
+                var timer=Stopwatch.StartNew();view.measureFixedParts=true;view.Rebuild(model);view.measureFixedParts=false;
                 checks.Add((view.MeshCount>0,$"Foundry: {model.Count} family cells, {view.MeshCount} visible tiles, built in {timer.ElapsedMilliseconds} ms"));
                 var full=view.LastTimings;
                 notes.Add($"Foundry example, cells: {ShapeCounts(model)}");
                 notes.Add($"Foundry example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
+                checks.Add((full.Total<=BudgetFoundryMs,$"Foundry full rebuild within budget: {full.Total:0} ms (≤ {BudgetFoundryMs:0})"));
+                ScaleCheck("Foundry",view,checks,notes);
                 TileLook.AddLights(root.transform);
                 var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
                 var warp=new CurvedTileMesh(model);
@@ -301,7 +329,8 @@ namespace DeathStar.EditorTools
                 var shaped=rig.Shoot(views[0].Item2,W,H);Save(shaped,Path.Combine(Dir,"foundry-shapes.png"));UnityEngine.Object.DestroyImmediate(shaped);
                 view.SetDebugView(DebugView.Off);
                 shots.Add(("foundry-shapes.png","cell shapes: grey box, red box with an edge under 3.2 m, orange wedge, magenta apex"));
-                notes.Add(EditTimings(ref model,view));
+                var (editText,p50,p95)=EditTimings(ref model,view);notes.Add(editText);
+                checks.Add((p50<=BudgetEditP50Ms&&p95<=BudgetEditP95Ms,$"Single edits within budget: p50 {p50:0} ms (≤ {BudgetEditP50Ms:0}), p95 {p95:0} ms (≤ {BudgetEditP95Ms:0})"));
                 var padTarget=warp.Map(new Vector3(0.5f,1.5f,-3.5f)*5);
                 var padView=new TileGallery.View(padTarget+new Vector3(-10,14,-15),padTarget,Vector3.up,43);
                 var complete=rig.Shoot(padView,W,H);Save(complete,Path.Combine(Dir,"foundry-pad-complete.png"));UnityEngine.Object.DestroyImmediate(complete);
@@ -323,7 +352,7 @@ namespace DeathStar.EditorTools
             var model=SettlementExamples.Ridges();var view=new FoundrySettlement(root.transform,rig.Library.materials);
             try
             {
-                view.Rebuild(model);var full=view.LastTimings;
+                view.measureFixedParts=true;view.Rebuild(model);view.measureFixedParts=false;var full=view.LastTimings;
                 notes.Add($"Ridges example, cells: {ShapeCounts(model)}");
                 notes.Add($"Ridges example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
                 TileLook.AddLights(root.transform);
@@ -347,6 +376,20 @@ namespace DeathStar.EditorTools
                 shots.Add(("ridges-shapes.png","the same in the shape view: wedges orange, the crown magenta, small boxes red"));
                 t=rig.Shoot(inside,W,H);Save(t,Path.Combine(Dir,"ridges-keel.png"));UnityEngine.Object.DestroyImmediate(t);
                 shots.Add(("ridges-keel.png","from inside the cap: a run of wedges under the z ridge shows its sharp keel"));
+                // Each comparison tile from the same place relative to its own outer face (-x on this cap): 2 x 2, the
+                // face-centre cell left and the cell beside a ridge right, Defense above and Command below.
+                var sheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                for(int i=0;i<SettlementExamples.ScaleCells.Length;i++)
+                {
+                    var (y,z,_)=SettlementExamples.ScaleCells[i];var cell=(Vector3)SettlementExamples.RidgeCell(R,y,z)*5;
+                    var face=warp.Map(cell+Vector3.left*2.5f);var up=(face-warp.Map(cell)).normalized;
+                    var across=(Vector3.forward-up*Vector3.Dot(Vector3.forward,up)).normalized;
+                    t=rig.Shoot(new TileGallery.View(face+up*7+across*9,face+up*1.8f,up,50),W/2,H/2);
+                    sheet.SetPixels(i%2*(W/2),(1-i/2)*(H/2),W/2,H/2,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                sheet.Apply();Save(sheet,Path.Combine(Dir,"foundry-scale.png"));UnityEngine.Object.DestroyImmediate(sheet);
+                shots.Add(("foundry-scale.png","Defense (top) and Command (bottom) on a cube-face-centre cell (left) and on a smaller cell beside a ridge (right), each seen from the same place relative to its face: turret, bridge and globes keep their true size in a smaller class"));
+                ScaleCheck("Ridges",view,checks,notes);
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

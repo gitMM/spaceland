@@ -123,6 +123,17 @@ with every family on a ridge, a keel inside, a half-covered roof and gables. `Bl
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
 
+**True size on the curved grid.** Cells measure 2.3–5 m across, so parts people and craft use don't stretch with
+them. Free-standing parts (turrets, the Command top, Industrial control towers, Life Support tanks, hatches, pads and
+the 2 × 2 landmarks) are placed rigidly at true size (`TileMesh.BeginFixed`, `CurvedTileMesh.Rigid`); only their
+lowest 0.3 m drops onto the curved surface. Equipment comes in three sizes, L, M and S (1, 0.78 and 0.6 of the
+authored size): each part takes the largest that fits its face (`Face.Equip`). Parts set into the wall (window rows,
+Hull windows) keep their place on the wall but take true dimensions from the local stretch. Repeated parts change in
+number, not size: window panes, Power fins, vault rings and Storage ribs on a 0.83–1.25 m pitch, and Habitat walls
+under 4.2 m get one deck of windows instead of two. The flat gallery is unchanged. Placement refuses a corridor in a
+cell narrower than 3.2 m and a landing pad on a face under 3.6 m (its 4.4 m deck may overhang the cell by 0.4 m a side), and says why; hovering names the family, the cell's
+shape and the face size.
+
 **Death Star → Open Tile Gallery** opens `Scenes/TileGallery.unity`: a floating station fragment (80 × 30 × 60 m) and
 eleven specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. The stage shows
 silhouettes, armour, windows, equipment and how cubes combine. The stage is
@@ -211,6 +222,8 @@ Foundry placement/undo/picking path and geometric invariants without entering Pl
 the new construction views and runs the settlement checks.
 `foundry-coded.png` and `foundry-coded-far.png` exercise the Foundry's own debug switch, with image checks that
 the colours actually change the render on both detail levels. `foundry-shapes.png`, `ridges.png`,
-`ridges-shapes.png` and `ridges-keel.png` show the cell shapes. The report's "Foundry: cell shapes and rebuild time"
-section counts shapes and exposures, splits a full rebuild into solve, forms, carving and meshes, bend and scene
-objects, and times 20 scripted edits (p50/p95).
+`ridges-shapes.png` and `ridges-keel.png` show the cell shapes; `foundry-scale.png` shows Defense and Command on a
+cube-face-centre cell and beside a ridge. The report's "Foundry: cell shapes and rebuild time" section counts shapes
+and exposures, splits a full rebuild into solve, forms, carving and meshes, bend and scene objects, times 20 scripted
+edits (p50/p95), and lists how every fixed-size part came out (true size over authored size, by part and size
+class). Checks hold those parts within 5% and the rebuild, edit and triangle counts within budget.

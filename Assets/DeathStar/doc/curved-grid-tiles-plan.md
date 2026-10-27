@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phase 0 is done** (see [Phase 0 results](#phase-0-results)); Phases 1–4 are not started. The
+2026-10-27. **Phases 0 and 1 are done** (see [Phase 0 results](#phase-0-results) and [Phase 1 results](#phase-1-results)); Phases 2–4 are not started. The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -197,12 +197,12 @@ The checks run in `BlockConstruction.TryEdit` and reuse `LastError`, so the Foun
 | Rule | Detail |
 |---|---|
 | Corridor | Needs ≥ 3.2 m across its cross-section |
-| Pad (single) | Needs a ≥ 4.6 m face |
+| Pad (single) | Needs a ≥ 3.6 m face: the 4.4 m deck may overhang its cell by up to 0.4 m a side (decided after Phase 1; 4.6 m allowed pads on only ~10% of a sphere) |
 | 2 × 2 landmarks | Only on four Box cells |
 | Other families | Never refused: size class S fits the smallest cells, and every family has a kit |
 
 **Preview text** names the shape, size and form, for example "Ridge · 5.3 × 3.4 m · Habitat gallery". A refusal
-gives the reason, for example "Pad needs a 4.6 m face; this one is 3.1 m".
+gives the reason, for example "Pad needs a 3.6 m face; this one is 3.1 m".
 
 ## Performance
 
@@ -248,12 +248,49 @@ Measured 2026-10-27 in the editor, which compiles C# in Debug mode (managed code
 - **Validation:** the classifier matches the analytic rule (wedge where two coordinates tie for the largest
   magnitude, apex where three do) for every cell of a radius-3 ball grown from the seed.
 
+## Phase 1 results
+
+2026-10-27. The tile lab passes 36/36 checks; the flat gallery is unchanged (947,310 triangles).
+
+- **Rigid placement, not just a corrected stretch.** With only the anchor's tangent metric, parts came out at 0.70–1.24
+  of their size: the cell's stretch varies across a part, and turret barrels reach into the next cell. Fixed-size parts
+  are now placed rigidly (`CurvedTileMesh.Rigid`: the anchor's position plus an orthonormal frame from the corrected
+  tangent axes and the normal). Only their lowest 0.3 m drops along the normal onto the curved surface. All 153 parts
+  in the two examples measure 1.00 (lab check: within 5%). It is also cheaper per vertex than bending.
+- **Two kinds of fixed size.** Free-standing parts are rigid: turrets, the Command top, Industrial control towers,
+  Life Support tanks, hatches, pads and the 2 × 2 landmarks. Parts set into the wall can't be: their holes must line
+  up with the wall around them. These keep station-space positions but take true dimensions from the local stretch
+  (`Face.Local`, as `WindowRow` already did): window rows, visors and ledges, Hull windows. They still shear on
+  sheared cells.
+- **Size classes.** L, M and S are 1, 0.78 and 0.6 of the authored size; a part takes the largest that fits its face
+  less a margin (`Face.Equip`). Flat stages always take L. In the Ridges example: turret L at the face centre, M and
+  S nearer the ridges; Command tops mostly S.
+- **Count-fit:** window panes, Power fins, Life Support vault rings and Storage ribs. Habitat walls under 4.2 m get
+  one deck of windows.
+- **Placement rules and preview** as specified, except the pad threshold. At 4.6 m a single pad fitted only 9–12% of
+  outward placements on whole spheres (radius 4–8), and starting a 2 × 2 pad on smaller faces was blocked because the
+  first quarter was refused. Decided: the 4.4 m deck, on its pedestal, may overhang its cell by up to 0.4 m a side,
+  so pads need a 3.6 m face. That allows 42–56% of outward placements; corridors (3.2 m) are allowed on 48–56%.
+- **Not done in Phase 1:**
+  - Doors: none exist yet.
+  - Sockets and ports: they must match the corridor's fixed profile, so they move to Phase 2.
+  - Hangar mouths: their recess walls must meet cell edges, so they stay stretchy.
+  - The Life Support vault radius: stretchy.
+- **Ridges example** is now two layers thick. With one layer, single family cells had no backing and the solver
+  turned them sideways.
+- **Budgets** sit 25–30% over Phase 0 because editor timings vary that much between runs: full Foundry rebuild
+  ≤ 2.43 s, single edits p50 ≤ 0.80 s and p95 ≤ 1.45 s, stage ≤ 1.04M triangles. Measured now: 1.86–2.20 s, p50
+  0.56–0.60 s, p95 0.92–1.0 s.
+- **Lab time is the next constraint.** The editor pipeline aborts a script after 30 s on the main thread, and a full
+  report now takes about 23 s. Before Phase 3 adds its sheets, `tools/tile-lab.sh` needs to split the report into
+  several calls.
+
 ## Phases
 
 | Phase | Size | Work | Exit |
 |---|---|---|---|
 | **0. Baseline and shapes** (done) | S | `CellShape`/`ShapeInfo` cached in `BlockConstruction`; exposure helper. The C key cycles Off → Family → Shape (Box grey, Wedge orange, Apex magenta, too-small red). `SettlementExamples.Ridges()`: an octant of a radius-6 skin (three ridges and a crown) with a keel run underneath, a half-covered roof and gables, families in 2-cell runs (three ridges of 8 cells hold 12 runs). Lab: shape counts, timing splits, per-edit p50/p95 over 20 scripted edits. Fix the top hotspot if it is local | Numbers in `report.md`; no visual change; all existing checks pass |
-| **1. Fixed-size parts** | M | Anchor scope, the per-family conversion list, count-fit, size classes, margins, placement rules and preview text | Fixed-part scale check passes; `foundry-scale.png` shows one family on a face-centre cell beside the same family near a ridge; budgets hold |
+| **1. Fixed-size parts** (done) | M | Anchor scope, the per-family conversion list, count-fit, size classes, margins, placement rules and preview text | Fixed-part scale check passes; `foundry-scale.png` shows one family on a face-centre cell beside the same family near a ridge; budgets hold |
 | **2. Direct path and connectors** | M | `ShapeFrame`, direct emission without `Bend`, relief boundary, corridor and conduit sweeps, fixed sockets and junctions | Shared-edge check: direct/bent seams match within 1 mm; corridor inner width ±2% everywhere; per-edit time ≤ baseline |
 | **3. Generic special skins** | M | The Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
 | **4. Family kits** | L, 3 batches | A: Habitat, Defense, Command, Corridor/Conduit forms (most visible, human scale). B: Power, Life Support, Storage, Pad (cradle and pod). C: Industrial, Hull polish | Each batch adds `ridges-sheet.png` (each family's ridge run) and `crowns-sheet.png` (each family's crown on the same apex, rebuilding one tile per shot); triangle budget; scale check |

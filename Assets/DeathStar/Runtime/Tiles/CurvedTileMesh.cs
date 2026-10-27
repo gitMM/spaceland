@@ -49,6 +49,15 @@ namespace DeathStar
         {Transform(station,frame,out var p,out _,out _,out _);return p;}
         public float Scale(Vector3 station,Vector3 direction)
         {Sample(station,out _,out var x,out var y,out var z);return (x*direction.x+y*direction.y+z*direction.z).magnitude;}
+        // Metres a 5 m station face spans round a point along u and v, shrunk by the sine of the angle between them
+        // so a sheared face counts as the square that fits inside it.
+        public Vector2 Room(Vector3 station,Vector3 u,Vector3 v)
+        {
+            Sample(station,out _,out var x,out var y,out var z);
+            Vector3 a=x*u.x+y*u.y+z*u.z,b=x*v.x+y*v.y+z*v.z;
+            float la=a.magnitude,lb=b.magnitude,sin=Vector3.Cross(a,b).magnitude/Mathf.Max(1e-6f,la*lb);
+            return new Vector2(la,lb)*(TileBuilder.Cell*sin);
+        }
         // Inverse square root of the tangent metric. All quarters use the same assembly anchor, keeping the
         // 9 m deck and central hatch joined while removing local stretch and shear from their human-scale forms.
         public Matrix4x4 Metric(Vector4 anchor,Vector4 frame)
@@ -63,6 +72,36 @@ namespace DeathStar
             float inv=k/Mathf.Max(0.00001f,(aa+det)*(bb+det)-ab*ab);
             m=Matrix4x4.identity;m[u,u]=(bb+det)*inv;m[v,v]=(aa+det)*inv;m[u,v]=m[v,u]=-ab*inv;
             metricFrames.Add((anchor,frame),m);return m;
+        }
+        // Rigid placement of a fixed-size part: the anchor's curved position, and an orthonormal frame from the
+        // metric-corrected tangent axes and the face normal there. Shared anchors (2 x 2 pads) share it exactly.
+        public const float Foot=0.3f;
+        readonly Dictionary<(Vector4,Vector4),Matrix4x4> rigidFrames=new Dictionary<(Vector4,Vector4),Matrix4x4>();
+        public Matrix4x4 Rigid(Vector4 anchor,Vector4 frame)
+        {
+            if(rigidFrames.TryGetValue((anchor,frame),out var r))return r;
+            var m=Metric(anchor,frame);
+            Transform(anchor,frame,out var o,out var dx,out var dy,out var dz);
+            Vector3 Column(int i)=>dx*m[0,i]+dy*m[1,i]+dz*m[2,i];
+            int axis=frame.x!=0?0:frame.y!=0?1:2,ua=(axis+1)%3,va=(axis+2)%3;
+            var n=Column(axis).normalized;
+            var u=Column(ua);u=(u-n*Vector3.Dot(u,n)).normalized;
+            var v=Vector3.Cross(n,u);if(Vector3.Dot(v,Column(va))<0)v=-v;
+            r=Matrix4x4.identity;r.SetColumn(axis,n);r.SetColumn(ua,u);r.SetColumn(va,v);
+            var t=o-r.MultiplyVector(anchor);r.SetColumn(3,new Vector4(t.x,t.y,t.z,1));
+            rigidFrames.Add((anchor,frame),r);return r;
+        }
+        // How a fixed-size part came out (1 = true size): its widest span across its own up axis after bending, over
+        // before. Up is left out because feet drop onto the curved surface by design. Mesh vertex range start..end.
+        public float SizeRatio(Vector3[] before,Vector3[] after,List<Vector4> frames,List<Vector4> anchors,int start,int end)
+        {
+            Vector3 n=frames[start];var up=Rigid(anchors[start],frames[start]).MultiplyVector(n).normalized;
+            Vector3 S(int i)=>before[i]-n*Vector3.Dot(before[i],n);
+            Vector3 W(int i)=>after[i]-up*Vector3.Dot(after[i],up);
+            int a=start,b=start;float best=-1;
+            for(int i=start;i<end;i++){float d=(S(i)-S(start)).sqrMagnitude;if(d>best){best=d;b=i;}}
+            best=-1;for(int i=start;i<end;i++){float d=(S(i)-S(b)).sqrMagnitude;if(d>best){best=d;a=i;}}
+            return (W(a)-W(b)).magnitude/Mathf.Max(1e-4f,(S(a)-S(b)).magnitude);
         }
         void Transform(Vector3 station,Vector4 frame,out Vector3 p,out Vector3 dx,out Vector3 dy,out Vector3 dz)
         {
@@ -118,6 +157,22 @@ namespace DeathStar
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;
                 var metric=Metric(anchor,f);var pivot=(Vector3)anchor;
+                if(anchor.w>=0.5f&&((Vector3)f).sqrMagnitude>=0.5f)
+                {
+                    // Fixed-size part: placed rigidly, so it is true size throughout. Its foot (the lowest Foot metres)
+                    // drops along the normal onto the curved surface, which falls away from the anchor's tangent plane.
+                    var rigid=Rigid(anchor,f);var placed=rigid.MultiplyPoint3x4(p);
+                    float h=Vector3.Dot(p-pivot,(Vector3)f);
+                    if(h<Foot)
+                    {
+                        Transform(pivot+metric.MultiplyVector(p-pivot),f,out var surface,out _,out _,out _);
+                        var up=rigid.MultiplyVector((Vector3)f);
+                        placed+=up*(Vector3.Dot(surface-placed,up)*(1-Mathf.Max(0,h)/Foot));
+                    }
+                    vertices[i]=placed;normals[i]=rigid.MultiplyVector(normals[i]).normalized;
+                    var rt=tangents[i];var rw=rigid.MultiplyVector(rt);tangents[i]=new Vector4(rw.x,rw.y,rw.z,rt.w);
+                    continue;
+                }
                 p=pivot+metric.MultiplyVector(p-pivot);
                 // Transform normals with the cofactor (inverse transpose); preserve authored hard edges and glass UVs.
                 Transform(p,f,out var bent,out var dx,out var dy,out var dz);

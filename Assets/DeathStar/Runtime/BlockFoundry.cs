@@ -52,6 +52,7 @@ namespace DeathStar
         BlockFace previewFace;
         bool previewRemove;
         TileFamily previewFamily;
+        string previewText;
         int previewRevision=-1;
         readonly Dictionary<Vector3Int,Vector3> transitionFrom=new Dictionary<Vector3Int,Vector3>();
         readonly HashSet<Vector3Int> animatedChunks=new HashSet<Vector3Int>();
@@ -362,9 +363,11 @@ namespace DeathStar
             previewRevision=Revision;previewFace=face;previewRemove=remove;
             previewFamily=SelectedFamily;
             var cell=remove?face.cell:face.cell+BlockConstruction.Steps[face.side];
-            Model.TryEdit(cell,remove,out previewModel,SelectedFamily);
-            if(previewModel==null)return;
+            Model.TryEdit(cell,remove,out previewModel,SelectedFamily,face.side);
+            if(previewModel==null){previewText=Model.LastError??"This face cannot be extended safely.";return;}
             previewModel=previewModel.SettleForEdit();
+            previewText=remove?"Click to remove the highlighted block":
+                $"{FamilyName(SelectedFamily)} · {previewModel.Describe(cell,face.side)} · click to attach, Shift + click to remove";
         }
         void ShowPreview(BlockFace face,bool remove)
         {
@@ -430,7 +433,7 @@ namespace DeathStar
             GUI.Label(new Rect(36,609,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel",small);
             GUI.Label(new Rect(36,674,246,36),$"{Model.Count:N0} blocks  /  {ExposedFaces:N0} exposed faces\nCtrl Z / Y: undo / redo · Ctrl S: save",kicker);
             float width=Screen.width/UiScale;
-            string status=Time.unscaledTime<messageUntil?message:hasHover?(removeMode?"Click to remove the highlighted block":"Click to attach a block · Shift + click to remove"):"Choose a face to begin · Right drag to orbit";
+            string status=Time.unscaledTime<messageUntil?message:hasHover?previewText??"Click to attach a block · Shift + click to remove":"Choose a face to begin · Right drag to orbit";
             if(debugView==DebugView.Family&&hasHover&&Settlement.Structure.TryGet(hovered.cell,out var placed))
                 status=$"{TileGallery.Title(placed.family)} · cell {hovered.cell} · axis {placed.axis} · main face {Settlement.Structure.Primary(hovered.cell,placed)}";
             if(debugView==DebugView.Shape)

@@ -34,6 +34,10 @@ namespace DeathStar
         static readonly Finish Relief=new Finish(TileSlot.Paint,TilePattern.Plain,new Color(0.97f,0.97f,0.97f),0f);
         // Deck window rows along the tile's axis: sill to head, the same on every family so rows meet.
         const float LowSill=-1.6f,LowHead=-0.65f,HighSill=0.9f,HighHead=1.85f;
+        // A wall gets two decks of windows only if it is this tall in metres; otherwise one row at mid height.
+        const float TwoDecks=4.2f;
+        // Equipment size classes (L, M, S) as fractions of the authored size.
+        public static readonly float[] SizeClasses={1f,0.78f,0.6f};
 
         readonly TileStructure s;
         readonly CurvedTileMesh curved;
@@ -44,11 +48,42 @@ namespace DeathStar
         static float Rand(uint seed,int k){uint h=seed^(uint)(k*0x9E3779B1U);h^=h>>16;h*=0x7feb352dU;h^=h>>15;h*=0x846ca68bU;h^=h>>16;return (h&0xFFFFFF)/16777216f;}
         static int AxisOf(Vector3Int d)=>d.x!=0?0:d.y!=0?1:2;
 
+        readonly struct Equipment:System.IDisposable
+        {
+            readonly TileMesh m;readonly TileMesh.FixedPart part;
+            public Equipment(TileMesh m,TileMesh.FixedPart part){this.m=m;this.part=part;}
+            public void Dispose(){m.Pop();part.Dispose();}
+        }
+
         // One face being built, in its own frame: x right and y up as seen from outside, z into the tile.
         sealed class Face
         {
             public TileMesh m;public TileStructure s;public Vector3Int cell,n,x,y;public TilePlacement p;public bool primary,axial;public uint seed;
-            public Vector2 metric=Vector2.one;
+            public Vector2 metric=Vector2.one;public CurvedTileMesh curved;
+            // Station point of (u,v) on this face.
+            public Vector3 At(float u,float v)=>TileStructure.Center(cell)+(Vector3)n*Half+(Vector3)x*u+(Vector3)y*v;
+            // A free-standing part built at true size round (u,v); dispose the scope when the part is done.
+            public TileMesh.FixedPart Fixed(string name,float u,float v)=>m.BeginFixed(name,At(u,v));
+            // Metres per station metre along x and y round (u,v), for parts set into the wall; 1 on flat stages.
+            public Vector2 Local(float u,float v)=>curved==null?Vector2.one:curved.Room(At(u,v)-(Vector3)n*0.01f,x,y)/Cell;
+            // Equipment comes in three true sizes: the largest whose span (metres along x and y) fits the face round
+            // (u,v), less a margin. cells is 2 for a 2 x 2 block. Flat stages always take the largest.
+            public float Fit(float u,float v,Vector2 span,float margin=0.6f,int cells=1)
+            {
+                if(curved==null)return 1;
+                var room=curved.Room(At(u,v)-(Vector3)n*0.01f,x,y)*cells;
+                foreach(float k in SizeClasses)if(span.x*k<=room.x-margin&&span.y*k<=room.y-margin)return k;
+                return SizeClasses[SizeClasses.Length-1];
+            }
+            // Equipment: a free-standing part at true size in the largest class that fits, scaled about its foot
+            // (pivot, in this frame). The part's name carries its class (L, M or S).
+            public Equipment Equip(string name,float u,float v,Vector3 pivot,Vector2 span,float margin=0.6f,int cells=1)
+            {
+                float k=Fit(u,v,span,margin,cells);
+                var part=Fixed(name+(k>0.9f?" L":k>0.7f?" M":" S"),u,v);
+                m.PushScale(pivot,k);
+                return new Equipment(m,part);
+            }
             public readonly List<Rect> recess=new List<Rect>(),bare=new List<Rect>();
             public float Rand(int k)=>TileBuilder.Rand(seed^(uint)((n.x+2)*7+(n.y+2)*31+(n.z+2)*131),k);
             public bool Cont(Vector3Int step)=>s.Continues(cell,p,n,step);
@@ -70,8 +105,8 @@ namespace DeathStar
                 var dx=Vector3Int.zero;dx[ax]=stepX;var dy=Vector3Int.zero;dy[ay]=stepY;
                 c=new Vector2(stepX*x[ax]*Half,stepY*y[ay]*Half);anchor=stepX>0&&stepY>0;
                 var place=p;var face=n;var st=s;
-                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Solid(q+face)&&st.Primary(q,o)==face;
-                return primary&&Same(cell+dx)&&Same(cell+dy)&&Same(cell+dx+dy);
+                bool Same(Vector3Int q)=>st.TryGet(q,out var o)&&o.SameAs(place)&&!st.Solid(q+face)&&st.Primary(q,o)==face&&!st.special.Contains(q);
+                return primary&&!st.special.Contains(cell)&&Same(cell+dx)&&Same(cell+dy)&&Same(cell+dx+dy);
             }
         }
 
@@ -141,7 +176,7 @@ namespace DeathStar
         Face Forms(TileMesh m,Vector3Int cell,in TilePlacement p,Vector3Int n,Vector3Int primary)
         {
             bool axial=n==p.axis||n==-p.axis;
-            var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=axial?p.side:p.axis,primary=n==primary,axial=axial,seed=Hash(cell)};
+            var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=axial?p.side:p.axis,primary=n==primary,axial=axial,seed=Hash(cell),curved=curved};
             f.x=TileStructure.Cross(f.y,-n);
             if(curved!=null)
             {
@@ -184,11 +219,12 @@ namespace DeathStar
         // Eye-level windows on one deck, set 0.4 m into the armour between deep mullions on the station's 1.25 m
         // pitch, so rows on neighbours line up; an angled visor over them and a ledge under. Where the row doesn't
         // carry on into the same family it stops short of the edge, leaving a pier.
-        static void WindowRow(Face f,float v0,float v1,bool visor=true)
+        // whole: the only row on the wall, free to use either half of it.
+        static void WindowRow(Face f,float v0,float v1,bool visor=true,bool whole=false)
         {
-            float mid=(v0+v1)*0.5f,h=(v1-v0)/f.metric.y;
-            v0=Mathf.Max(mid<0?-Half+0.1f:0.1f,mid-h*0.5f);
-            v1=Mathf.Min(mid<0?-0.1f:Half-0.1f,mid+h*0.5f);
+            float mid=(v0+v1)*0.5f,h=(v1-v0)/f.metric.y,ky=1/f.metric.y;
+            v0=Mathf.Max(whole||mid<0?-Half+0.1f:0.1f,mid-h*0.5f);
+            v1=Mathf.Min(!whole&&mid<0?-0.1f:Half-0.1f,mid+h*0.5f);
             bool l=f.Cont(-f.x),r=f.Cont(f.x);
             float u0=l?-Half:-Half+0.6f/f.metric.x,u1=r?Half:Half-0.6f/f.metric.x;
             const float depth=0.4f;float mull=0.11f/f.metric.x;
@@ -207,7 +243,7 @@ namespace DeathStar
                 if(b-a>0.01f)f.Box(Armor,a,v0,b,v1,-depth,0,0);
             }
             float e0=l?-Half:Mathf.Max(-Half,u0-0.2f),e1=r?Half:Mathf.Min(Half,u1+0.2f);
-            f.Box(Armor,e0,v0-0.28f,e1,v0,0,0.22f,0);
+            f.Box(Armor,e0,v0-0.28f*ky,e1,v0,0,0.22f,0);
             float top=v1;
             if(visor)
             {
@@ -215,19 +251,17 @@ namespace DeathStar
                 for(int i=0;i<8;i++)
                 {
                     float u=(i&1)!=0?e1:e0;bool tip=(i&4)!=0,high=(i&2)!=0;
-                    g[i]=Face.P(u,tip?(high?v1+0.16f:v1+0.04f):(high?v1+0.38f:v1),tip?0.45f:0);
+                    g[i]=Face.P(u,tip?(high?v1+0.16f*ky:v1+0.04f*ky):(high?v1+0.38f*ky:v1),tip?0.45f:0);
                 }
-                f.m.Hexa(Armor,g);top=v1+0.38f;
+                f.m.Hexa(Armor,g);top=v1+0.38f*ky;
             }
-            f.bare.Add(Rect.MinMaxRect(e0,v0-0.28f,e1,top));
+            f.bare.Add(Rect.MinMaxRect(e0,v0-0.28f*ky,e1,top));
         }
 
         // A round hatch: a raised collar round a slightly proud door disc, at (u,v) on the face.
         static void Hatch(Face f,float u,float v,float r)
         {
-            var at=TileStructure.Center(f.cell)+(Vector3)f.n*Half+(Vector3)f.x*u+(Vector3)f.y*v;
-            var saved=f.m.metricAnchor;f.m.metricAnchor=new Vector4(at.x,at.y,at.z,1);
-            HatchGeometry(f,u,v,r);f.m.metricAnchor=saved;
+            using(f.Fixed("hatch",u,v))HatchGeometry(f,u,v,r);
         }
         static void HatchGeometry(Face f,float u,float v,float r)
         {
@@ -321,12 +355,14 @@ namespace DeathStar
         {
             if(!f.axial&&f.Rand(3)<0.5f)
             {
-                foreach(float u in new[]{-1.25f,1.25f})
+                // Set into the wall, so sized by the local metric rather than anchored; a narrow face has room for one.
+                var k=f.Local(0,HighSill+0.4f);float kx=1/k.x,ky=1/k.y;
+                foreach(float u in Cell*k.x<3.2f?new[]{0f}:new[]{-1.25f,1.25f})
                 {
-                    var w=new Rect(u-0.55f,HighSill+0.1f,1.1f,0.6f);
+                    var w=new Rect(u-0.55f*kx,HighSill+0.1f,1.1f*kx,0.6f*ky);
                     f.recess.Add(w);f.m.Reveal(Armor,w,0.5f);f.m.Glass(w,0.5f);
-                    f.Box(Armor,w.xMin-0.15f,w.yMax,w.xMax+0.15f,w.yMax+0.18f,0,0.35f,0.02f);
-                    f.bare.Add(Rect.MinMaxRect(w.xMin-0.15f,w.yMin,w.xMax+0.15f,w.yMax+0.18f));
+                    f.Box(Armor,w.xMin-0.15f*kx,w.yMax,w.xMax+0.15f*kx,w.yMax+0.18f*ky,0,0.35f,0.02f);
+                    f.bare.Add(Rect.MinMaxRect(w.xMin-0.15f*kx,w.yMin,w.xMax+0.15f*kx,w.yMax+0.18f*ky));
                 }
             }
             if(f.Rand(4)<0.2f)Hatch(f,f.Rand(5)<0.5f?-1.2f:1.2f,-1.2f,0.7f);
@@ -335,6 +371,7 @@ namespace DeathStar
         // Taller panes than the standard row: homes look out more than they look in.
         static void Habitat(Face f)
         {
+            if(Cell*f.metric.y<TwoDecks){WindowRow(f,-0.75f,0.75f,true,true);return;}
             WindowRow(f,-1.9f,-0.4f);
             WindowRow(f,0.6f,2.1f);
         }
@@ -346,12 +383,18 @@ namespace DeathStar
             float sx=f.Rand(1)<0.5f?-1:1,sy=f.Rand(2)<0.5f?-1:1;
             if(f.primary)
             {
-                var pit=new Rect(sx*0.55f-1.5f,sy*0.55f-1.5f,3f,3f);
+                // The control tower keeps its size in the corner; the pit takes what is left.
+                var k=f.Local(-sx*1.65f,-sy*1.65f);float kx=1/k.x,ky=1/k.y;
+                var tc=new Vector2(-sx*(Half-0.85f*kx),-sy*(Half-0.85f*ky));
+                var tower=new Rect(tc.x-0.65f*kx,tc.y-0.65f*ky,1.3f*kx,1.3f*ky);
+                float px=sx>0?tower.xMax+0.05f*kx:tower.xMin-0.05f*kx,py=sy>0?tower.yMax+0.05f*ky:tower.yMin-0.05f*ky;
+                var pit=Rect.MinMaxRect(Mathf.Min(px,sx*2.05f),Mathf.Min(py,sy*2.05f),Mathf.Max(px,sx*2.05f),Mathf.Max(py,sy*2.05f));
                 var inner=Rect.MinMaxRect(pit.xMin+0.55f,pit.yMin+0.55f,pit.xMax-0.55f,pit.yMax-0.55f);
                 f.recess.Add(pit);
                 f.m.Reveal(Armor,pit,1.0f);
                 f.m.Push(new Vector3(0,0,1.0f),Quaternion.identity);
-                f.m.Wall(Armor,pit,new List<Rect>{inner});f.m.Reveal(Armor,inner,1.7f);f.m.Back(Deep,inner,1.7f);
+                if(inner.width>0.4f&&inner.height>0.4f){f.m.Wall(Armor,pit,new List<Rect>{inner});f.m.Reveal(Armor,inner,1.7f);f.m.Back(Deep,inner,1.7f);}
+                else f.m.Wall(Armor,pit,new List<Rect>());
                 f.m.Pop();
                 float gy=pit.center.y;
                 f.Box(Armor,pit.xMin-0.35f,gy-0.22f,pit.xMax+0.35f,gy+0.22f,0.6f,1.05f);
@@ -359,15 +402,17 @@ namespace DeathStar
                 f.Box(Armor,pit.xMax,gy-0.32f,pit.xMax+0.35f,gy+0.32f,0,1.05f);
                 f.bare.Add(Rect.MinMaxRect(pit.xMin-0.35f,gy-0.32f,pit.xMin,gy+0.32f));
                 f.bare.Add(Rect.MinMaxRect(pit.xMax,gy-0.32f,pit.xMax+0.35f,gy+0.32f));
-                var tower=new Rect(-sx*1.65f-0.65f,-sy*1.65f-0.65f,1.3f,1.3f);
-                f.Box(Armor,tower.xMin,tower.yMin,tower.xMax,tower.yMax,0,2.5f,0.08f);
-                f.Box(Armor,tower.xMin-0.12f,tower.yMin-0.12f,tower.xMax+0.12f,tower.yMax+0.12f,0,0.5f,0.05f);
-                var tc=tower.center;
-                f.Pane(Face.P(tower.xMin,tc.y,2.0f),Vector3.left,Vector3.back,1.0f,0.4f);
-                f.Pane(Face.P(tower.xMax,tc.y,2.0f),Vector3.right,Vector3.back,1.0f,0.4f);
-                f.Pane(Face.P(tc.x,tower.yMin,2.0f),Vector3.down,Vector3.back,1.0f,0.4f);
-                f.Pane(Face.P(tc.x,tower.yMax,2.0f),Vector3.up,Vector3.back,1.0f,0.4f);
-                f.bare.Add(Rect.MinMaxRect(tower.xMin-0.12f,tower.yMin-0.12f,tower.xMax+0.12f,tower.yMax+0.12f));
+                using(f.Fixed("control tower",tc.x,tc.y))
+                {
+                    var cab=new Rect(tc.x-0.65f,tc.y-0.65f,1.3f,1.3f);
+                    f.Box(Armor,cab.xMin,cab.yMin,cab.xMax,cab.yMax,0,2.5f,0.08f);
+                    f.Box(Armor,cab.xMin-0.12f,cab.yMin-0.12f,cab.xMax+0.12f,cab.yMax+0.12f,0,0.5f,0.05f);
+                    f.Pane(Face.P(cab.xMin,tc.y,2.0f),Vector3.left,Vector3.back,1.0f,0.4f);
+                    f.Pane(Face.P(cab.xMax,tc.y,2.0f),Vector3.right,Vector3.back,1.0f,0.4f);
+                    f.Pane(Face.P(tc.x,cab.yMin,2.0f),Vector3.down,Vector3.back,1.0f,0.4f);
+                    f.Pane(Face.P(tc.x,cab.yMax,2.0f),Vector3.up,Vector3.back,1.0f,0.4f);
+                }
+                f.bare.Add(Rect.MinMaxRect(tower.xMin-0.12f*kx,tower.yMin-0.12f*ky,tower.xMax+0.12f*kx,tower.yMax+0.12f*ky));
                 return;
             }
             void Mass(float u0,float v0,float u1,float v1,float o)
@@ -391,7 +436,9 @@ namespace DeathStar
             bool dn=f.Cont(-f.y),up=f.Cont(f.y);
             f.Box(Armor,-Half,-Half,Half,Half,0,0.2f,0);
             float v0=dn?-Half:-2.2f,v1=up?Half:2.2f;
-            for(int k=0;k<6;k++){float u=-Half+(k+0.5f)*Cell/6;f.Box(Armor,u-0.11f,v0,u+0.11f,v1,0.2f,1.8f,0);}
+            // Fins keep their thickness and roughly 0.83 m pitch; the count follows the frontage's width.
+            int fins=Mathf.Max(2,Mathf.RoundToInt(Cell*f.metric.x/0.83f));float t=0.11f/f.metric.x;
+            for(int k=0;k<fins;k++){float u=-Half+(k+0.5f)*Cell/fins;f.Box(Armor,u-t,v0,u+t,v1,0.2f,1.8f,0);}
             if(!dn)f.Box(Armor,-Half,-Half,Half,-2.1f,0.2f,2.0f,0.04f);
             if(!up)f.Box(Armor,-Half,2.1f,Half,Half,0.2f,2.0f,0.04f);
             f.Box(Armor,-Half,-0.2f,Half,0.2f,1.6f,1.95f,0);
@@ -407,29 +454,33 @@ namespace DeathStar
             f.bare.Add(Whole);
             if(!l&&!r)
             {
-                if(f.axial)
+                // Tanks are equipment: one size class for the group, anchored on the face centre.
+                using(f.Equip("tanks",0,0,Vector3.zero,f.axial?new Vector2(4.2f,4.2f):new Vector2(4.54f,4.6f)))
                 {
-                    var top=new List<Vector2>();
-                    for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;top.Add(new Vector2(0.9f*Mathf.Cos(t),0.6f*Mathf.Sin(t)));}
-                    foreach(float u in new[]{-1.2f,1.2f})foreach(float v in new[]{-1.2f,1.2f})
+                    if(f.axial)
                     {
-                        f.m.Cylinder(Smooth,Face.P(u,v,0),Face.P(u,v,0.5f),0.9f,20,false,false);
-                        f.m.Lathe(Smooth,Face.P(u,v,0.5f),Vector3.back,top,20,true);
+                        var top=new List<Vector2>();
+                        for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;top.Add(new Vector2(0.9f*Mathf.Cos(t),0.6f*Mathf.Sin(t)));}
+                        foreach(float u in new[]{-1.2f,1.2f})foreach(float v in new[]{-1.2f,1.2f})
+                        {
+                            f.m.Cylinder(Smooth,Face.P(u,v,0),Face.P(u,v,0.5f),0.9f,20,false,false);
+                            f.m.Lathe(Smooth,Face.P(u,v,0.5f),Vector3.back,top,20,true);
+                        }
+                        return;
+                    }
+                    const float tr=0.95f,tcap=0.7f;
+                    var tdome=new List<Vector2>();
+                    for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;tdome.Add(new Vector2(tr*Mathf.Cos(t),tcap*Mathf.Sin(t)));}
+                    var band=new[]{new Vector2(tr,0),new Vector2(tr+0.12f,0),new Vector2(tr+0.12f,0.22f),new Vector2(tr,0.22f)};
+                    foreach(float u in new[]{-1.2f,1.2f})
+                    {
+                        f.m.Lathe(Smooth,new Vector3(u,-1.6f,0),Vector3.up,new[]{new Vector2(tr,0),new Vector2(tr,3.2f)},20,false,Vector3.right,Mathf.PI);
+                        f.m.Lathe(Smooth,new Vector3(u,1.6f,0),Vector3.up,tdome,20,true,Vector3.right,Mathf.PI);
+                        f.m.Lathe(Smooth,new Vector3(u,-1.6f,0),Vector3.down,tdome,20,true,Vector3.left,Mathf.PI);
+                        foreach(float v in new[]{-0.6f,0.5f})f.m.Lathe(Smooth,new Vector3(u,v,0),Vector3.up,band,20,false,Vector3.right,Mathf.PI);
                     }
                     return;
                 }
-                const float tr=0.95f,tcap=0.7f;
-                var tdome=new List<Vector2>();
-                for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;tdome.Add(new Vector2(tr*Mathf.Cos(t),tcap*Mathf.Sin(t)));}
-                var band=new[]{new Vector2(tr,0),new Vector2(tr+0.12f,0),new Vector2(tr+0.12f,0.22f),new Vector2(tr,0.22f)};
-                foreach(float u in new[]{-1.2f,1.2f})
-                {
-                    f.m.Lathe(Smooth,new Vector3(u,-1.6f,0),Vector3.up,new[]{new Vector2(tr,0),new Vector2(tr,3.2f)},20,false,Vector3.right,Mathf.PI);
-                    f.m.Lathe(Smooth,new Vector3(u,1.6f,0),Vector3.up,tdome,20,true,Vector3.right,Mathf.PI);
-                    f.m.Lathe(Smooth,new Vector3(u,-1.6f,0),Vector3.down,tdome,20,true,Vector3.left,Mathf.PI);
-                    foreach(float v in new[]{-0.6f,0.5f})f.m.Lathe(Smooth,new Vector3(u,v,0),Vector3.up,band,20,false,Vector3.right,Mathf.PI);
-                }
-                return;
             }
             const float R=1.85f,cap=1.0f;
             float x0=l?-Half:-Half+cap,x1=r?Half:Half-cap;
@@ -438,9 +489,15 @@ namespace DeathStar
             for(int k=0;k<=6;k++){float t=k/6f*Mathf.PI*0.5f;dome.Add(new Vector2(R*Mathf.Cos(t),cap*Mathf.Sin(t)));}
             if(!l)f.m.Lathe(Smooth,new Vector3(x0,0,0),Vector3.left,dome,28,true,Vector3.up,Mathf.PI);
             if(!r)f.m.Lathe(Smooth,new Vector3(x1,0,0),Vector3.right,dome,28,true,Vector3.down,Mathf.PI);
-            var ring=new[]{new Vector2(R,0),new Vector2(R+0.17f,0),new Vector2(R+0.17f,0.34f),new Vector2(R,0.34f)};
-            foreach(float u in new[]{-1.875f,-0.625f,0.625f,1.875f})
-                if(u-0.17f>=x0-1e-3f&&u+0.17f<=x1+1e-3f)f.m.Lathe(Smooth,new Vector3(u-0.17f,0,0),Vector3.right,ring,28,false,Vector3.down,Mathf.PI);
+            // Rings keep their width and 1.25 m pitch along the vault; the count follows the frontage's width.
+            float rw=0.17f/f.metric.x;
+            var ring=new[]{new Vector2(R,0),new Vector2(R+0.17f,0),new Vector2(R+0.17f,2*rw),new Vector2(R,2*rw)};
+            int rings=Mathf.Max(1,Mathf.RoundToInt(Cell*f.metric.x/1.25f));
+            for(int k=0;k<rings;k++)
+            {
+                float u=-Half+(k+0.5f)*Cell/rings;
+                if(u-rw>=x0-1e-3f&&u+rw<=x1+1e-3f)f.m.Lathe(Smooth,new Vector3(u-rw,0,0),Vector3.right,ring,28,false,Vector3.down,Mathf.PI);
+            }
             float f0=l?-Half:-Half+0.2f,f1=r?Half:Half-0.2f;
             f.Box(Armor,f0,R-0.1f,f1,2.3f,0,0.45f,0);
             f.Box(Armor,f0,-2.3f,f1,-R+0.1f,0,0.45f,0);
@@ -466,7 +523,8 @@ namespace DeathStar
                 if(!up)Lip(f,2.05f,Half,2.25f,Half,-1.45f,1.45f,false,0.9f);
                 return;
             }
-            foreach(float u in new[]{-1.875f,-0.625f,0.625f,1.875f})f.Box(Armor,u-0.26f,-Half,u+0.26f,Half,0,0.5f,0);
+            int ribs=Mathf.Max(1,Mathf.RoundToInt(Cell*f.metric.x/1.25f));float rib=0.26f/f.metric.x;
+            for(int k=0;k<ribs;k++){float u=-Half+(k+0.5f)*Cell/ribs;f.Box(Armor,u-rib,-Half,u+rib,Half,0,0.5f,0);}
             f.bare.Add(Whole);
         }
         // Sloped lip: a0..a1 wide at the wall, t0..t1 at its top, b0..b1 along it; alongV puts a across the face.
@@ -489,6 +547,8 @@ namespace DeathStar
             {
                 f.Box(Armor,-2.3f,-2.3f,2.3f,2.3f,0,0.35f,0.06f);
                 f.Box(Armor,-1.7f,-1.7f,1.7f,1.7f,0.35f,0.7f,0.05f);
+                // The turret is equipment: true size in its class, standing on the plinth; its barrels may overhang.
+                using var turret=f.Equip("turret",0,0,Face.P(0,0,0.7f),new Vector2(2.3f,2.3f),1.2f);
                 const float d=-0.68f;
                 f.m.Cylinder(Smooth,Face.P(0,0,1.38f+d),Face.P(0,0,1.85f+d),1.15f,8,true,true,0.05f);
                 var h=new Vector3[8];
@@ -506,6 +566,7 @@ namespace DeathStar
                     f.m.Cylinder(Smooth,Face.P(u,1.05f,2.27f+d),Face.P(u,4.3f,2.27f+d),0.1f,10,false,true,0.01f);
                     f.m.Cylinder(Smooth,Face.P(u,3.95f,2.27f+d),Face.P(u,4.35f,2.27f+d),0.15f,10,true,true,0.02f);
                 }
+                f.bare.Add(Whole);return;
             }
             else if(!f.axial)
             {
@@ -535,6 +596,8 @@ namespace DeathStar
                 if(f.Block2(out var c,out bool anchor)){BigDish(f,c,anchor);return;}
                 f.Box(Armor,-2.25f,-2.25f,2.25f,2.25f,0,1.1f,0.12f);
                 f.Box(Armor,-1.55f,-1.55f,1.55f,1.55f,1.1f,2.05f,0.1f);
+                // Neck, bridge, globes and mast are true size in their class, standing on the stepped tower.
+                using var bridge=f.Equip("command top",0,0,Face.P(0,0,2.05f),new Vector2(2.1f,4.9f),0);
                 f.Box(Armor,-0.75f,-0.75f,0.75f,0.75f,2.05f,4.0f,0.06f);
                 var g=new Vector3[8];
                 for(int i=0;i<8;i++){bool upper=(i&4)!=0;float e=upper?0.7f:1.05f;g[i]=Face.P((i&1)!=0?e:-e,(i&2)!=0?2.45f:-2.45f,upper?4.9f:4.0f);}
@@ -561,13 +624,17 @@ namespace DeathStar
         }
 
         // ---------------------------------------------------------------- 2 x 2 landmarks
-        // Every tile of the block lays a quiet plinth; the anchor builds the landmark centred on the block (c).
+        // Every tile of the block lays a quiet plinth; the anchor builds the landmark centred on the block (c), at
+        // true size in the largest class the block has room for (span in metres).
+        static Equipment Landmark(Face f,Vector2 c,string name,float span)=>
+            f.Equip(name,c.x,c.y,Face.P(c.x,c.y,0.3f),new Vector2(span,span),0,2);
 
         // Command: a 9 m dish on a pedestal and yoke, tilted along the face's y, with a feed on a tripod.
         static void BigDish(Face f,Vector2 c,bool anchor)
         {
             f.Box(Armor,-Half,-Half,Half,Half,0,0.3f,0);
             if(!anchor)return;
+            using var dish=Landmark(f,c,"dish",9f);
             f.m.Cylinder(Smooth,Face.P(c.x,c.y,0.3f),Face.P(c.x,c.y,1.0f),2.2f,16,false,true,0.08f);
             f.m.Cylinder(Smooth,Face.P(c.x,c.y,1.0f),Face.P(c.x,c.y,2.8f),1.0f,16,false,true,0.06f);
             var hub=Face.P(c.x,c.y,3.1f);
@@ -592,6 +659,7 @@ namespace DeathStar
             f.Box(Armor,-Half,-Half,Half,Half,0,0.3f,0);
             f.bare.Add(Whole);
             if(!anchor)return;
+            using var reactor=Landmark(f,c,"reactor",9.4f);
             var o=Face.P(c.x,c.y,0.3f);
             f.m.Lathe(Smooth,o,Vector3.back,new[]{new Vector2(0,0),new Vector2(4.2f,0),new Vector2(4.2f,0.8f),new Vector2(3.7f,0.8f)},36,false);
             var dome=new List<Vector2>();
@@ -614,6 +682,7 @@ namespace DeathStar
             f.Box(Armor,-Half,-Half,Half,Half,0,0.3f,0);
             f.bare.Add(Whole);
             if(!anchor)return;
+            using var tank=Landmark(f,c,"sphere tank",7.4f);
             var o=Face.P(c.x,c.y,0.3f);
             f.m.Lathe(Smooth,o,Vector3.back,new[]{new Vector2(0,0),new Vector2(3.2f,0),new Vector2(3.2f,1.2f),new Vector2(0,1.2f)},32,false);
             f.m.Sphere(Smooth,Face.P(c.x,c.y,3.8f),3.5f,36);
@@ -643,10 +712,7 @@ namespace DeathStar
         {
             if(!f.primary){if(!f.axial)WindowRow(f,HighSill,HighHead);return;}
             bool big=f.Block2(out var c,out _);
-            var at=TileStructure.Center(f.cell)+(Vector3)f.n*Half;
-            if(big)at+=(Vector3)f.x*c.x+(Vector3)f.y*c.y;
-            var saved=f.m.metricAnchor;f.m.metricAnchor=new Vector4(at.x,at.y,at.z,1);
-            PadGeometry(f);f.m.metricAnchor=saved;
+            using(big?f.Fixed("pad quarter",c.x,c.y):f.Fixed("pad",0,0))PadGeometry(f);
         }
         static void PadGeometry(Face f)
         {

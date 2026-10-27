@@ -35,9 +35,9 @@ namespace DeathStar
             return BlockConstruction.FromFamilies(cells);
         }
 
-        // A cap of a sphere grown from the seed, round one cube corner: three ridges on the cube's edges meet at a
-        // crown. Every family sits on a ridge in a two-cell run; a run of wedges under the z ridge shows its keel on
-        // the inside, and a short wall half-covers the roof of the y ridge's first run. The cap's cut edge shows gables.
+        // A two-layer cap of a sphere grown from the seed, round one cube corner: three ridges on the cube's edges meet
+        // at a crown. Every family sits on a ridge in a two-cell run; a run of wedges under the z ridge shows its keel
+        // on the inside, and a short wall half-covers the roof of the y ridge's first run. The cut edge shows gables.
         // Coordinates below are for the (+x, +y, +z) corner; RidgeCell mirrors them to the corner facing the key light.
         public const int RidgeRadius=6,RidgeLow=-2;
         public static Vector3Int RidgeCell(int x,int y,int z)=>new Vector3Int(-x,y,-z);
@@ -47,17 +47,23 @@ namespace DeathStar
             new[]{TileFamily.Hull,TileFamily.Storage,TileFamily.Pad,TileFamily.Industrial},            // along y
             new[]{TileFamily.Corridor,TileFamily.Conduit,TileFamily.LifeSupport,TileFamily.Habitat},   // along z
         };
+        public static readonly (int y,int z,TileFamily family)[] ScaleCells=
+            {(0,0,TileFamily.Defense),(RidgeRadius-1,2,TileFamily.Defense),(0,3,TileFamily.Command),(RidgeRadius-1,4,TileFamily.Command)};
         public static BlockConstruction Ridges()
         {
             const int R=RidgeRadius;
             var cells=new Dictionary<Vector3Int,TileFamily>();
+            // Two layers, so single family cells have backing and face outward as in a real build.
             for(int x=RidgeLow;x<=R;x++)for(int y=RidgeLow;y<=R;y++)for(int z=RidgeLow;z<=R;z++)
-                if(Mathf.Max(x,Mathf.Max(y,z))==R)cells[RidgeCell(x,y,z)]=TileFamily.Hull;
+                if(Mathf.Max(x,Mathf.Max(y,z))>=R-1)cells[RidgeCell(x,y,z)]=TileFamily.Hull;
             for(int axis=0;axis<3;axis++)for(int run=0;run<4;run++)for(int k=0;k<2;k++)
             {var c=new Vector3Int(R,R,R);c[axis]=RidgeLow+run*2+k;cells[RidgeCell(c.x,c.y,c.z)]=RidgeRuns[axis][run];}
             cells[RidgeCell(R,R,R)]=TileFamily.Command;
-            for(int z=0;z<3;z++)cells[RidgeCell(R-1,R-1,z)]=TileFamily.Hull;
+            // Clearing the inner layer beside the wedges under the z ridge opens their keel.
+            for(int z=0;z<3;z++){cells.Remove(RidgeCell(R-2,R-1,z));cells.Remove(RidgeCell(R-1,R-2,z));}
             for(int y=RidgeLow;y<RidgeLow+2;y++)cells[RidgeCell(R+1,y,R)]=TileFamily.Hull;
+            // Scale comparison: Defense and Command on a cube-face-centre cell and on a smaller cell beside a ridge.
+            foreach(var (y,z,f) in ScaleCells)cells[RidgeCell(R,y,z)]=f;
             return BlockConstruction.FromFamilies(cells,BlockConstruction.SeedGuide);
         }
     }

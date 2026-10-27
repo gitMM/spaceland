@@ -456,7 +456,7 @@ Rules:
 
 - Kit parts follow the fixed-size rules of [Scale and human reference](#scale-and-human-reference). They are built directly from the cell's real corners in a rigid frame, so their edges meet the bent neighbours exactly.
 - 2 × 2 landmarks form only on four box cells.
-- A corridor needs at least 3.2 m across its cross-section, and a single landing pad a face of at least 4.6 m. Other families are never refused: their smallest size fits the smallest cells, and every family has a kit.
+- A corridor needs at least 3.2 m across its cross-section, and a single landing pad a face of at least 3.6 m (its 4.4 m deck, on a pedestal, may overhang the cell by up to 0.4 m a side). Other families are never refused: their smallest size fits the smallest cells, and every family has a kit.
 
 Implementation follows `doc/curved-grid-tiles-plan.md` (phases 3 and 4). Until then special cells build the box forms. The Foundry's shape view (C, twice) and its **Ridges** example show where the special cells are.
 
