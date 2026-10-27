@@ -49,7 +49,7 @@ namespace DeathStar
         };
         public static readonly (int y,int z,TileFamily family)[] ScaleCells=
             {(0,0,TileFamily.Defense),(RidgeRadius-1,2,TileFamily.Defense),(0,3,TileFamily.Command),(RidgeRadius-1,4,TileFamily.Command)};
-        public static BlockConstruction Ridges()
+        public static BlockConstruction Ridges(TileFamily crown=TileFamily.Command)
         {
             const int R=RidgeRadius;
             var cells=new Dictionary<Vector3Int,TileFamily>();
@@ -58,7 +58,7 @@ namespace DeathStar
                 if(Mathf.Max(x,Mathf.Max(y,z))>=R-1)cells[RidgeCell(x,y,z)]=TileFamily.Hull;
             for(int axis=0;axis<3;axis++)for(int run=0;run<4;run++)for(int k=0;k<2;k++)
             {var c=new Vector3Int(R,R,R);c[axis]=RidgeLow+run*2+k;cells[RidgeCell(c.x,c.y,c.z)]=RidgeRuns[axis][run];}
-            cells[RidgeCell(R,R,R)]=TileFamily.Command;
+            cells[RidgeCell(R,R,R)]=crown;
             // Clearing the inner layer beside the wedges under the z ridge opens their keel.
             for(int z=0;z<3;z++){cells.Remove(RidgeCell(R-2,R-1,z));cells.Remove(RidgeCell(R-1,R-2,z));}
             for(int y=RidgeLow;y<RidgeLow+2;y++)cells[RidgeCell(R+1,y,R)]=TileFamily.Hull;

@@ -62,12 +62,12 @@ namespace DeathStar
             if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
             return CellExposure.Buried;
         }
-        // Whether a crest carries on into the cell across the spine face at e: a ridge wedge along the same spine, or a
-        // crown whose arm arrives there.
+        // Whether a crest carries on into the cell across the spine face at e: a ridge wedge of the same family along the
+        // same spine, or a crown of the same family whose arm arrives there.
         bool CrestJoins(Vector3Int cell,int spine,int e)
         {
             var step=Vector3Int.zero;step[spine]=e;var q=cell+step;
-            if(!s.special.TryGetValue(q,out var o)||s.TryGet(q,out var qp)&&(qp.family==TileFamily.Corridor||qp.family==TileFamily.Conduit))return false;
+            if(!s.special.TryGetValue(q,out var o)||!s.TryGet(q,out var qp)||!s.TryGet(cell,out var own)||qp.family!=own.family)return false;
             var x=Exposure(q,o,out _,out _);
             return o.kind==CellShape.Wedge?o.spine==spine&&x==CellExposure.Ridge:x==CellExposure.Crown;
         }
@@ -83,9 +83,9 @@ namespace DeathStar
                 var y=n==p.axis||n==-p.axis?p.side:p.axis;
                 var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=y,curved=curved};f.x=TileStructure.Cross(f.y,-n);
                 m.Push((Vector3)n*Half,Quaternion.LookRotation(-(Vector3)n,(Vector3)y));
-                m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),null);
                 bool slope=(sh.roof>>i&1)==0&&(sh.kind==CellShape.Apex||i>>1!=sh.spine);
-                if(slope)Hatch(f,0,0,0.6f);
+                if(slope)SlopeFor(f,p.family);
+                m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),f.recess);
                 m.Pop();
                 int a=AxisOf(n),ua=(a+1)%3,va=(a+2)%3;
                 var holes=SpecialHoles(cell,n,sh);fieldHoles[(cell,n)]=holes;
@@ -103,14 +103,14 @@ namespace DeathStar
                 var (a,sa)=FaceAxis(roofs[0]);var (b,sb)=FaceAxis(roofs[1]);
                 var s0=MakeSection(cell,sh.spine,0,a,sa,b,sb);var s1=MakeSection(cell,sh.spine,1,a,sa,b,sb);
                 if(exposure==CellExposure.Ridge)
-                    using(m.BeginWorld("crest"))Crest(m,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
+                    using(m.BeginWorld("crest"))CrestFor(m,p.family,cell,s0,s1,CrestJoins(cell,sh.spine,-1),CrestJoins(cell,sh.spine,1));
                 if(exposure==CellExposure.Keel)
                     using(m.BeginWorld("keel"))Keel(m,s0,s1);
                 var along=(s1.crest-s0.crest).normalized;
-                if(open0)using(m.BeginWorld("gable"))Gable(m,s0,-along);
-                if(open1)using(m.BeginWorld("gable"))Gable(m,s1,along);
+                if(open0)using(m.BeginWorld("gable"))GableFor(m,p.family,s0,-along);
+                if(open1)using(m.BeginWorld("gable"))GableFor(m,p.family,s1,along);
             }
-            else if(exposure==CellExposure.Crown)using(m.BeginWorld("crown"))Crown(m,cell,roofs);
+            else if(exposure==CellExposure.Crown)using(m.BeginWorld("crown"))Crown(m,p.family,cell,roofs);
             m.Pop();
         }
 
@@ -145,14 +145,14 @@ namespace DeathStar
                     list.Add(Span(b0,lo0,hi0,b1,lo1,hi1));
                 }
             }
-            else if(sh.kind==CellShape.Wedge&&a==sh.spine)list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));
+            else if(sh.kind==CellShape.Wedge&&a==sh.spine||s.TryGet(cell,out var p)&&SlopeForm(p.family))list.Add(new Rect(c[ua]-Half,c[va]-Half,Cell,Cell));
             else list.Add(new Rect(c[ua]-1.2f,c[va]-1.2f,2.4f,2.4f));
             return list;
         }
 
         // A prism along a ridge from section s0 (t = 0) to s1 (t = 1), between t0 and t1, its convex profile (across,
         // up) in metres round the crest line. Frames are interpolated, so prisms ending on a shared section meet exactly.
-        static void Loft(TileMesh m,in Finish f,in Section s0,in Section s1,Vector2[] profile,float t0,float t1,bool cap0,bool cap1)
+        static void Loft(TileMesh m,in Finish f,in Section s0,in Section s1,Vector2[] profile,float t0,float t1,bool cap0,bool cap1,bool sides=true)
         {
             var a0=s0;var a1=s1;
             Vector3 P(float t,Vector2 q)
@@ -162,7 +162,7 @@ namespace DeathStar
             }
             var centroid=Vector2.zero;foreach(var q in profile)centroid+=q;centroid/=profile.Length;
             var middle=P((t0+t1)*0.5f,centroid);int n=profile.Length;
-            for(int i=0;i<n;i++)
+            for(int i=0;i<n&&sides;i++)
             {
                 Vector2 q0=profile[i],q1=profile[(i+1)%n];
                 Vector3 a=P(t0,q0),b=P(t0,q1),c=P(t1,q1),d=P(t1,q0);
@@ -221,22 +221,28 @@ namespace DeathStar
         }
         // Where three ridges meet: a drum hub and beacon on the outer corner, and an arm along each seam out to the
         // face it shares with the next wedge, ending on that face's section so it runs on into the ridge's crest.
-        void Crown(TileMesh m,Vector3Int cell,List<int> roofs)
+        void Crown(TileMesh m,TileFamily family,Vector3Int cell,List<int> roofs)
         {
             var axes=new (int axis,int sign)[3];for(int i=0;i<3;i++)axes[i]=FaceAxis(roofs[i]);
             var outer=cell;var inner=cell;
             foreach(var (ax,sg) in axes){outer[ax]+=sg>0?1:0;inner[ax]+=sg>0?0:1;}
-            Vector3 o=curved.Corner(outer),up=(o-curved.Corner(inner)).normalized;
+            Vector3 o=curved.Corner(outer),up=(o-curved.Corner(inner)).normalized;var arms=new Vector3[3];
             for(int i=0;i<3;i++)
             {
                 var (ax,sg)=axes[i];var (a,sa)=axes[(i+1)%3];var (b,sb)=axes[(i+2)%3];
                 if(a>b){var t=(a,sa);(a,sa)=(b,sb);(b,sb)=t;}
                 var end=MakeSection(cell,ax,sg>0?0:1,a,sa,b,sb);
                 var start=new Section{crest=o,up=up,across=(end.across-up*Vector3.Dot(end.across,up)).normalized};
-                float length=Mathf.Max(0.5f,Vector3.Distance(o,end.crest));
-                Loft(m,Armor,start,end,CrestBody,Mathf.Min(0.5f,1f/length),1,false,!CrestJoins(cell,ax,-sg));
-                Ribs(m,start,end,CrestRib,null,length);
+                // the arm starts inside the hub, in the crown's family's crest
+                var from=start;from.crest=Vector3.Lerp(o,end.crest,Mathf.Min(0.5f,1f/Mathf.Max(0.5f,Vector3.Distance(o,end.crest))));
+                CrestFor(m,family,cell,from,end,true,CrestJoins(cell,ax,-sg));
+                arms[i]=end.crest-o;
             }
+            HubFor(m,family,o,up,arms);
+        }
+        // The Hull crown's hub: a drum and a beacon.
+        static void Hub(TileMesh m,Vector3 o,Vector3 up)
+        {
             m.Lathe(Smooth,o-up*0.2f,up,new[]{new Vector2(1.3f,0),new Vector2(1.3f,0.7f),new Vector2(1.0f,0.95f),new Vector2(0,0.95f)},28,false);
             m.Cylinder(Smooth,o+up*0.75f,o+up*1.6f,0.22f,12,false,true,0.02f);
             m.Cylinder(RunningLight,o+up*1.6f,o+up*1.85f,0.16f,12,false,true);

@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phases 0–3 are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results) and [3](#phase-3-results) results); Phase 4 is not started. The
+2026-10-27. **Phases 0–3 and Phase 4 batch A are done** (see the [Phase 0](#phase-0-results), [1](#phase-1-results), [2](#phase-2-results), [3](#phase-3-results) and [4A](#phase-4-batch-a-results) results); batches B and C are not started. The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -339,6 +339,29 @@ because special cells no longer build box forms (full Foundry 1.75 s, Ridges exa
   special cells build the box forms" is now out of date and needs agreeing before it is changed.
 - **Lab:** the kit check (each open wedge or apex cell has its crest, crown, keel and gable parts and no box forms);
   `ridges-crown.png`.
+
+## Phase 4 batch A results
+
+2026-10-27. The tile lab passes 42/42 checks; the flat gallery is unchanged; timings unchanged (full Foundry rebuild
+1.82 s, single edits p50 0.56 s).
+
+- **Habitat:** a glazed A-frame gallery (sill band, glazed slopes in bays near 1.25 m with mullions, ridge beam),
+  a three-sided glazed lantern on a pedestal deck, glazing in strips inside the gable plate, and the deck window rows
+  on open slopes. The crown arms are galleries too, so a Habitat ridge runs straight into a Habitat lantern.
+- **Defense:** a crenellated battlement rail with a point-defence turret on every other cell (by cell parity), a
+  bastion of three turrets on a stepped triangular base, a heavy gun port on gables, and sloped casemates with gun
+  slits on open slopes.
+- **Command:** a phased-array spine with dark sensor panels angled to both sides, a spire with three dishes and a
+  beacon, an antenna mast with a globe at gables, and a bridge window strip on open slopes.
+- **Crests join only within a family.** A run ends with a cap where the next wedge or crown is another family.
+  `TileBuilder.Kits.cs` holds the family parts; dispatch is a switch per part, with the Hull kit as the default.
+- **Corridor and Conduit: no change, deliberately.** On special cells they already build working tubes, junction
+  hubs, collars with hatches and plugs. The planned A-frame corridor gallery needs a straight corridor run along a
+  ridge, and that never happens in a skin: a corridor links to every neighbour, so ridge corridor cells are always
+  junctions. The conduit's expansion loops and valve tower would be decoration only. Both are left out unless a case
+  shows up.
+- **Lab:** `ridges-sheet.png` (every ridge run close up) and `crowns-sheet.png` (the crown rebuilt in place as Hull,
+  Habitat, Defense and Command). The kit check covers all families.
 
 ## Phases
 

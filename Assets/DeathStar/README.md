@@ -121,10 +121,13 @@ the gallery's colour setting. The **Ridges** example is a cap round one cube cor
 with every family on a ridge, a keel inside, a half-covered roof and gables. `BlockConstruction.Shape` and
 `Exposure` classify cells from their eight corners; see `doc/curved-grid-tiles-plan.md`. Wedge and apex cells keep
 the skin and relief on their open faces but build no family forms. Instead they build their shape's kit in curved
-space from their real corners (`TileBuilder.Shapes.cs`, `TileMesh.BeginWorld`). For now every family gets the Hull
-kit: an armoured crest spine with ribs and running lights along each ridge; a hub and beacon on a crown, with an arm
-along each seam into its ridge's crest; an armour plate and hatch on open gables; a lit keel strip; a hatch on open
-slopes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
+space from their real corners (`TileBuilder.Shapes.cs`, `TileMesh.BeginWorld`). The Hull kit: an armoured crest
+spine with ribs and running lights along each ridge; a hub and beacon on a crown, with an arm along each seam into
+its ridge's crest; an armour plate and hatch on open gables; a lit keel strip; a hatch on open slopes. Habitat,
+Defense and Command have kits of their own (`TileBuilder.Kits.cs`): a glazed A-frame gallery, a glazed lantern, a
+glazed gable and window rows on slopes; a battlement rail with a turret on every other cell, a three-turret bastion, a
+gun port and casemates; a phased-array spine, a spire with three dishes, an antenna mast and a bridge window strip.
+Crests join only within a family. Other families build the Hull kit; corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
 on without seams.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
@@ -242,5 +245,6 @@ edits (p50/p95), and lists how every fixed-size part came out (true size over au
 class). Checks hold those parts within 5% and the rebuild, edit and triangle counts within budget; corridor and
 conduit cross-sections must come out within 2% of true size at every tube end, and tubes meeting across a face within
 1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge); every open wedge and apex cell must
-build its kit and no box forms (`ridges-crown.png` shows the crown). The script submits the lab as a
+build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
+`crowns-sheet.png` the crown as Hull, Habitat, Defense and Command). The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

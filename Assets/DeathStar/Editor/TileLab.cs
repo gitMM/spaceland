@@ -472,6 +472,30 @@ namespace DeathStar.EditorTools
                 ScaleCheck("Ridges",view,checks,notes);
                 ConnectorCheck("Ridges",model,checks,notes);
                 KitCheck("Ridges",model,checks,notes);
+                // Each run on the ridges close up, in RidgeRuns order (x ridge, y ridge, z ridge; four runs each).
+                var runSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);int idx=0;
+                for(int axis=0;axis<3;axis++)for(int run=0;run<4;run++,idx++)
+                {
+                    var ca=new Vector3Int(R,R,R);ca[axis]=SettlementExamples.RidgeLow+run*2;var cb=ca;cb[axis]+=1;
+                    Vector3 pa=At(ca.x,ca.y,ca.z),pb=At(cb.x,cb.y,cb.z),runMid=(pa+pb)*0.5f,runUp=runMid.normalized;
+                    var runAcross=Vector3.Cross(runUp,(pb-pa).normalized).normalized;
+                    t=rig.Shoot(new TileGallery.View(runMid+runUp*8+runAcross*7,runMid+runUp*1.2f,runUp,55),W/4,H/3);
+                    runSheet.SetPixels(idx%4*(W/4),(2-idx/4)*(H/3),W/4,H/3,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                runSheet.Apply();Save(runSheet,Path.Combine(Dir,"ridges-sheet.png"));UnityEngine.Object.DestroyImmediate(runSheet);
+                shots.Add(("ridges-sheet.png","every ridge run close up: x ridge Habitat, Defense, Command, Power; y ridge Hull, Storage, Pad, Industrial; z ridge Corridor, Conduit, Life Support, Habitat"));
+                // The crown in each family with a kit of its own, rebuilt in place.
+                var crowns=new[]{TileFamily.Hull,TileFamily.Habitat,TileFamily.Defense,TileFamily.Command};
+                var crownSheet=new Texture2D(W,H,TextureFormat.RGBA32,false);
+                var crownView=new TileGallery.View(crownPoint+(outward*0.8f+side*0.6f+Vector3.Cross(side,outward)*0.3f).normalized*20,crownPoint,outward,45);
+                for(int i=0;i<crowns.Length;i++)
+                {
+                    view.Rebuild(SettlementExamples.Ridges(crowns[i]),new[]{SettlementExamples.RidgeCell(R,R,R)});
+                    t=rig.Shoot(crownView,W/2,H/2);
+                    crownSheet.SetPixels(i%2*(W/2),(1-i/2)*(H/2),W/2,H/2,t.GetPixels());UnityEngine.Object.DestroyImmediate(t);
+                }
+                crownSheet.Apply();Save(crownSheet,Path.Combine(Dir,"crowns-sheet.png"));UnityEngine.Object.DestroyImmediate(crownSheet);
+                shots.Add(("crowns-sheet.png","the crown as Hull, Habitat, Defense and Command (left to right, top to bottom)"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }
