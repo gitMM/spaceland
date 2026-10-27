@@ -1,0 +1,7 @@
+{
+  "name": "DeathStar.Editor",
+  "rootNamespace": "DeathStar.EditorTools",
+  "references": ["DeathStar.Runtime", "Unity.Collections", "Unity.Mathematics", "Unity.Burst", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

@@ -1,0 +1,105 @@
+#pragma kernel Generate
+#pragma kernel Cull
+#pragma target 5.0
+#include "PlanetCommon.hlsl"
+
+StructuredBuffer<int4> _Neighbours;
+RWStructuredBuffer<Primitive> _Primitives;
+RWStructuredBuffer<uint> _Counts;
+RWStructuredBuffer<float2> _HeightBounds;
+AppendStructuredBuffer<uint> _VisibleTops;
+AppendStructuredBuffer<uint> _VisibleWalls;
+AppendStructuredBuffer<uint> _VisibleBoxes;
+float4 _Frustum[6];
+float3 _CameraPosition;
+float _PixelScale;
+float _DetailScale;
+int _CellCount;
+#define SLOTS 12
+
+void Emit(uint cell, inout uint count, uint flags, float lower, float upper, float4 rect)
+{
+    Primitive p;
+    p.cell=cell; p.flags=flags; p.lower=lower; p.upper=upper; p.rect=rect;
+    _Primitives[cell*SLOTS+count]=p;
+    count++;
+}
+
+[numthreads(64,1,1)]
+void Generate(uint3 tid : SV_DispatchThreadID)
+{
+    uint id=tid.x;
+    if(id>=(uint)_CellCount) return;
+    CellPlan p=_Plans[id];
+    uint count=0;
+    float low=p.height, high=p.height;
+    Emit(id,count,0,p.height,p.height,float4(0,0,1,1));
+    int4 neighbours=_Neighbours[id];
+    [unroll] for(uint side=0;side<4;side++)
+    {
+        float nh=_Plans[neighbours[side]].height;
+        if(p.height>nh+0.001)
+        {
+            Emit(id,count,1|(side<<2),nh,p.height,float4(0,0,1,1));
+            low=min(low,nh);
+        }
+    }
+    if(p.kind!=4)
+    {
+        float tile=_Radius*1.6/_Resolution;
+        [unroll] for(uint k=0;k<7;k++)
+        {
+            uint h=PlanetHash(p.seed+k*71);
+            if(PlanetRandom(h)>p.density && !(p.kind==2 && k<2)) continue;
+            float2 start=float2(PlanetRandom(h+1),PlanetRandom(h+2))*0.63+0.07;
+            float2 size=float2(PlanetRandom(h+3),PlanetRandom(h+4))*0.19+0.09;
+            float rise=tile*(0.08+PlanetRandom(h+5)*0.28);
+            uint lod=2;
+            if(k==0 && p.kind==1)
+            {start=float2(0.18,0.22);size=float2(0.58,0.48);rise=tile*0.5;lod=1;}
+            if(k==1 && p.kind==3)
+            {start=float2(0.13,0.12);size=float2(0.18,0.7);rise=tile*0.7;lod=1;}
+            if(p.kind==2)
+            {size=float2(0.12,0.54);rise=tile*0.22;lod=1;}
+            float top=p.height+rise;
+            Emit(id,count,2|(lod<<4),p.height-0.015,top,float4(start,start+size));
+            high=max(high,top+tile*0.03); // tangent fitting margin
+        }
+    }
+    _Counts[id]=count;
+    _HeightBounds[id]=float2(low,high);
+}
+
+[numthreads(64,1,1)]
+void Cull(uint3 tid : SV_DispatchThreadID)
+{
+    uint id=tid.x;
+    if(id>=(uint)_CellCount) return;
+    float2 height=_HeightBounds[id];
+    float3 center=CellDirection(id)*(_Radius+(height.x+height.y)*0.5);
+    float bound=3.2*_Radius/_Resolution+(height.y-height.x)*0.5+0.1;
+    [unroll] for(uint plane=0;plane<6;plane++)
+        if(dot(_Frustum[plane].xyz,center)+_Frustum[plane].w < -bound) return;
+
+    float3 delta=center-_CameraPosition;
+    float distance=length(delta);
+    float3 ray=delta/max(distance,0.001);
+    float closest=dot(-_CameraPosition,ray);
+    float occluder=_Radius*0.90-bound; // always below the deepest permitted surface
+    if(closest>0 && closest<distance-bound && occluder>0 &&
+        length(_CameraPosition+ray*closest)<occluder) return;
+
+    float pixels=(1.6*_Radius/_Resolution)*_PixelScale/max(distance-bound,0.1)*_DetailScale;
+    uint count=_Counts[id];
+    for(uint i=0;i<count;i++)
+    {
+        uint index=id*SLOTS+i;
+        uint flags=_Primitives[index].flags;
+        uint lod=(flags>>4)&3;
+        if((lod==1 && pixels<3) || (lod==2 && pixels<10)) continue;
+        uint kind=flags&3;
+        if(kind==0) _VisibleTops.Append(index);
+        else if(kind==1) _VisibleWalls.Append(index);
+        else _VisibleBoxes.Append(index);
+    }
+}

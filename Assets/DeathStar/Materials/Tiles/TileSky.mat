@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: TileSky
+  m_Shader: {fileID: 4800000, guid: 74ea6c26cb18f2242b726d41ec0ef65d, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _PlanetSize: 0.40673664
+    - _Stars: 1.4
+    m_Colors:
+    - _Atmosphere: {r: 0.25, g: 0.5, b: 1.1, a: 1}
+    - _Band: {r: 0.03, g: 0.034, b: 0.06, a: 1}
+    - _Nadir: {r: 0.004, g: 0.005, b: 0.009, a: 1}
+    - _PlanetColor: {r: 0.32, g: 0.36, b: 0.42, a: 1}
+    - _PlanetDir: {r: 0.5515188, g: -0.38104934, b: 0.74204344, a: 0}
+    - _SunDir: {r: -0.61984503, g: 0.54986256, b: -0.55986005, a: 0}
+    - _Zenith: {r: 0.004, g: 0.005, b: 0.009, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
