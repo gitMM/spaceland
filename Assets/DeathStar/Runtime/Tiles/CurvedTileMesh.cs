@@ -58,6 +58,24 @@ namespace DeathStar
             float la=a.magnitude,lb=b.magnitude,sin=Vector3.Cross(a,b).magnitude/Mathf.Max(1e-6f,la*lb);
             return new Vector2(la,lb)*(TileBuilder.Cell*sin);
         }
+        // Inverse square root of the 2 x 2 metric of tangent vectors a and b (symmetric): a, b times it are orthonormal.
+        static void InvSqrt(Vector3 a,Vector3 b,out float m00,out float m01,out float m11)
+        {
+            float aa=a.sqrMagnitude,ab=Vector3.Dot(a,b),bb=b.sqrMagnitude;
+            float det=Mathf.Sqrt(Mathf.Max(0.00001f,aa*bb-ab*ab)),k=Mathf.Sqrt(aa+bb+2*det);
+            float inv=k/Mathf.Max(0.00001f,(aa+det)*(bb+det)-ab*ab);
+            m00=(bb+det)*inv;m11=(aa+det)*inv;m01=-ab*inv;
+        }
+        // Cross-section of a tube at a station point on its spine: the derivatives along the two axes across the run
+        // (ua, va), made orthonormal by their metric. On a shared face both cells derive them from that face's four
+        // corners, so tubes meet exactly.
+        void Tube(Vector3 station,int ua,int va,out Vector3 p,out Vector3 u,out Vector3 v)
+        {
+            Sample(station,out p,out var dx,out var dy,out var dz);
+            Vector3 a=ua==0?dx:ua==1?dy:dz,b=va==0?dx:va==1?dy:dz;
+            InvSqrt(a,b,out float m00,out float m01,out float m11);
+            u=a*m00+b*m01;v=a*m01+b*m11;
+        }
         // Inverse square root of the tangent metric. All quarters use the same assembly anchor, keeping the
         // 9 m deck and central hatch joined while removing local stretch and shear from their human-scale forms.
         public Matrix4x4 Metric(Vector4 anchor,Vector4 frame)
@@ -67,10 +85,8 @@ namespace DeathStar
             int axis=frame.x!=0?0:frame.y!=0?1:2,u=(axis+1)%3,v=(axis+2)%3;
             Transform(anchor,frame,out _,out var dx,out var dy,out var dz);
             Vector3 Basis(int i)=>i==0?dx:i==1?dy:dz;
-            var a=Basis(u);var b=Basis(v);float aa=a.sqrMagnitude,ab=Vector3.Dot(a,b),bb=b.sqrMagnitude;
-            float det=Mathf.Sqrt(Mathf.Max(0.00001f,aa*bb-ab*ab)),k=Mathf.Sqrt(aa+bb+2*det);
-            float inv=k/Mathf.Max(0.00001f,(aa+det)*(bb+det)-ab*ab);
-            m=Matrix4x4.identity;m[u,u]=(bb+det)*inv;m[v,v]=(aa+det)*inv;m[u,v]=m[v,u]=-ab*inv;
+            InvSqrt(Basis(u),Basis(v),out float muu,out float muv,out float mvv);
+            m=Matrix4x4.identity;m[u,u]=muu;m[v,v]=mvv;m[u,v]=m[v,u]=muv;
             metricFrames.Add((anchor,frame),m);return m;
         }
         // Rigid placement of a fixed-size part: the anchor's curved position, and an orthonormal frame from the
@@ -156,6 +172,18 @@ namespace DeathStar
             {
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;
+                if(anchor.w>1.5f)
+                {
+                    // Tube (TileMesh.BeginTube): a rigid, true-size cross-section round the spine through the anchor
+                    // along the frame's axis; only the run follows the cells.
+                    Vector3 A=f;int axis=A.x!=0?0:A.y!=0?1:2,ua=(axis+1)%3,va=(axis+2)%3;
+                    var origin0=(Vector3)anchor;var spine=origin0+A*Vector3.Dot(p-origin0,A);var off=p-spine;
+                    Tube(spine,ua,va,out var at,out var tu,out var tv);var tt=Vector3.Cross(tu,tv);
+                    Vector3 R(Vector3 d)=>tt*d[axis]+tu*d[ua]+tv*d[va];
+                    vertices[i]=at+tu*off[ua]+tv*off[va];normals[i]=R(normals[i]).normalized;
+                    var tg=tangents[i];var rt=R(tg);tangents[i]=new Vector4(rt.x,rt.y,rt.z,tg.w);
+                    continue;
+                }
                 var metric=Metric(anchor,f);var pivot=(Vector3)anchor;
                 if(anchor.w>=0.5f&&((Vector3)f).sqrMagnitude>=0.5f)
                 {

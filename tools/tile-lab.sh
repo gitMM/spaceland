@@ -42,7 +42,11 @@ done
 
 args=$(printf '%s ' "${@:-report}")
 args=${args% }
-out=$(unity command run_script --timeout 120 --project-path "$P" --file tools/TileLabEntry.cs --entry TileLabEntry.Run --args "[\"$args\"]" --result-only --no-banner 2>&1)
+# A detached job: a direct call is aborted after 30 s on the editor's main thread, and the lab takes longer.
+sub=$(unity command run_script --detach --project-path "$P" --file tools/TileLabEntry.cs --entry TileLabEntry.Run --args "[\"$args\"]" --json --no-banner 2>&1)
+job=$(echo "$sub" | grep -o '"jobId": *"[0-9a-f]*"' | head -1 | grep -o '[0-9a-f]\{16,\}')
+if [ -z "$job" ]; then echo "Could not start the lab job:"; echo "$sub"; exit 1; fi
+out=$(unity job wait "$job" --timeout 600 --project-path "$P" --json --no-banner 2>&1)
 if ! echo "$out" | grep -q '"result": "DONE'; then echo "$out"; exit 1; fi
 if [ "${1:-report}" != "report" ]; then echo "$out" | grep -o '"result": "DONE[^"]*' | sed 's/"result": "//'; exit 0; fi
 cat DeathStarRuns/Tiles/last.txt

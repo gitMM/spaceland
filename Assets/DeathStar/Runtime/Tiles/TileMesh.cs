@@ -75,14 +75,26 @@ namespace DeathStar
         // lab check the size they come out at. Only free-standing parts: anything that must meet the face's wall or
         // a cell edge exactly stays in station space.
         public readonly List<(string name,int start,int end)> fixedParts=new List<(string,int,int)>();
-        public FixedPart BeginFixed(string name,Vector3 anchor)=>new FixedPart(this,name,anchor);
+        // frame: the plane the part stands on, for parts not on a face (connector hubs); default the current face.
+        public FixedPart BeginFixed(string name,Vector3 anchor,Vector4? frame=null)=>new FixedPart(this,name,new Vector4(anchor.x,anchor.y,anchor.z,1),frame,fixedParts);
+        // Tube parts (corridors, conduits): a true-size cross-section round the spine through origin along axis A
+        // (a lattice direction); the run follows the cells. Ranges let the lab check joints and widths.
+        public readonly List<(string name,int start,int end)> tubeParts=new List<(string,int,int)>();
+        public FixedPart BeginTube(string name,Vector3 origin,Vector3 A)=>new FixedPart(this,name,new Vector4(origin.x,origin.y,origin.z,2),new Vector4(A.x,A.y,A.z,0),tubeParts);
         public readonly struct FixedPart:System.IDisposable
         {
-            readonly TileMesh m;readonly string name;readonly int start;readonly Vector4 saved;
-            public FixedPart(TileMesh m,string name,Vector3 at)
-            {this.m=m;this.name=name;start=m.positions.Count;saved=m.metricAnchor;m.metricAnchor=new Vector4(at.x,at.y,at.z,1);}
-            public void Dispose(){m.metricAnchor=saved;if(m.positions.Count>start)m.fixedParts.Add((name,start,m.positions.Count));}
+            readonly TileMesh m;readonly string name;readonly int start;readonly Vector4 savedAnchor,savedFrame;
+            readonly List<(string,int,int)> list;
+            public FixedPart(TileMesh m,string name,Vector4 anchor,Vector4? frame,List<(string,int,int)> list)
+            {
+                this.m=m;this.name=name;this.list=list;start=m.positions.Count;savedAnchor=m.metricAnchor;savedFrame=m.surfaceFrame;
+                m.metricAnchor=anchor;if(frame.HasValue)m.surfaceFrame=frame.Value;
+            }
+            public void Dispose()
+            {m.metricAnchor=savedAnchor;m.surfaceFrame=savedFrame;if(m.positions.Count>start)list.Add((name,start,m.positions.Count));}
         }
+        // Any local transform on the stack (e.g. undoing a cell's stretch along a tube's run).
+        public void PushMatrix(Matrix4x4 local){stack.Push(matrix);matrix=matrix*local;}
 
         // Frame on one face of the box min..max. Side faces put y=0 at the tile's ground so heights read the same on
         // every face; the top face has y towards the back (+Z).

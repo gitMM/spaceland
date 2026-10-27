@@ -130,7 +130,12 @@ lowest 0.3 m drops onto the curved surface. Equipment comes in three sizes, L, M
 authored size): each part takes the largest that fits its face (`Face.Equip`). Parts set into the wall (window rows,
 Hull windows) keep their place on the wall but take true dimensions from the local stretch. Repeated parts change in
 number, not size: window panes, Power fins, vault rings and Storage ribs on a 0.83–1.25 m pitch, and Habitat walls
-under 4.2 m get one deck of windows instead of two. The flat gallery is unchanged. Placement refuses a corridor in a
+under 4.2 m get one deck of windows instead of two. Corridors and conduits are tubes (`TileMesh.BeginTube`): the
+cross-section is rigid and true size, only the length follows the cells, and at a shared face both tiles take the
+cross-section frame from that face's four corners, so runs meet exactly. Ribs, porthole rims and collars keep their
+length along the run; rib count follows the run's length. Collars and the sockets they plug into share one radius
+(2.15 m, down to 1.6 m on narrow faces); ports, junction hubs and sockets are rigid. Conduit elbows stay in station
+space, with a flange at each end over the step to the true-size pipes. The flat gallery is unchanged. Placement refuses a corridor in a
 cell narrower than 3.2 m and a landing pad on a face under 3.6 m (its 4.4 m deck may overhang the cell by 0.4 m a side), and says why; hovering names the family, the cell's
 shape and the face size.
 
@@ -156,7 +161,9 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
   globes and mast; Corridor an open ribbed tube with portholes and a docking collar with a hatch where it ends in
   space; Landing Pad a round deck on a pedestal and angled struts with an airlock hatch in its centre (four pads on
   even station cells make one 9 m pad); Conduit an open cell carrying a bundle of big pipes on saddles that links to
-  its neighbours, turns on elbows and plugs into the tiles it reaches. Corridor and Conduit are not solid.
+  its neighbours, turns on elbows and plugs into the tiles it reaches. A conduit group that would plug in nowhere (a
+  closed loop, or runs ending in space) is tethered: its run ends turn into the solid tiles beside them and its elbows
+  branch into them, while straight runs stay clean. Corridor and Conduit are not solid.
 - **2 x 2 landmarks.** Four tiles of one family on even station cells, all showing the same main face, merge into
   one landmark: Command a 9 m dish, Power a reactor dome between radiator wings, Life Support a sphere tank, Storage
   one big hangar mouth, Landing Pad one 9 m pad. On their own, Life Support tiles show grouped upright tanks and tank
@@ -226,4 +233,7 @@ the colours actually change the render on both detail levels. `foundry-shapes.pn
 cube-face-centre cell and beside a ridge. The report's "Foundry: cell shapes and rebuild time" section counts shapes
 and exposures, splits a full rebuild into solve, forms, carving and meshes, bend and scene objects, times 20 scripted
 edits (p50/p95), and lists how every fixed-size part came out (true size over authored size, by part and size
-class). Checks hold those parts within 5% and the rebuild, edit and triangle counts within budget.
+class). Checks hold those parts within 5% and the rebuild, edit and triangle counts within budget; corridor and
+conduit cross-sections must come out within 2% of true size at every tube end, and tubes meeting across a face within
+1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge). The script submits the lab as a
+detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

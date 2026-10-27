@@ -49,6 +49,16 @@ namespace DeathStar.EditorTools
             foreach(var d in TileStructure.Directions)pipeCells[d]=TileFamily.Conduit;
             var pipes=SettlementSolver.Solve(BlockConstruction.FromFamilies(pipeCells));
             Require(pipes.cells.Values.All(p=>p.spatial),"Nonplanar pipe group lost its spatial junctions");
+            // A 2 x 2 conduit loop beside a hull and a habitat (four elbows, no run ends) used to float beside them,
+            // plugged into nothing. Tethered, the elbows touching the ship branch into it and the ship builds ports.
+            var loop=new Dictionary<Vector3Int,TileFamily>{{new Vector3Int(0,0,0),TileFamily.Hull},{new Vector3Int(-1,0,0),TileFamily.Habitat}};
+            foreach(var c in new[]{new Vector3Int(0,0,-1),new Vector3Int(-1,0,-1),new Vector3Int(0,0,-2),new Vector3Int(-1,0,-2)})loop[c]=TileFamily.Conduit;
+            var looped=SettlementSolver.Solve(BlockConstruction.FromFamilies(loop));
+            Require(looped.cells.Values.Where(p=>p.family==TileFamily.Conduit).All(p=>p.tether),"Unplugged conduit loop not tethered");
+            var loopBuilder=new TileBuilder(looped);
+            foreach(var ship in new[]{new Vector3Int(0,0,0),new Vector3Int(-1,0,0)})
+                Require(loopBuilder.Build(ship).fixedParts.Exists(p=>p.name=="port"),"Conduit loop did not plug into "+ship);
+            Require(SettlementSolver.Solve(SettlementExamples.Foundry()).cells.Values.All(p=>!p.tether),"A conduit group that plugs in was tethered");
             var pipeMesh=new TileBuilder(pipes).Build(Vector3Int.zero).ToMesh("spatial junction validation");
             for(int i=0;i<3;i++)Require(pipeMesh.bounds.min[i]<=-2.49f&&pipeMesh.bounds.max[i]>=2.49f,"Spatial conduit dropped a face link");
             UnityEngine.Object.DestroyImmediate(pipeMesh);checks++;

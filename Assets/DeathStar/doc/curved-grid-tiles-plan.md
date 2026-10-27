@@ -1,6 +1,6 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phases 0 and 1 are done** (see [Phase 0 results](#phase-0-results) and [Phase 1 results](#phase-1-results)); Phases 2–4 are not started. The
+2026-10-27. **Phases 0–2 are done** (see [Phase 0](#phase-0-results), [Phase 1](#phase-1-results) and [Phase 2](#phase-2-results) results); Phases 3–4 are not started. The
 [design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
@@ -282,8 +282,34 @@ Measured 2026-10-27 in the editor, which compiles C# in Debug mode (managed code
   ≤ 2.43 s, single edits p50 ≤ 0.80 s and p95 ≤ 1.45 s, stage ≤ 1.04M triangles. Measured now: 1.86–2.20 s, p50
   0.56–0.60 s, p95 0.92–1.0 s.
 - **Lab time is the next constraint.** The editor pipeline aborts a script after 30 s on the main thread, and a full
-  report now takes about 23 s. Before Phase 3 adds its sheets, `tools/tile-lab.sh` needs to split the report into
-  several calls.
+  report now takes about 23 s. Resolved in Phase 2: the script runs the lab as a detached job.
+
+## Phase 2 results
+
+2026-10-27. The tile lab passes 40/40 checks; the flat gallery is unchanged (947,310 triangles); timings are
+unchanged (full Foundry rebuild 1.89–1.95 s, single edits p50 ≈ 0.6 s).
+
+- **Tube mode in `Bend`.** Corridor and conduit geometry is tagged with a spine (`TileMesh.BeginTube`: origin and run
+  axis). Each vertex goes to its spine point, mapped through the cells, plus its cross-section offset in metres. The
+  cross-section frame comes from the derivatives along the two axes across the run, made orthonormal by their metric
+  (`CurvedTileMesh.Tube`). On a shared face these come from that face's four corners, so both tiles derive the same
+  frame. That is the only new mechanism: no separate world-space path was needed.
+- **True cross-sections, true lengths along the run.** All 23 tube ends in the two examples measure 1.000 of their
+  authored width. Ribs, porthole rims and collars keep their length along the run (the cell's stretch is undone
+  locally), and rib count follows the run's length (pitch about 1.25 m). Collars and the sockets they plug into share
+  one radius from the shared face's room: 2.15 m, down to 1.6 m round the 1.4 m tube on narrow faces.
+- **Joints.** Tubes meeting across a face line up exactly: 0.00 mm, on 3 joints. Sockets, conduit ports and junction
+  hubs (corridor and conduit) are rigid fixed-size parts; hubs stand on a plane through the cell centre.
+- **Conduit elbows stay in station space.** Their quarter-torus has no single straight spine. A flange at each end
+  (curved builds only) covers the step to the neighbours' true-size pipes; the lab leaves elbows out of its checks.
+- **Moved to Phase 3:** `ShapeFrame`, the world-space build path and the relief boundary at special cells. Nothing
+  uses them before the kits. Note: wedge and apex skins need no new path, because the box path already maps a cell's
+  faces exactly onto its corners. Only kit parts with frames of their own (the merged roof, the crown) need one.
+- **Lab:**
+  - The connector check rebuilds corridor and conduit tiles and measures the far mesh's tube vertices at every face a
+    run leaves through.
+  - `ridges-connectors.png` shows the z ridge's corridor and conduit runs.
+  - `tools/tile-lab.sh` submits the lab as a detached job (`unity job wait`), so it can run past 30 s.
 
 ## Phases
 
@@ -291,8 +317,8 @@ Measured 2026-10-27 in the editor, which compiles C# in Debug mode (managed code
 |---|---|---|---|
 | **0. Baseline and shapes** (done) | S | `CellShape`/`ShapeInfo` cached in `BlockConstruction`; exposure helper. The C key cycles Off → Family → Shape (Box grey, Wedge orange, Apex magenta, too-small red). `SettlementExamples.Ridges()`: an octant of a radius-6 skin (three ridges and a crown) with a keel run underneath, a half-covered roof and gables, families in 2-cell runs (three ridges of 8 cells hold 12 runs). Lab: shape counts, timing splits, per-edit p50/p95 over 20 scripted edits. Fix the top hotspot if it is local | Numbers in `report.md`; no visual change; all existing checks pass |
 | **1. Fixed-size parts** (done) | M | Anchor scope, the per-family conversion list, count-fit, size classes, margins, placement rules and preview text | Fixed-part scale check passes; `foundry-scale.png` shows one family on a face-centre cell beside the same family near a ridge; budgets hold |
-| **2. Direct path and connectors** | M | `ShapeFrame`, direct emission without `Bend`, relief boundary, corridor and conduit sweeps, fixed sockets and junctions | Shared-edge check: direct/bent seams match within 1 mm; corridor inner width ±2% everywhere; per-edit time ≤ baseline |
-| **3. Generic special skins** | M | The Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
+| **2. Connectors** (done) | M | Corridor and conduit tubes with a true-size cross-section, fixed sockets, ports and junctions (the special-cell build path moved to Phase 3) | Tubes meeting across a face match within 1 mm; corridor and conduit width ±2% everywhere; per-edit time ≤ baseline |
+| **3. Generic special skins** | M | `ShapeFrame` and rigid kit parts placed in it; relief closing at special cells; the Hull kit (crest, slope, gable, crown), shared keel strip, half-fillet and spike. Other families use the Hull kit with family trim until Phase 4. Carving spike decided | `ridges.png`, `ridges-keel.png` and a crown close-up from the Ridges example; no special cell goes through the box path |
 | **4. Family kits** | L, 3 batches | A: Habitat, Defense, Command, Corridor/Conduit forms (most visible, human scale). B: Power, Life Support, Storage, Pad (cradle and pod). C: Industrial, Hull polish | Each batch adds `ridges-sheet.png` (each family's ridge run) and `crowns-sheet.png` (each family's crown on the same apex, rebuilding one tile per shot); triangle budget; scale check |
 
 Phase 3 makes every special cell look intentional, so Phase 4 can stop after any batch.

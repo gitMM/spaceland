@@ -253,6 +253,52 @@ namespace DeathStar.EditorTools
                 (off.Count>0?" (outside: "+string.Join(", ",off)+")":"")));
         }
 
+        // Corridor and conduit tubes (not elbows, which stay in station space): at every face a run leaves through,
+        // the cross-section comes out at its authored width, and two tubes meeting there share their vertices. Uses
+        // the far mesh, whose armour is plain quads.
+        static void ConnectorCheck(string example,BlockConstruction model,List<(bool ok,string text)> checks,List<string> notes)
+        {
+            var structure=SettlementSolver.Solve(model);var warp=new CurvedTileMesh(model);var builder=new TileBuilder(structure,warp);
+            var sides=new Dictionary<(Vector3Int,int),List<(TileFamily family,List<Vector3> ring)>>();
+            float minW=float.MaxValue,maxW=0;int rings=0;
+            foreach(var pair in structure.cells)
+            {
+                var cell=pair.Key;var p=pair.Value;
+                if(p.family!=TileFamily.Corridor&&p.family!=TileFamily.Conduit)continue;
+                var source=builder.Build(cell);if(source.VertexCount==0||source.tubeParts.Count==0)continue;
+                if(source.tubeParts.Exists(t=>t.name=="conduit flange"))continue;
+                var (near,far)=source.ToMeshes("connector check");var mesh=far??near;
+                var anchors=new List<Vector4>();mesh.GetUVs(5,anchors);
+                var before=mesh.vertices;warp.Bend(near,cell);if(far!=null)warp.Bend(far,cell,near,source.SharedVertices);var after=mesh.vertices;
+                foreach(var d in TileStructure.Directions)
+                {
+                    // Tube vertices only (anchor w 2): saddle feet on a conduit's bed face stretch with the cell.
+                    var ring=new List<int>();
+                    for(int i=0;i<before.Length;i++)if(anchors[i].w>1.5f&&Mathf.Abs(Vector3.Dot(before[i],d)-TileBuilder.Half)<1e-4f)ring.Add(i);
+                    if(ring.Count<3)continue;
+                    float sw=0,ww=0;
+                    foreach(int a in ring)foreach(int b in ring){float s=(before[a]-before[b]).sqrMagnitude;if(s>sw){sw=s;ww=(after[a]-after[b]).magnitude;}}
+                    float ratio=ww/Mathf.Max(1e-4f,Mathf.Sqrt(sw));minW=Mathf.Min(minW,ratio);maxW=Mathf.Max(maxW,ratio);rings++;
+                    var other=cell+d;int axis=d.x!=0?0:d.y!=0?1:2;var key=(BlockConstruction.Compare(cell,other)<0?cell:other,axis);
+                    if(!sides.TryGetValue(key,out var list))sides[key]=list=new List<(TileFamily,List<Vector3>)>();
+                    list.Add((p.family,ring.Select(i=>after[i]).ToList()));
+                }
+                UnityEngine.Object.DestroyImmediate(near);if(far!=null)UnityEngine.Object.DestroyImmediate(far);
+            }
+            // A corridor beside a conduit isn't meant to line up: only joints within one family.
+            float gap=0;int joints=0;
+            foreach(var list in sides.Values)
+            {
+                if(list.Count!=2||list[0].family!=list[1].family)continue;joints++;
+                foreach(var (a,b) in new[]{(list[0].ring,list[1].ring),(list[1].ring,list[0].ring)})
+                    foreach(var v in a)gap=Mathf.Max(gap,b.Min(w=>(w-v).magnitude));
+            }
+            if(rings==0){notes.Add($"{example} example: no corridor or conduit tubes");return;}
+            notes.Add($"{example} example, connectors: {rings} tube ends at {minW:0.000}–{maxW:0.000} of their authored width; {joints} joints between tubes, widest gap {gap*1000:0.00} mm");
+            checks.Add((minW>=0.98f&&maxW<=1.02f,$"{example}: corridor and conduit cross-sections within 2% of true size ({minW:0.000}–{maxW:0.000})"));
+            checks.Add((gap<=0.001f,$"{example}: tubes meeting across a face line up within 1 mm ({joints} joints, widest gap {gap*1000:0.00} mm)"));
+        }
+
         // Ten additions on open faces, each removed again, through the same TryEdit and incremental rebuild as a click.
         static (string text,double p50,double p95) EditTimings(ref BlockConstruction model,FoundrySettlement view)
         {
@@ -293,6 +339,7 @@ namespace DeathStar.EditorTools
                 notes.Add($"Foundry example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
                 checks.Add((full.Total<=BudgetFoundryMs,$"Foundry full rebuild within budget: {full.Total:0} ms (≤ {BudgetFoundryMs:0})"));
                 ScaleCheck("Foundry",view,checks,notes);
+                ConnectorCheck("Foundry",model,checks,notes);
                 TileLook.AddLights(root.transform);
                 var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
                 var warp=new CurvedTileMesh(model);
@@ -389,7 +436,14 @@ namespace DeathStar.EditorTools
                 }
                 sheet.Apply();Save(sheet,Path.Combine(Dir,"foundry-scale.png"));UnityEngine.Object.DestroyImmediate(sheet);
                 shots.Add(("foundry-scale.png","Defense (top) and Command (bottom) on a cube-face-centre cell (left) and on a smaller cell beside a ridge (right), each seen from the same place relative to its face: turret, bridge and globes keep their true size in a smaller class"));
+                // Close-up across the z ridge's corridor and conduit runs (cells z -2..1), the ridge's outward normal up.
+                Vector3 r0=At(R,R,-2),r1=At(R,R,1),mid=(r0+r1)*0.5f,ridgeUp=mid.normalized;
+                var ridgeAcross=Vector3.Cross(ridgeUp,(r1-r0).normalized).normalized;
+                t=rig.Shoot(new TileGallery.View(mid+ridgeUp*15+ridgeAcross*11,mid+ridgeUp*0.5f,ridgeUp,50),W,H);
+                Save(t,Path.Combine(Dir,"ridges-connectors.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("ridges-connectors.png","a corridor run and a conduit run along a ridge: true-size tubes, collars and pipes"));
                 ScaleCheck("Ridges",view,checks,notes);
+                ConnectorCheck("Ridges",model,checks,notes);
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }

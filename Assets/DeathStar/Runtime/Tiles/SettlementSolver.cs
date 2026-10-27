@@ -63,11 +63,25 @@ namespace DeathStar
                     {best=score;tie=rank;chosen=new TilePlacement(family,axis,side);}
                 }
                 bool spatial=family==TileFamily.Conduit&&component.Exists(c=>Vector3.Dot(c-start,chosen.axis)!=0);
-                foreach(var c in component)result.cells[c]=new TilePlacement(family,chosen.axis,chosen.side,spatial,start);
+                // A flat conduit group plugs into solid tiles only where a run ends against one. One that never
+                // does (a closed loop, or runs ending in space) is tethered: TileBuilder.ConduitLinks then turns its
+                // ends and branches its elbows into the solid tiles beside them. Part of the placement, so a change
+                // anywhere in the group rebuilds all of it.
+                bool tether=family==TileFamily.Conduit&&!spatial&&!component.Exists(c=>PlugsNaturally(model,c,chosen));
+                foreach(var c in component)result.cells[c]=new TilePlacement(family,chosen.axis,chosen.side,spatial,start,tether);
             }
             return result;
         }
         static int Direction(Vector3Int d)=>System.Array.IndexOf(TileStructure.Directions,d);
+        // Whether a flat conduit cell's own links (TileBuilder.ConduitLinks without a tether) end in a solid tile: a
+        // lone cell runs along its side, a run end straight on; turns and straight runs plug into nothing.
+        static bool PlugsNaturally(BlockConstruction model,Vector3Int c,in TilePlacement p)
+        {
+            var t3=p.Third;var joined=new List<Vector3Int>();
+            foreach(var d in new[]{p.side,-p.side,t3,-t3})if(model.Contains(c+d)&&model.Family(c+d)==TileFamily.Conduit)joined.Add(d);
+            if(joined.Count==0)return model.Solid(c+p.side)||model.Solid(c-p.side);
+            return joined.Count==1&&model.Solid(c-joined[0]);
+        }
 
         // Geometry reads face neighbours, edge diagonals and 2x2 corner occupancy. Component changes can
         // reorient distant cells; include those and a two-cell halo for connection frames and relief cutouts.

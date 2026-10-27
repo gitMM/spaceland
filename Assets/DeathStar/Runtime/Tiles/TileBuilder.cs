@@ -321,24 +321,33 @@ namespace DeathStar
         }
 
         // Where a corridor runs into this face: an octagonal socket ring its collar plugs into.
-        static void Socket(Face f)
+        // True size and matched to the corridor's collar, which reads the same face's room.
+        void Socket(Face f)
         {
-            var outer=Octagon(2.45f);var inner=Octagon(2.12f);
-            f.m.Prism(Armor,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.back,0,0.5f,false);
-            f.m.Annulus(Armor,inner,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.back,0.5f,1);
+            float collar=CollarRadius(FaceRoom(f.cell,f.n));
+            var outer=Octagon(collar+0.3f);var inner=Octagon(collar-0.03f);
+            using(f.Fixed("socket",0,0))
+            {
+                f.m.Prism(Armor,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.back,0,0.5f,false);
+                f.m.Annulus(Armor,inner,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.back,0.5f,1);
+            }
             f.bare.Add(Whole);
         }
 
         // Where a conduit plugs into this face: a manifold block round the pipe ends.
         static void Port(Face f,in TilePlacement conduit)
         {
-            if(conduit.spatial){f.Box(Armor,-1.4f,-1.4f,1.4f,1.4f,0,0.5f);f.bare.Add(new Rect(-1.4f,-1.4f,2.8f,2.8f));return;}
+            if(conduit.spatial)
+            {
+                using(f.Fixed("port",0,0))f.Box(Armor,-1.4f,-1.4f,1.4f,1.4f,0,0.5f);
+                f.bare.Add(new Rect(-1.4f,-1.4f,2.8f,2.8f));return;
+            }
             Vector3 A=conduit.axis,L=Vector3.Cross(A,-(Vector3)f.n);
             Vector3 c=(Vector3)f.n*Half+A*(BedHeight+0.15f),x=f.x,y=f.y;
             float cx=Vector3.Dot(c,x),cy=Vector3.Dot(c,y);
             float hx=Mathf.Abs(Vector3.Dot(L,x))*1.45f+Mathf.Abs(Vector3.Dot(A,x))*0.95f;
             float hy=Mathf.Abs(Vector3.Dot(L,y))*1.45f+Mathf.Abs(Vector3.Dot(A,y))*0.95f;
-            f.Box(Armor,cx-hx,cy-hy,cx+hx,cy+hy,0,0.5f,0.06f);
+            using(f.Fixed("port",cx,cy))f.Box(Armor,cx-hx,cy-hy,cx+hx,cy+hy,0,0.5f,0.06f);
             f.bare.Add(Rect.MinMaxRect(cx-hx,cy-hy,cx+hx,cy+hy));
         }
 
@@ -761,60 +770,92 @@ namespace DeathStar
 
         // Open ribbed tube along the tile's axis with portholes on two sides; collars where it meets something,
         // a docking collar with a round hatch where it ends in space.
+        // Corridors and conduits keep a true-size cross-section (TileMesh.BeginTube); their length follows the cells.
+        // Parts with a length along the run (ribs, porthole rims, collars) are squeezed back by the run's stretch so
+        // they keep their true length too.
+        float RunStretch(Vector3Int cell,Vector3 A)=>curved==null?1:curved.Scale(TileStructure.Center(cell),A);
+        // Metres of room across a cell's face round its centre, for the collar and socket that meet there; both sides of
+        // the face derive the same value.
+        float FaceRoom(Vector3Int cell,Vector3 n)
+        {
+            if(curved==null)return Cell;
+            int axis=AxisOf(Vector3Int.RoundToInt(n));var u=Vector3.zero;u[(axis+1)%3]=1;var v=Vector3.zero;v[(axis+2)%3]=1;
+            var room=curved.Room(TileStructure.Center(cell)+n*(Half-0.01f),u,v);return Mathf.Min(room.x,room.y);
+        }
+        // Collar and socket radius (octagon apothem): 2.15 m where the face has room, down to 1.6 m round the 1.4 m tube.
+        static float CollarRadius(float room)=>Mathf.Clamp(room*0.5f-0.15f,1.6f,2.15f);
+        static void AlongRun(TileMesh m,Vector3 pivot,Vector3 A,float stretch)
+        {
+            var k=Vector3.one;k[AxisOf(Vector3Int.RoundToInt(A))]=1/stretch;
+            m.PushMatrix(Matrix4x4.Translate(pivot)*Matrix4x4.Scale(k)*Matrix4x4.Translate(-pivot));
+        }
         void Corridor(TileMesh m,Vector3Int cell,in TilePlacement p)
         {
             var links=s.CorridorLinks(cell,p);
             if(links.Count!=2||links[0]!=-links[1]){CorridorJunction(m,cell,p,links);return;}
             var run=links[0];var side=Vector3.Dot(run,p.side)==0?p.side:p.Third;
             Vector3 A=run,B=side,C=TileStructure.Cross(side,run);
+            float stretch=RunStretch(cell,A),k=1/stretch;
+            using var tube=m.BeginTube("corridor",TileStructure.Center(cell),A);
             var oct=Octagon(1.4f);
             m.Prism(Armor,oct,Vector3.zero,B,C,A,-Half,Half,false);
-            var rib=Octagon(1.75f);
-            foreach(float t in new[]{-1.875f,-0.625f,0.625f,1.875f})
+            // Ribs keep their 0.34 m width and a pitch near 1.25 m; portholes sit between them.
+            var rib=Octagon(Mathf.Clamp(FaceRoom(cell,A)*0.5f-0.05f,1.5f,1.75f));
+            int ribs=Mathf.Max(1,Mathf.RoundToInt(Cell*stretch/1.25f));float pitch=Cell/ribs;
+            for(int r=0;r<ribs;r++)
             {
-                m.Prism(Armor,rib,Vector3.zero,B,C,A,t-0.17f,t+0.17f,false);
-                m.Annulus(Armor,oct,rib,Vector3.zero,B,C,A,t-0.17f,-1);m.Annulus(Armor,oct,rib,Vector3.zero,B,C,A,t+0.17f,1);
+                float t=-Half+(r+0.5f)*pitch;
+                m.Prism(Armor,rib,Vector3.zero,B,C,A,t-0.17f*k,t+0.17f*k,false);
+                m.Annulus(Armor,oct,rib,Vector3.zero,B,C,A,t-0.17f*k,-1);m.Annulus(Armor,oct,rib,Vector3.zero,B,C,A,t+0.17f*k,1);
             }
-            foreach(float sb in new[]{-1f,1f})foreach(float t in new[]{-1.25f,0f,1.25f})
+            foreach(float sb in new[]{-1f,1f})for(int r=1;r<ribs;r++)
             {
-                var o=B*sb*1.4f+A*t;
+                var o=B*sb*1.4f+A*(-Half+r*pitch);
+                AlongRun(m,o,A,stretch);
                 m.Lathe(Smooth,o,B*sb,new[]{new Vector2(0.44f,0),new Vector2(0.44f,0.12f),new Vector2(0.34f,0.12f),new Vector2(0.34f,0)},20,false);
                 m.Push(o,Quaternion.LookRotation(-B*sb,C));m.Glass(new Rect(-0.24f,-0.24f,0.48f,0.48f),-0.005f);m.Pop();
+                m.Pop();
             }
-            var collar=Octagon(2.15f);
             foreach(int e in new[]{-1,1})
             {
                 var next=cell+run*e;
                 if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor&&s.CorridorLinks(next,q).Contains(-run*e))continue;
-                float a0=e>0?Half-0.6f:-Half,a1=e>0?Half:-Half+0.6f;
+                var collar=Octagon(CollarRadius(FaceRoom(cell,A*e)));
+                float a0=e>0?Half-0.6f*k:-Half,a1=e>0?Half:-Half+0.6f*k;
                 bool open=!s.Solid(next);
                 m.Prism(Armor,collar,Vector3.zero,B,C,A,a0,a1,open);
                 m.Annulus(Armor,oct,collar,Vector3.zero,B,C,A,e>0?a0:a1,-e);
                 if(open)
                 {
                     var face=A*e*Half;
+                    AlongRun(m,face,A,stretch);
                     m.Lathe(Smooth,face,A*e,new[]{new Vector2(1.35f,0),new Vector2(1.35f,0.3f),new Vector2(1.1f,0.3f),new Vector2(1.1f,0)},24,false);
                     m.Lathe(Smooth,face,A*e,new[]{new Vector2(0,0),new Vector2(1.1f,0),new Vector2(1.1f,0.12f),new Vector2(0,0.12f)},24,false);
+                    m.Pop();
                 }
             }
         }
         void CorridorJunction(TileMesh m,Vector3Int cell,in TilePlacement p,List<Vector3Int> links)
         {
             // A compact pressure junction with half-tubes to every occupied neighbour. Empty corners remain open.
-            m.Box(Armor,Vector3.zero,Vector3.one*2.8f,0.28f);
+            var center=TileStructure.Center(cell);Vector3 up=p.axis;
+            using(m.BeginFixed("junction",center,new Vector4(up.x,up.y,up.z,Vector3.Dot(center,up))))
+                m.Box(Armor,Vector3.zero,Vector3.one*2.8f,0.28f);
             foreach(var d in links)
             {
                 Vector3 a=d,b=Vector3.Dot(d,p.side)==0?p.side:p.Third,c=Vector3.Cross(b,a);
+                float k=1/RunStretch(cell,a);
+                using var branch=m.BeginTube("corridor branch",center,a);
                 var oct=Octagon(1.4f);var rib=Octagon(1.75f);
                 m.Prism(Armor,oct,Vector3.zero,b,c,a,1,Half,false);
-                m.Prism(Armor,rib,Vector3.zero,b,c,a,1.65f,1.95f,false);
-                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.65f,-1);
-                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.95f,1);
+                m.Prism(Armor,rib,Vector3.zero,b,c,a,1.8f-0.15f*k,1.8f+0.15f*k,false);
+                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.8f-0.15f*k,-1);
+                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.8f+0.15f*k,1);
                 var next=cell+d;
                 if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor)continue;
-                var collar=Octagon(2.15f);
-                m.Prism(Armor,collar,Vector3.zero,b,c,a,2.05f,Half,!s.Solid(next));
-                m.Annulus(Armor,oct,collar,Vector3.zero,b,c,a,2.05f,-1);
+                var collar=Octagon(CollarRadius(FaceRoom(cell,a)));
+                m.Prism(Armor,collar,Vector3.zero,b,c,a,Half-0.45f*k,Half,!s.Solid(next));
+                m.Annulus(Armor,oct,collar,Vector3.zero,b,c,a,Half-0.45f*k,-1);
             }
         }
         static Vector2[] Octagon(float r)
@@ -835,7 +876,11 @@ namespace DeathStar
             var links=ConduitLinks(cell,p);
             if(p.spatial){SpatialConduit(m,cell,p,links);return;}
             bool bed=s.Solid(cell-p.axis);
-            if(links.Count==2&&links[0]!=-links[1])
+            // Pipes run as tubes on the bed line; an elbow's torus stays in station space, so a flange at each end
+            // covers the step to the true-size pipes of its neighbours.
+            var spine=TileStructure.Center(cell)+A*BedHeight;
+            bool elbow=links.Count==2&&links[0]!=-links[1];
+            if(elbow)
             {
                 Vector3 c1=links[0],c2=links[1],turn=(c1+c2)*Half;
                 foreach(var (lat,lift,r) in Bundle)
@@ -846,33 +891,41 @@ namespace DeathStar
                     m.Torus(Smooth,turn+A*(BedHeight+lift),axis,-c2,Mathf.PI*0.5f,R,r,20,12);
                 }
                 if(bed)Saddle(m,A,(c1+c2)*(Half-Half*0.7071f),Vector3.Normalize(c1+c2));
+                if(curved!=null)foreach(var d in links)
+                {
+                    Vector3 dir=d,lateral=Vector3.Cross(A,dir);float k=1/RunStretch(cell,dir);
+                    using var tube=m.BeginTube("conduit flange",spine,dir);
+                    foreach(var (lat,lift,r) in Bundle){var a=lateral*lat+A*(BedHeight+lift)+dir*Half;m.Cylinder(Smooth,a-dir*0.3f*k,a,r+0.15f,16,true,true,0.02f);}
+                }
             }
             else
             {
                 foreach(var d in links)
                 {
-                    Vector3 dir=d,lateral=Vector3.Cross(A,dir);
-                    foreach(var (lat,lift,r) in Bundle)
+                    Vector3 dir=d,lateral=Vector3.Cross(A,dir);float k=1/RunStretch(cell,dir);
+                    using(m.BeginTube("conduit",spine,dir))foreach(var (lat,lift,r) in Bundle)
                     {
                         var a=lateral*lat+A*(BedHeight+lift);
                         m.Cylinder(Smooth,a,a+dir*Half,r,16,false,false);
-                        m.Cylinder(Smooth,a+dir*(1.25f-0.08f),a+dir*(1.25f+0.08f),r+0.09f,16,true,true,0.02f);
+                        m.Cylinder(Smooth,a+dir*(1.25f-0.08f*k),a+dir*(1.25f+0.08f*k),r+0.09f,16,true,true,0.02f);
                     }
                     if(bed)Saddle(m,A,dir*1.25f,lateral);
                 }
-                if(links.Count>2)m.Box(Armor,A*(BedHeight+0.25f),Vector3.one*1.9f,0.1f);
+                if(links.Count>2)
+                    using(m.BeginFixed("conduit junction",spine,new Vector4(A.x,A.y,A.z,Vector3.Dot(spine,A))))m.Box(Armor,A*(BedHeight+0.25f),Vector3.one*1.9f,0.1f);
             }
             foreach(var d in links)
             {
                 if(s.TryGet(cell+d,out var q)&&q.family==TileFamily.Conduit&&q.axis==p.axis)continue;
-                Vector3 dir=d,lateral=Vector3.Cross(A,dir);
+                Vector3 dir=d,lateral=Vector3.Cross(A,dir);float k=1/RunStretch(cell,dir);
                 bool plug=s.Solid(cell+d);
+                using var tube=m.BeginTube("conduit end",spine,dir);
                 foreach(var (lat,lift,r) in Bundle)
                 {
                     var a=lateral*lat+A*(BedHeight+lift)+dir*Half;
                     // A plug ends its collar on the face of the port the tile builds; a blind end closes in space
-                    if(plug)m.Cylinder(Smooth,a-dir*0.8f,a-dir*0.5f,r+0.22f,16,true,true,0.03f);
-                    else m.Cylinder(Smooth,a-dir*0.3f,a,r+0.12f,16,true,true,0.03f);
+                    if(plug)m.Cylinder(Smooth,a-dir*0.8f*k,a-dir*0.5f*k,r+0.22f,16,true,true,0.03f);
+                    else m.Cylinder(Smooth,a-dir*0.3f*k,a,r+0.12f,16,true,true,0.03f);
                 }
             }
         }
@@ -880,27 +933,45 @@ namespace DeathStar
         // none runs along the tile's side.
         List<Vector3Int> ConduitLinks(Vector3Int cell,in TilePlacement p)
         {
-            var t3=p.Third;var links=new List<Vector3Int>();
-            foreach(var d in p.spatial?TileStructure.Directions:new[]{p.side,-p.side,t3,-t3})
+            var t3=p.Third;var links=new List<Vector3Int>();var plane=new[]{p.side,-p.side,t3,-t3};
+            foreach(var d in p.spatial?TileStructure.Directions:plane)
                 if(s.TryGet(cell+d,out var q)&&q.family==TileFamily.Conduit&&q.axis==p.axis)links.Add(d);
             if(p.spatial)foreach(var d in TileStructure.Directions)if(s.Solid(cell+d)&&!links.Contains(d))links.Add(d);
+            int joined=links.Count;
             if(links.Count==0){links.Add(p.side);links.Add(-p.side);}
             else if(links.Count==1)links.Add(-links[0]);
+            // A tethered group (see SettlementSolver) reaches for the solid tiles beside it: a run end turns into one
+            // instead of stopping in space, a lone cell runs from one, and a turn branches into each. Straight runs and
+            // junctions stay as they are, so pipes along a wall don't plug in at every cell.
+            if(p.tether&&!p.spatial)
+            {
+                var solid=System.Array.FindAll(plane,d=>s.Solid(cell+d));
+                if(joined==0&&solid.Length>0&&!s.Solid(cell+p.side)&&!s.Solid(cell-p.side))
+                {links.Clear();links.Add(solid[0]);links.Add(-solid[0]);}
+                else if(joined==1&&!s.Solid(cell+links[1])&&System.Array.Exists(solid,d=>d!=links[1]))
+                    links[1]=System.Array.Find(solid,d=>d!=links[1]);
+                else if(joined==2&&links[0]!=-links[1])
+                    foreach(var d in solid)if(!links.Contains(d))links.Add(d);
+            }
             return links;
         }
         void SpatialConduit(TileMesh m,Vector3Int cell,in TilePlacement p,List<Vector3Int> links)
         {
-            m.Box(Armor,Vector3.zero,Vector3.one*1.7f,0.12f);
+            var center=TileStructure.Center(cell);Vector3 up=p.axis;
+            using(m.BeginFixed("conduit junction",center,new Vector4(up.x,up.y,up.z,Vector3.Dot(center,up))))
+                m.Box(Armor,Vector3.zero,Vector3.one*1.7f,0.12f);
             foreach(var d in links)
             {
                 // Endpoints use the same unsigned cross-section on both sides of a shared face.
                 int axis=AxisOf(d);var u=Vector3.zero;u[(axis+1)%3]=1;var v=Vector3.zero;v[(axis+2)%3]=1;
                 bool connected=s.TryGet(cell+d,out var q)&&q.family==TileFamily.Conduit;
+                float k=1/RunStretch(cell,d);
+                using var tube=m.BeginTube("conduit",center,d);
                 foreach(var (lat,lift,r) in Bundle)
                 {
                     var offset=u*lat+v*lift;var end=offset+(Vector3)d*Half;
                     m.Cylinder(Smooth,offset,end,r,16,false,!connected);
-                    m.Cylinder(Smooth,end-(Vector3)d*0.3f,end,r+0.12f,16,true,true,0.02f);
+                    m.Cylinder(Smooth,end-(Vector3)d*0.3f*k,end,r+0.12f,16,true,true,0.02f);
                 }
             }
         }

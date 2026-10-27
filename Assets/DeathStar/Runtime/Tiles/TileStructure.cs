@@ -11,10 +11,12 @@ namespace DeathStar
         public readonly Vector3Int axis,side;
         public readonly bool spatial;
         public readonly Vector3Int anchor;
-        public TilePlacement(TileFamily family,Vector3Int axis,Vector3Int side,bool spatial=false,Vector3Int anchor=default)
-        {this.family=family;this.axis=axis;this.side=side;this.spatial=spatial;this.anchor=anchor;}
+        // A conduit group that would plug into nothing: it reaches for the solid tiles beside it (SettlementSolver).
+        public readonly bool tether;
+        public TilePlacement(TileFamily family,Vector3Int axis,Vector3Int side,bool spatial=false,Vector3Int anchor=default,bool tether=false)
+        {this.family=family;this.axis=axis;this.side=side;this.spatial=spatial;this.anchor=anchor;this.tether=tether;}
         public Vector3Int Third=>TileStructure.Cross(side,axis);
-        public bool SameAs(in TilePlacement o)=>family==o.family&&axis==o.axis&&side==o.side&&spatial==o.spatial&&anchor==o.anchor;
+        public bool SameAs(in TilePlacement o)=>family==o.family&&axis==o.axis&&side==o.side&&spatial==o.spatial&&anchor==o.anchor&&tether==o.tether;
     }
 
     // Cells of a station. Cell c is a 5 m cube centred on c*5 in station space. Corridors and conduits are open
