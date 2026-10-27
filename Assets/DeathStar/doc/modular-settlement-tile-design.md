@@ -458,7 +458,7 @@ Rules:
 - 2 × 2 landmarks form only on four box cells.
 - A corridor needs at least 3.2 m across its cross-section, and a single landing pad a face of at least 3.6 m (its 4.4 m deck, on a pedestal, may overhang the cell by up to 0.4 m a side). Other families are never refused: their smallest size fits the smallest cells, and every family has a kit.
 
-Implementation follows `doc/curved-grid-tiles-plan.md` (phases 3 and 4). Until then special cells build the box forms. The Foundry's shape view (C, twice) and its **Ridges** example show where the special cells are.
+Implementation follows `doc/curved-grid-tiles-plan.md` (phases 3 and 4). Until Phase 4 gives each family its own kit, every family builds the Hull kit on special cells. The Foundry's shape view (C, twice) and its **Ridges** example show where the special cells are.
 
 ## Angled and round forms
 
