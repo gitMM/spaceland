@@ -1,8 +1,7 @@
 # Curved grid tiles: rewrite plan
 
-2026-10-27. **Phase 0 is done** (see [Phase 0 results](#phase-0-results)); Phases 1–4 are not started. This plan
-does not change the design doc (`modular-settlement-tile-design.md`). The edits it needs are listed under
-[Design doc changes to agree](#design-doc-changes-to-agree) and get agreed first.
+2026-10-27. **Phase 0 is done** (see [Phase 0 results](#phase-0-results)); Phases 1–4 are not started. The
+[design doc changes](#design-doc-changes) were agreed and applied to `modular-settlement-tile-design.md` the same day.
 
 ## Goal
 
@@ -271,9 +270,9 @@ Phase 3 makes every special cell look intentional, so Phase 4 can stop after any
 - **New pictures:** `foundry-shapes`, `ridges`, `ridges-shapes` and `ridges-keel` (Phase 0); `foundry-scale`,
   `ridges-sheet` and `crowns-sheet` later.
 
-## Design doc changes to agree
+## Design doc changes
 
-To be pitched in chat before Phase 1. Nothing is edited until agreed.
+Agreed in chat and applied on 2026-10-27:
 
 - **Scale and human reference:** replace "a later implementation needs to preserve … proportions" with the
   fixed-size parts list and the size classes.

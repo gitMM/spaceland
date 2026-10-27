@@ -53,7 +53,7 @@ Craft establish scale for ships the way a person does for rooms. The review stag
 
 Each has a hatch ring under its belly that sits over the pad's airlock. They check that a single pad suits a small pod, a 2 × 2 pad a shuttle, and a hangar mouth admits one.
 
-The prototype currently maps a unit grid into a curved shape without a defined conversion to metres. Curvature changes edge lengths and angles, so 5 m is a nominal module dimension. A later implementation needs to preserve recognizable door, window, and equipment proportions on that geometry.
+On the curved Foundry grid a cell's faces measure 2.3–5 m and its depth 2.8–5.6 m, depending on direction. Parts people and craft use keep their size in metres everywhere: doors, hatches, window rows and decks, corridor and conduit cross-sections, collars, portholes, railings and pads. Turrets, dishes, tanks, fin banks, globes and masts come in small, medium and large sizes; a cell gets the largest that fits. Walls, piers, edge bands, plinths, relief, armour carving, fillets and buttresses stretch to fill the rest. Repeated parts change in number, not in size.
 
 The earlier kilometre-sized district concept is superseded. Districts now emerge from groups of small cubes.
 
@@ -397,14 +397,68 @@ derives the forms from current occupancy, independently of placement order. No W
 - Rendering uses 5 m per guide unit. Tile geometry samples the shared eight-corner lattice of `BlockGuide.Map`;
   shared assemblies sample by station position, including across cell boundaries. The relief is still generated
   once conceptually in station space: its plane coordinates and seeds never restart at a cube edge. Interpolated
-  surface normals keep its 0.1–0.8 m depth in metres. A shared tangent metric compensates pad decks and hatches
-  for local stretch/shear, and window rows adjust pane count and height to the available physical wall. Shells
-  and large spans follow the curvature; these dimensions are locally metric-correct, not rigid flat inserts.
+  surface normals keep its 0.1–0.8 m depth in metres. Fixed-size parts are true size at their anchor (the shared
+  tangent metric pads and hatches already use), and window rows adjust pane count and height to the available
+  physical wall. Stretchy parts and large shells follow the curvature.
 
 `tools/tile-lab.sh report` includes `foundry*.png`, generated from family-labelled occupancy through the same
 solver and renderer as placement. `tools/tile-lab.sh validate` checks save migration, all cube orientations,
 insertion order, connector openness, shared-corner/relief continuity, scale compensation, and actual Foundry
 placement, pad completion, removal, undo/redo and picking in an isolated edit-mode scene.
+
+## Ridges, keels and crowns
+
+The Foundry's sphere map folds the cells on the cube's diagonals. Each cell's shape comes from its eight corners (`BlockConstruction.Shape`):
+
+| Shape | Where | Form |
+| --- | --- | --- |
+| Box | Everywhere else, about 85% of a skin | Sheared and 2.3–5 m across, but still a box: it carries the family forms above |
+| Wedge | Along the 12 cube-edge arcs | A triangular prism with a near-equilateral ~5.5 m cross-section, 2.5–3.9 m long. Two faces fold flat into one nearly flat roof band; the other two slopes meet underneath in a sharp 46–60° keel |
+| Apex | On the 8 cube-corner diagonals | A tetrahedron cap: a curved triangular crown with 4.3–4.8 m edges over a point about 5 m deep |
+
+How a wedge or apex meets open space decides what it builds (`BlockConstruction.Exposure`):
+
+| Exposure | When | Built as |
+| --- | --- | --- |
+| Ridge | The whole roof is open: the normal outer skin | Crest, plus any open slopes and gables |
+| Half | Part of the roof is covered: the open part is the foot of the neighbour's wall | A fillet with family trim |
+| Keel | The roof is covered and the slopes are open | Slopes and a keel strip |
+| Gable | An end face along the ridge is open: the end of a run | Gable |
+| Crown | An apex's roof is open | Crown |
+| Spike | An apex's roof is covered and its slopes are open | Three slopes |
+
+Each family has a kit of four parts, built for these shapes rather than squeezed out of a box:
+
+- **Crest:** on a wedge's roof. It joins along the ridge with wedges of the same family and caps the ends of a run. The roof itself is nearly flat; the crest is what makes the band read as a ridge.
+- **Slope:** on one open slope, on ridges and on both sides of a keel.
+- **Gable:** on an open triangular end, about 5.5 m on each side.
+- **Crown:** on an apex's roof. It links to up to three ridges of the same family, or to connectors.
+
+Keel strips (an armoured edge with running lights and a hatch every second cell), half fillets and spikes are shared parts with family trim.
+
+The 12 ridges and 8 crowns are the station's large-scale structure, like the spine lines and trench of the reference films. Crowns are landmarks that read on the limb from far away. Ridges vary along their length by coordinate hash (lit and dark bays, fin heights in a wave, turrets on every other cell), so a long ridge never reads as copies.
+
+| Family | Crest | Slope | Gable | Crown |
+| --- | --- | --- | --- | --- |
+| Hull | Armoured keel spine, vertebra ribs on a 1.25 m pitch, running lights | Armour courses falling from the crest in chevrons; maintenance hatch | Triangular armour plate with a round EVA hatch | Three spines meet at a raised hub with a beacon |
+| Habitat | A-frame gallery: a glazed ridge cap lit from inside | Eye-level window rows under a visor | Tall triangular window wall with mullions and a railed balcony | Three-sided glazed lantern with a deck inside and a walkway round it |
+| Industrial | Twin crane rails and a travelling gantry crane | Conveyor along the eave with chutes | Loading bay door with a jib crane | Tripod derrick: lattice legs to the three crown corners, boom on top |
+| Power and Thermal | A spine of tall radiator fins, alternately tilted | Radiator panels lying on the slope | Transformer box with warning lights | Three radiator wings in a Y round a glowing core spike |
+| Life Support | Glazed greenhouse barrel, fixed-pitch ribs, rounded run ends | Upright tank rows or scrubber vents | Barrel end with a round window | Geodesic glass dome |
+| Storage and Logistics | Monorail with clamped containers, some missing | Racked cargo behind nets | Triangular hangar door with a pod-size opening | Three silos in a triangle under a shared gantry |
+| Defense and Security | Battlement rail with point-defence turrets on every other cell | Sloped casemates with gun slits | Heavy gun port | Bastion: three turrets at 120° on a stepped triangular base |
+| Command and Communications | Phased-array spine: sensor panels angled to both sides | Sloped bridge window strip | Antenna mast with a globe | Spire with three dishes on arms at 120° and a top beacon |
+| Landing Pad | Docking cradle: arms from both slopes hold a pod on its side, gangway to a crest hatch (the pod appears on runs of two or more cells) | Service hoses and landing lights | Approach light bar | Mooring mast: a pod docks nose-in on a ring at the top |
+| Corridor | Along the ridge, an A-frame glazed gallery profile; across it, the usual octagonal tube | — (open cell) | Docking collar with hatch | Three-way pressure node, collars at 120° |
+| Conduit | Pipe bundle on saddles, expansion loops rising every few cells | — (open cell) | Capped flange | Y-manifold valve tower with wheel valves |
+
+Rules:
+
+- Kit parts follow the fixed-size rules of [Scale and human reference](#scale-and-human-reference). They are built directly from the cell's real corners in a rigid frame, so their edges meet the bent neighbours exactly.
+- 2 × 2 landmarks form only on four box cells.
+- A corridor needs at least 3.2 m across its cross-section, and a single landing pad a face of at least 4.6 m. Other families are never refused: their smallest size fits the smallest cells, and every family has a kit.
+
+Implementation follows `doc/curved-grid-tiles-plan.md` (phases 3 and 4). Until then special cells build the box forms. The Foundry's shape view (C, twice) and its **Ridges** example show where the special cells are.
 
 ## Angled and round forms
 
@@ -413,8 +467,8 @@ A grid of cubes easily looks blocky. Break it with angles and curves at every sc
 | Scale | Angled | Round |
 | --- | --- | --- |
 | Relief | Ramps, buttresses on arcs and wells | Drums, domes, rings, ribbed arcs across several tiles, and wells, set in a flattened bed |
-| Family forms | Sloped armour courses (Defense), sloped hangar lips (Storage), angled window visors, a sloped bridge window (Command), angled pad struts | Vaults and tanks (Life Support), round pads, conduit elbows, round hatches and portholes, sensor globes |
-| Landmarks | Radiator wings | A large dish, a reactor dome, a sphere tank |
+| Family forms | Sloped armour courses (Defense), sloped hangar lips (Storage), angled window visors, a sloped bridge window (Command), angled pad struts; A-frame galleries and triangular gable walls on ridges | Vaults and tanks (Life Support), round pads, conduit elbows, round hatches and portholes, sensor globes |
+| Landmarks | Radiator wings; on crowns, a tripod derrick, three radiator wings in a Y and a three-turret bastion | A large dish, a reactor dome, a sphere tank; a geodesic dome on a crown |
 | Junctions | Angled buttress fins where towers and turret mounts stand on a surface; sloped fillets along the foot of hull walls | Docking collars, octagonal corridor sockets |
 
 Buttresses go on Defense and Command tiles, and on hull columns that stand free of side neighbours. Each gets two angled fins on each concave edge where its face meets the surface it stands on, like the flared bases of the turret towers on the Death Star trench models. Fins follow the face, not a world direction, so they work in any orientation.
