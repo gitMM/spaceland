@@ -9,15 +9,19 @@ namespace DeathStar
     {
         public readonly TileFamily family;
         public readonly Vector3Int axis,side;
-        public TilePlacement(TileFamily family,Vector3Int axis,Vector3Int side){this.family=family;this.axis=axis;this.side=side;}
+        public readonly bool spatial;
+        public readonly Vector3Int anchor;
+        public TilePlacement(TileFamily family,Vector3Int axis,Vector3Int side,bool spatial=false,Vector3Int anchor=default)
+        {this.family=family;this.axis=axis;this.side=side;this.spatial=spatial;this.anchor=anchor;}
         public Vector3Int Third=>TileStructure.Cross(side,axis);
-        public bool SameAs(in TilePlacement o)=>family==o.family&&axis==o.axis&&side==o.side;
+        public bool SameAs(in TilePlacement o)=>family==o.family&&axis==o.axis&&side==o.side&&spatial==o.spatial&&anchor==o.anchor;
     }
 
     // Cells of a station. Cell c is a 5 m cube centred on c*5 in station space. Corridors and conduits are open
     // connectors, not solid: the faces next to them stay exposed.
     public sealed class TileStructure
     {
+        public bool automatic;
         public readonly Dictionary<Vector3Int,TilePlacement> cells=new Dictionary<Vector3Int,TilePlacement>();
         public static readonly Vector3Int[] Directions={Vector3Int.right,Vector3Int.left,Vector3Int.up,Vector3Int.down,new Vector3Int(0,0,1),new Vector3Int(0,0,-1)};
 
@@ -41,6 +45,8 @@ namespace DeathStar
         // The face a tile shows its main form on: its own axis if open, else the first open side.
         public Vector3Int Primary(Vector3Int c,in TilePlacement p)
         {
+            // A stack of Defense cells is one tower. Only the exposed tip carries the turret.
+            if(automatic&&p.family==TileFamily.Defense)return p.axis;
             if(!Solid(c+p.axis))return p.axis;
             var t=p.Third;
             foreach(var d in new[]{p.side,-p.side,t,-t})if(!Solid(c+d))return d;
@@ -51,6 +57,15 @@ namespace DeathStar
         {
             var d=c+step;
             return TryGet(d,out var q)&&q.SameAs(p)&&!Solid(d+face);
+        }
+
+        public List<Vector3Int> CorridorLinks(Vector3Int c,in TilePlacement p)
+        {
+            var links=new List<Vector3Int>();
+            if(automatic)foreach(var d in Directions)if(cells.ContainsKey(c+d))links.Add(d);
+            if(links.Count==0){links.Add(p.axis);links.Add(-p.axis);}
+            else if(links.Count==1)links.Add(-links[0]);
+            return links;
         }
 
         // ---- the review station

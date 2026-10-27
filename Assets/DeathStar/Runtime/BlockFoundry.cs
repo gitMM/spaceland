@@ -11,6 +11,18 @@ namespace DeathStar
     {
         public Camera viewer;
         public Material hullMaterial, previewMaterial;
+        public TileLibrary tileLibrary;
+        public TileFamily SelectedFamily {get;set;}=TileFamily.Habitat;
+        [SerializeField] bool debugColors;
+        public bool ColorCoding
+        {
+            get=>debugColors;
+            set{debugColors=value;Settlement?.SetColorCoding(value);}
+        }
+        public FoundrySettlement Settlement {get;private set;}
+        Material[] generatedMaterials;
+        GameObject settlementLights;
+        TileLook.Saved savedEnvironment;
         public BlockConstruction Model { get; private set; }
         public int Revision { get; private set; }
         public int ExposedFaces { get; private set; }
@@ -34,6 +46,7 @@ namespace DeathStar
         BlockConstruction previewModel;
         BlockFace previewFace;
         bool previewRemove;
+        TileFamily previewFamily;
         int previewRevision=-1;
         readonly Dictionary<Vector3Int,Vector3> transitionFrom=new Dictionary<Vector3Int,Vector3>();
         readonly HashSet<Vector3Int> animatedChunks=new HashSet<Vector3Int>();
@@ -53,9 +66,16 @@ namespace DeathStar
         void OnEnable()
         {
             if (!Application.isPlaying) return;
+            Initialize();
+        }
+        public void Initialize(BlockConstruction construction=null)
+        {
+            if(Model!=null)return;
             if (viewer==null || hullMaterial==null || previewMaterial==null)
             { failure="Open Death Star / Open Block Foundry to use the configured scene."; return; }
-            Model = new BlockConstruction();
+            failure=null;
+            Model = construction??new BlockConstruction();
+            InitializeSettlement();
             lineMaterial = new Material(previewMaterial);
             for(int i=0;i<outline.Length;i++)
             {
@@ -65,6 +85,30 @@ namespace DeathStar
                 line.enabled=false; outline[i]=line;
             }
             RebuildAll(); FrameBuild(true);
+        }
+
+        void InitializeSettlement()
+        {
+            var materials=tileLibrary!=null?tileLibrary.materials:null;
+            if(materials==null||materials.Length!=TileMesh.SlotCount)
+            {
+                generatedMaterials=new Material[TileMesh.SlotCount];
+                for(int i=0;i<generatedMaterials.Length;i++)
+                {
+                    var slot=(TileSlot)i;
+                    var m=new Material(Shader.Find(slot==TileSlot.Glass?"DeathStar/Tile Glass":"DeathStar/Tile Surface"));
+                    TileLook.Configure(m,slot);generatedMaterials[i]=m;
+                }
+                materials=generatedMaterials;
+            }
+            Settlement=new FoundrySettlement(transform,materials);
+            Settlement.SetColorCoding(debugColors);
+            settlementLights=new GameObject("Settlement lighting");settlementLights.transform.SetParent(transform,false);
+            TileLook.AddLights(settlementLights.transform);savedEnvironment=TileLook.ApplyEnvironment(tileLibrary);
+            if(tileLibrary!=null&&tileLibrary.post!=null)
+            {
+                var volume=settlementLights.AddComponent<UnityEngine.Rendering.Volume>();volume.isGlobal=true;volume.sharedProfile=tileLibrary.post;
+            }
         }
 
         static Vector3Int ChunkKey(Vector3Int p) => new Vector3Int(Mathf.FloorToInt(p.x/(float)ChunkSize),Mathf.FloorToInt(p.y/(float)ChunkSize),Mathf.FloorToInt(p.z/(float)ChunkSize));
@@ -80,6 +124,7 @@ namespace DeathStar
             groups.Clear(); foreach(var cell in Model.Cells)AddGroup(cell);
             var keys=new HashSet<Vector3Int>(chunks.Keys); keys.UnionWith(groups.Keys);
             foreach(var key in keys)RebuildChunk(key);
+            Settlement.Rebuild(Model);
             FinishRebuild();
         }
         public Vector3 DisplayCorner(Vector3Int key)
@@ -102,23 +147,16 @@ namespace DeathStar
         }
         void Commit(BlockConstruction next)
         {
-            var starts=new Dictionary<Vector3Int,Vector3>();
-            foreach(var key in next.CornerKeys)
-                if(Model.HasCorner(key))
-                {var current=DisplayCorner(key);if((current-next.Corner(key)).sqrMagnitude>1e-12f)starts[key]=current;}
-                else
-                {
-                    Vector3 anchor=Vector3.zero;int count=0;
-                    foreach(var step in BlockConstruction.Steps)
-                        if(Model.HasCorner(key+step)){anchor+=DisplayCorner(key+step);count++;}
-                    if(count>0)starts[key]=Vector3.Lerp(anchor/count,next.Corner(key),0.15f);
-                }
             foreach(var cell in next.ChangedCells)animatedChunks.Add(ChunkKey(cell));
-            Model=next;transitionFrom.Clear();foreach(var pair in starts)transitionFrom.Add(pair.Key,pair.Value);
+            Model=next;
+            // Architectural joints appear together. A transient collapsed picking cell must not disagree
+            // with the finished pad, tube or hangar that the player sees.
+            transitionFrom.Clear();
             transitionStarted=Time.unscaledTime;
             groups.Clear();foreach(var cell in Model.Cells)AddGroup(cell);
             foreach(var key in animatedChunks)RebuildChunk(key);
             if(!IsMorphing)animatedChunks.Clear();
+            Settlement.Rebuild(Model,next.ChangedCells);
             FinishRebuild();
         }
         void FinishRebuild()
@@ -131,10 +169,11 @@ namespace DeathStar
         {
             if(!groups.TryGetValue(key,out var group)||group.Count==0)
             {
-                if(chunks.TryGetValue(key,out var old)){Destroy(old.root);Destroy(old.mesh);chunks.Remove(key);}
+                if(chunks.TryGetValue(key,out var old)){Release(old.root);Release(old.mesh);chunks.Remove(key);}
                 return;
             }
             var data=BlockMeshData.Build(Model,group,DisplayCorner);
+            for(int i=0;i<data.vertices.Count;i++)data.vertices[i]*=TileBuilder.Cell;
             if(!chunks.TryGetValue(key,out var chunk))
             {
                 chunk=new Chunk{root=new GameObject("Hull chunk "+key),mesh=new Mesh{name="Adaptive hull "+key}};
@@ -148,7 +187,7 @@ namespace DeathStar
             }
             chunk.collider.sharedMesh=null; data.Apply(chunk.mesh); chunk.data=data;
             if(data.triangles.Count>0)chunk.collider.sharedMesh=chunk.mesh;
-            chunk.renderer.enabled=data.triangles.Count>0;
+            chunk.renderer.enabled=false; // Stable low-detail cell surfaces are picking proxies only.
         }
 
         void Remember(BlockSave before)
@@ -184,6 +223,7 @@ namespace DeathStar
         public void LoadExample(int example)
         {
             Remember(Model.Capture());
+            if(example==4){Model=SettlementExamples.Foundry();RebuildAll();FrameBuild();Notice("Families grow into a curved settlement. Add or remove cells to reshape it.");return;}
             var cells=new List<Vector3Int>();
             int n=example==2?12:8, height=example==0?2:example==1?6:12;
             for(int z=0;z<n;z++)for(int y=0;y<height;y++)for(int x=0;x<n;x++)
@@ -244,6 +284,7 @@ namespace DeathStar
         {
             get
             {
+                if(Settlement!=null)return Settlement.Bounds;
                 bool first=true;Bounds result=default;
                 foreach(var chunk in chunks.Values)
                 {
@@ -270,6 +311,7 @@ namespace DeathStar
                 if(keys.tabKey.wasPressedThisFrame)showHud=!showHud;
                 if(keys.homeKey.wasPressedThisFrame)FrameBuild();
                 bool ctrl=keys.leftCtrlKey.isPressed||keys.rightCtrlKey.isPressed;
+                if(!ctrl&&keys.cKey.wasPressedThisFrame)ColorCoding=!ColorCoding;
                 if(ctrl&&keys.zKey.wasPressedThisFrame){if(shift)Redo();else Undo();}
                 if(ctrl&&keys.yKey.wasPressedThisFrame)Redo();
                 if(ctrl&&keys.sKey.wasPressedThisFrame)SaveBuild();
@@ -310,10 +352,11 @@ namespace DeathStar
         {foreach(var line in outline)if(line!=null)line.enabled=false;}
         void PreparePreview(BlockFace face,bool remove)
         {
-            if(previewRevision==Revision&&previewFace.cell==face.cell&&previewFace.side==face.side&&previewRemove==remove)return;
+            if(previewRevision==Revision&&previewFace.cell==face.cell&&previewFace.side==face.side&&previewRemove==remove&&previewFamily==SelectedFamily)return;
             previewRevision=Revision;previewFace=face;previewRemove=remove;
+            previewFamily=SelectedFamily;
             var cell=remove?face.cell:face.cell+BlockConstruction.Steps[face.side];
-            Model.TryEdit(cell,remove,out previewModel);
+            Model.TryEdit(cell,remove,out previewModel,SelectedFamily);
             if(previewModel==null)return;
             previewModel=previewModel.SettleForEdit();
         }
@@ -329,8 +372,8 @@ namespace DeathStar
             {
                 var line=outline[i];line.enabled=true;
                 line.startWidth=line.endWidth=Mathf.Clamp(distance*0.0018f,0.012f,0.065f);
-                line.SetPosition(0,shown.Corner(cell+BlockConstruction.CornerOffset(Edges[i,0])));
-                line.SetPosition(1,shown.Corner(cell+BlockConstruction.CornerOffset(Edges[i,1])));
+                line.SetPosition(0,shown.Corner(cell+BlockConstruction.CornerOffset(Edges[i,0]))*TileBuilder.Cell);
+                line.SetPosition(1,shown.Corner(cell+BlockConstruction.CornerOffset(Edges[i,1]))*TileBuilder.Cell);
             }
         }
         void Styles()
@@ -351,13 +394,20 @@ namespace DeathStar
             Panel(new Rect(18,18,3,716),new Color(0.22f,0.7f,0.76f));
             GUI.Label(new Rect(36,32,250,20),"ORBITAL FOUNDRY  /  CONSTRUCTION",kicker);
             GUI.Label(new Rect(34,53,260,40),"Block by block",title);
-            GUI.Label(new Rect(36,98,246,38),"Grow a hull from one cube.\nThe shape follows your construction.",body);
+            GUI.Label(new Rect(36,98,246,38),"Choose a family. Place a cell.\nNeighbours shape the architecture.",body);
             if(Model==null){GUI.Label(new Rect(36,145,246,100),failure??"Starting…",body);GUI.matrix=previous;return;}
             if(GUI.Button(new Rect(36,148,119,32),"+  Build",removeMode?button:active))removeMode=false;
             if(GUI.Button(new Rect(163,148,119,32),"−  Remove",removeMode?active:button))removeMode=true;
-            GUI.Label(new Rect(36,198,246,20),"SPHERE GRID",kicker);
-            GUI.Label(new Rect(36,229,246,100),"Build around the seed to form a sphere.\nEach block follows the original curved grid.\nExisting blocks stay in place.",body);
-            GUI.Label(new Rect(36,371,246,32),"Cyan outline marks the block you can add.",small);
+            GUI.Label(new Rect(36,193,246,20),"SETTLEMENT FAMILY",kicker);
+            var families=TileGallery.Families;
+            for(int i=0;i<families.Length;i++)
+            {
+                float x=36+(i%2)*127,y=218+(i/2)*24;
+                var color=TileLook.FamilyColor(families[i]);
+                Panel(new Rect(x+1,y+6,10,10),color.a>0?color.gamma:new Color(0.55f,0.55f,0.55f));
+                if(GUI.Button(new Rect(x+15,y,104,22),FamilyName(families[i]),SelectedFamily==families[i]?active:button))SelectedFamily=families[i];
+            }
+            if(GUI.Button(new Rect(36,371,246,28),"Debug colours [C]: "+(ColorCoding?"On":"Off"),ColorCoding?active:button))ColorCoding=!ColorCoding;
             GUI.enabled=undo.Count>0;
             if(GUI.Button(new Rect(36,414,119,28),"Undo",button))Undo();
             GUI.enabled=redo.Count>0;
@@ -365,26 +415,34 @@ namespace DeathStar
             GUI.Label(new Rect(36,452,246,20),"TRY A CONSTRUCTION",kicker);
             string[] examples={"Slab","Wedge","Orbital shell"};
             for(int i=0;i<3;i++)if(GUI.Button(new Rect(36+i*84,478,78,28),examples[i],button))LoadExample(i);
-            if(GUI.Button(new Rect(36,515,119,28),"Sphere",button))LoadExample(3);
-            if(GUI.Button(new Rect(163,515,119,28),"New build",button))NewBuild();
+            if(GUI.Button(new Rect(36,515,78,28),"Sphere",button))LoadExample(3);
+            if(GUI.Button(new Rect(120,515,78,28),"Settlement",button))LoadExample(4);
+            if(GUI.Button(new Rect(204,515,78,28),"New build",button))NewBuild();
             if(GUI.Button(new Rect(36,565,119,27),"Save build",button))SaveBuild();
             if(GUI.Button(new Rect(163,565,119,27),"Load build",button))LoadBuild();
-            GUI.Label(new Rect(36,609,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · Tab: hide",small);
+            GUI.Label(new Rect(36,609,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel",small);
             GUI.Label(new Rect(36,674,246,36),$"{Model.Count:N0} blocks  /  {ExposedFaces:N0} exposed faces\nCtrl Z / Y: undo / redo · Ctrl S: save",kicker);
             float width=Screen.width/UiScale;
             string status=Time.unscaledTime<messageUntil?message:hasHover?(removeMode?"Click to remove the highlighted block":"Click to attach a block · Shift + click to remove"):"Choose a face to begin · Right drag to orbit";
+            if(ColorCoding&&hasHover&&Settlement.Structure.TryGet(hovered.cell,out var placed))
+                status=$"{TileGallery.Title(placed.family)} · cell {hovered.cell} · axis {placed.axis} · main face {Settlement.Structure.Primary(hovered.cell,placed)}";
             Panel(new Rect(325,Screen.height/UiScale-65,Mathf.Max(200,width-345),42),new Color(0.025f,0.04f,0.055f,0.87f));
             GUI.Label(new Rect(341,Screen.height/UiScale-56,Mathf.Max(180,width-375),32),status,body);
             GUI.matrix=previous;
         }
         void OnDisable()
         {
-            foreach(var chunk in chunks.Values){if(chunk.root!=null)Destroy(chunk.root);if(chunk.mesh!=null)Destroy(chunk.mesh);}
+            if(Settlement!=null){Settlement.Dispose();Settlement=null;TileLook.Restore(savedEnvironment);}
+            if(settlementLights!=null)Release(settlementLights);
+            if(generatedMaterials!=null){foreach(var m in generatedMaterials)Release(m);generatedMaterials=null;}
+            foreach(var chunk in chunks.Values){if(chunk.root!=null)Release(chunk.root);if(chunk.mesh!=null)Release(chunk.mesh);}
             chunks.Clear();groups.Clear();
-            foreach(var line in outline)if(line!=null)Destroy(line.gameObject);
-            if(lineMaterial!=null)Destroy(lineMaterial);
+            foreach(var line in outline)if(line!=null)Release(line.gameObject);
+            if(lineMaterial!=null)Release(lineMaterial);
             transitionFrom.Clear();animatedChunks.Clear();previewModel=null;previewRevision=-1;
             undo.Clear();redo.Clear();Model=null;
         }
+        static string FamilyName(TileFamily f)=>f==TileFamily.LifeSupport?"Life Support":f==TileFamily.Pad?"Landing Pad":f.ToString();
+        static void Release(UnityEngine.Object o){if(o==null)return;if(Application.isPlaying)Destroy(o);else DestroyImmediate(o);}
     }
 }

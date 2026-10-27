@@ -60,7 +60,7 @@ namespace DeathStar
             var data = new BlockMeshData();
             foreach (var cell in cells)
                 for (int side = 0; side < 6; side++)
-                    if (!model.Contains(cell + BlockConstruction.Steps[side])) data.AddFace(model,cell,side,corner);
+                    if (!model.Solid(cell + BlockConstruction.Steps[side])) data.AddFace(model,cell,side,corner);
             return data;
         }
     }

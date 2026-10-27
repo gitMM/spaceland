@@ -47,6 +47,12 @@ namespace DeathStar
         readonly List<Vector2> codes=new List<Vector2>(),local=new List<Vector2>(),extent=new List<Vector2>();
         readonly List<Color> colors=new List<Color>();
         readonly List<Vector4> overlays=new List<Vector4>();
+        readonly List<Vector4> surfaceFrames=new List<Vector4>();
+        // Curved Foundry meshes retain their source face; w is its signed station-space plane.
+        public Vector4 surfaceFrame;
+        public bool retainWarpData;
+        readonly List<Vector4> metricAnchors=new List<Vector4>();
+        public Vector4 metricAnchor;
         readonly List<int>[] indices=new List<int>[SlotCount];
         readonly Stack<Matrix4x4> stack=new Stack<Matrix4x4>();
         Matrix4x4 matrix=Matrix4x4.identity;
@@ -92,6 +98,8 @@ namespace DeathStar
             Vector3 tw=matrix.MultiplyVector(t).normalized;tangents.Add(new Vector4(tw.x,tw.y,tw.z,t.w==0?1:t.w));
             codes.Add(new Vector2((int)f.pattern,seed));local.Add(g);extent.Add(size);
             colors.Add(new Color(f.tint.r,f.tint.g,f.tint.b,f.wear));overlays.Add(overlay);
+            surfaceFrames.Add(surfaceFrame);
+            metricAnchors.Add(metricAnchor);
             return positions.Count-1;
         }
         void Emit(TileSlot slot,int a,int b,int c,int d,bool flip)
@@ -399,6 +407,8 @@ namespace DeathStar
             int mark=positions.Count;var marks=new int[SlotCount];for(int i=0;i<SlotCount;i++)marks[i]=indices[i].Count;
             foreach(var j in jobs)
             {
+                surfaceFrame=j.frame;
+                metricAnchor=j.anchor;
                 Vector4 t4=(j.B-j.A).normalized;t4.w=1;
                 Emit(j.f.slot,Raw(j.A,j.N,t4,j.f),Raw(j.B,j.N,t4,j.f),Raw(j.C,j.N,t4,j.f),Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
             }
@@ -406,6 +416,8 @@ namespace DeathStar
             int n=positions.Count-mark;
             positions.RemoveRange(mark,n);normals.RemoveRange(mark,n);tangents.RemoveRange(mark,n);codes.RemoveRange(mark,n);
             local.RemoveRange(mark,n);extent.RemoveRange(mark,n);colors.RemoveRange(mark,n);overlays.RemoveRange(mark,n);
+            surfaceFrames.RemoveRange(mark,n);
+            metricAnchors.RemoveRange(mark,n);
             for(int i=0;i<SlotCount;i++)indices[i].RemoveRange(marks[i],indices[i].Count-marks[i]);
             Flush();
             return (Build(name),far);
@@ -417,6 +429,7 @@ namespace DeathStar
             var mesh=new Mesh{name=name,indexFormat=positions.Count>65535?IndexFormat.UInt32:IndexFormat.UInt16};
             mesh.SetVertices(positions);mesh.SetNormals(normals);mesh.SetTangents(tangents);mesh.SetColors(colors);
             mesh.SetUVs(0,codes);mesh.SetUVs(1,local);mesh.SetUVs(2,extent);mesh.SetUVs(3,overlays);
+            if(retainWarpData){mesh.SetUVs(4,surfaceFrames);mesh.SetUVs(5,metricAnchors);}
             mesh.subMeshCount=SlotCount;
             for(int i=0;i<SlotCount;i++)mesh.SetTriangles(indices[i],i,false);
             mesh.RecalculateBounds();

@@ -57,9 +57,16 @@ namespace DeathStar.EditorTools
             }
             var lib=TileGalleryMenu.EnsureLibrary();
             Directory.CreateDirectory(Dir);
+            if(mode=="validate")return "DONE "+SettlementValidation.Run()+"\n"+SettlementValidation.FoundryInteraction(lib)+"\n"+BlockFoundryValidation.Run();
             using var rig=new Rig(lib);
             if(mode=="warmup"){var t=rig.Shoot(TileGallery.Fragment,320,180);UnityEngine.Object.DestroyImmediate(t);return "DONE warmup";}
             if(mode=="snap")return Snap(rig,opts);
+            if(mode=="foundry")
+            {
+                var checks=new List<(bool ok,string text)>();var shots=new List<(string file,string what)>();
+                FoundryReport(rig,checks,shots);
+                return "DONE "+string.Join("\n",checks.Select(c=>(c.ok?"PASS ":"FAIL ")+c.text));
+            }
             return Report(rig);
         }
 
@@ -161,6 +168,7 @@ namespace DeathStar.EditorTools
                 shots.Add((sheet,what+": left to right, top to bottom: Habitat, Industrial, Power, Life Support / Storage, Defense, Command, Corridor / Landing Pad, Conduit, Hull; each specimen sits in a different orientation"));
             }
 
+            FoundryReport(rig,checks,shots);
             md.AppendLine("## Pictures");
             md.AppendLine();
             foreach(var (file,what) in shots)md.AppendLine($"- `{file}`: {what}");
@@ -204,8 +212,68 @@ namespace DeathStar.EditorTools
         }
 
         static string Swatch(Color c)=>c.a<0.5f?"grey":"#"+ColorUtility.ToHtmlStringRGB(c.gamma);
+        static void FoundryReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots)
+        {
+            checks.Add((true,SettlementValidation.Run()));
+            checks.Add((true,SettlementValidation.FoundryInteraction(rig.Library)));
+            rig.Stage.root.SetActive(false);
+            var root=new GameObject("Foundry lab");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var model=SettlementExamples.Foundry();var view=new FoundrySettlement(root.transform,rig.Library.materials);
+            try
+            {
+                var timer=Stopwatch.StartNew();view.Rebuild(model);
+                checks.Add((view.MeshCount>0,$"Foundry: {model.Count} family cells, {view.MeshCount} visible tiles, built in {timer.ElapsedMilliseconds} ms"));
+                TileLook.AddLights(root.transform);
+                var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
+                var warp=new CurvedTileMesh(model);
+                var views=new[]{
+                    ("foundry",new TileGallery.View(center+new Vector3(-0.8f,0.65f,-1).normalized*radius*2.9f,center,Vector3.up,40),"automatically solved families on the Foundry sphere grid"),
+                    ("foundry-trench",new TileGallery.View(center+new Vector3(-28,20,-37),warp.Map(new Vector3(-3,1,-3)*5),Vector3.up,48),"joined habitats, bridge tubes, tower and pad deck"),
+                    ("foundry-under",new TileGallery.View(center+new Vector3(-0.8f,-0.9f,-0.7f).normalized*radius*2.8f,center,Vector3.down,42),"the same rules underneath; no world up"),
+                    ("foundry-back",new TileGallery.View(center+new Vector3(0.9f,0.6f,1).normalized*radius*2.8f,center,Vector3.up,42),"vault row, conduit bend and solid bridge arch")};
+                foreach(var (name,camera,description) in views)
+                {
+                    var t=rig.Shoot(camera,320,180);UnityEngine.Object.DestroyImmediate(t);
+                    t=rig.Shoot(camera,W,H);Save(t,Path.Combine(Dir,name+".png"));UnityEngine.Object.DestroyImmediate(t);
+                    shots.Add((name+".png",description));
+                }
+                view.SetColorCoding(true);
+                // Global overlay stays off: exercise the same per-renderer control as the Foundry's C key.
+                var coded=rig.Shoot(views[0].Item2,W,H);Save(coded,Path.Combine(Dir,"foundry-coded.png"));
+                int coloredRenderers=SettlementValidation.CheckDebugRenderers(root,true);
+                view.SetColorCoding(false);
+                var uncoded=rig.Shoot(views[0].Item2,W,H);
+                float changed=ChangedPixels(uncoded,coded);
+                checks.Add((changed>0.005f,$"Foundry debug colours visibly change {changed:P1} of pixels with the global switch off; {coloredRenderers} near/far renderers retain correct family data"));
+                UnityEngine.Object.DestroyImmediate(uncoded);UnityEngine.Object.DestroyImmediate(coded);
+                shots.Add(("foundry-coded.png","family choices on the same curved geometry"));
+                foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(1);
+                uncoded=rig.Shoot(views[0].Item2,W,H);view.SetColorCoding(true);
+                coded=rig.Shoot(views[0].Item2,W,H);Save(coded,Path.Combine(Dir,"foundry-coded-far.png"));
+                changed=ChangedPixels(uncoded,coded);checks.Add((changed>0.005f,$"Foundry far LOD debug colours visibly change {changed:P1} of pixels"));
+                UnityEngine.Object.DestroyImmediate(uncoded);UnityEngine.Object.DestroyImmediate(coded);
+                view.SetColorCoding(false);SettlementValidation.CheckDebugRenderers(root,false);
+                foreach(var lod in root.GetComponentsInChildren<LODGroup>())lod.ForceLOD(-1);
+                shots.Add(("foundry-coded-far.png","same family colours with every tile forced to its far LOD"));
+                var padTarget=warp.Map(new Vector3(0.5f,1.5f,-3.5f)*5);
+                var padView=new TileGallery.View(padTarget+new Vector3(-10,14,-15),padTarget,Vector3.up,43);
+                var complete=rig.Shoot(padView,W,H);Save(complete,Path.Combine(Dir,"foundry-pad-complete.png"));UnityEngine.Object.DestroyImmediate(complete);
+                if(!model.TryEdit(new Vector3Int(1,1,-4),true,out var partial))throw new InvalidOperationException("Lab pad removal failed");
+                view.Rebuild(partial,partial.ChangedCells);
+                var incomplete=rig.Shoot(padView,W,H);Save(incomplete,Path.Combine(Dir,"foundry-pad-incomplete.png"));UnityEngine.Object.DestroyImmediate(incomplete);
+                shots.Add(("foundry-pad-complete.png","four family cells form one pad with a shared hatch"));
+                shots.Add(("foundry-pad-incomplete.png","removing a quarter restores three separate pads"));
+            }
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);rig.Stage.root.SetActive(true);}
+        }
         static void Save(Texture2D t,string path)=>File.WriteAllBytes(path,t.EncodeToPNG());
         static float Mean(Texture2D t){var px=t.GetPixels32();double s=0;foreach(var p in px)s+=(p.r*0.2126+p.g*0.7152+p.b*0.0722)/255.0;return (float)(s/px.Length);}
+        static float ChangedPixels(Texture2D a,Texture2D b)
+        {
+            var aa=a.GetPixels32();var bb=b.GetPixels32();int changed=0;
+            for(int i=0;i<aa.Length;i++)if(Mathf.Abs(aa[i].r-bb[i].r)+Mathf.Abs(aa[i].g-bb[i].g)+Mathf.Abs(aa[i].b-bb[i].b)>32)changed++;
+            return changed/(float)aa.Length;
+        }
 
         sealed class Rig:IDisposable
         {
@@ -214,9 +282,12 @@ namespace DeathStar.EditorTools
             readonly TileLook.Saved environment;
             readonly bool asyncCompile;
             public readonly TileGallery.Stage Stage;
+            public Scene PreviewScene=>scene;
+            public readonly TileLibrary Library;
 
             public Rig(TileLibrary lib)
             {
+                Library=lib;
                 asyncCompile=ShaderUtil.allowAsyncCompilation;ShaderUtil.allowAsyncCompilation=false;
                 scene=EditorSceneManager.NewPreviewScene();
                 var holder=new GameObject("Tile Lab");SceneManager.MoveGameObjectToScene(holder,scene);

@@ -32,7 +32,7 @@ namespace DeathStar
         // Cumulative odds of plain, corner cut, sunk panel, hatch and diagonal split; the rest are jogged splits.
         static readonly float[] BusyOdds={0.30f,0.46f,0.56f,0.60f,0.80f},CalmOdds={0.58f,0.70f,0.82f,0.90f,0.95f};
 
-        struct Job{public Finish f;public Vector3 A,B,C,D,N;}
+        struct Job{public Finish f;public Vector3 A,B,C,D,N;public Vector4 frame,anchor;}
         readonly List<Job> jobs=new List<Job>();
         // Convex solids built so far, as planes (outward normal, offset) in mesh space.
         readonly List<Vector4[]> solids=new List<Vector4[]>();
@@ -102,7 +102,7 @@ namespace DeathStar
             Vector3 A=matrix.MultiplyPoint3x4(a),B=matrix.MultiplyPoint3x4(b),C=matrix.MultiplyPoint3x4(c),D=matrix.MultiplyPoint3x4(d);
             float w=Mathf.Max((B-A).magnitude,(C-D).magnitude),h=Mathf.Max((C-B).magnitude,(D-A).magnitude);
             if(Mathf.Min(w,h)<0.55f||Vector3.Cross(C-A,D-B).magnitude*0.5f<0.35f)return false;
-            jobs.Add(new Job{f=f,A=A,B=B,C=C,D=D,N=matrix.MultiplyVector(n).normalized});
+            jobs.Add(new Job{f=f,A=A,B=B,C=C,D=D,N=matrix.MultiplyVector(n).normalized,frame=surfaceFrame,anchor=metricAnchor});
             return true;
         }
         void Flush()
@@ -110,7 +110,7 @@ namespace DeathStar
             if(jobs.Count==0)return;
             var saved=matrix;matrix=Matrix4x4.identity;
             var list=jobs.ToArray();jobs.Clear();
-            foreach(var j in list)CarveFace(j);
+            foreach(var j in list){surfaceFrame=j.frame;metricAnchor=j.anchor;CarveFace(j);}
             matrix=saved;
         }
 

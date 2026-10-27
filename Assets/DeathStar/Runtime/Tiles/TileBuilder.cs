@@ -36,8 +36,9 @@ namespace DeathStar
         const float LowSill=-1.6f,LowHead=-0.65f,HighSill=0.9f,HighHead=1.85f;
 
         readonly TileStructure s;
+        readonly CurvedTileMesh curved;
         readonly Dictionary<(Vector3Int,Vector3Int),List<Rect>> fieldHoles=new Dictionary<(Vector3Int,Vector3Int),List<Rect>>();
-        public TileBuilder(TileStructure structure){s=structure;}
+        public TileBuilder(TileStructure structure,CurvedTileMesh curved=null){s=structure;this.curved=curved;}
 
         static uint Hash(Vector3Int c){uint h=(uint)(c.x*73856093)^(uint)(c.y*19349663)^(uint)(c.z*83492791);h^=h>>16;h*=0x7feb352dU;h^=h>>15;h*=0x846ca68bU;h^=h>>16;return h;}
         static float Rand(uint seed,int k){uint h=seed^(uint)(k*0x9E3779B1U);h^=h>>16;h*=0x7feb352dU;h^=h>>15;h*=0x846ca68bU;h^=h>>16;return (h&0xFFFFFF)/16777216f;}
@@ -47,6 +48,7 @@ namespace DeathStar
         sealed class Face
         {
             public TileMesh m;public TileStructure s;public Vector3Int cell,n,x,y;public TilePlacement p;public bool primary,axial;public uint seed;
+            public Vector2 metric=Vector2.one;
             public readonly List<Rect> recess=new List<Rect>(),bare=new List<Rect>();
             public float Rand(int k)=>TileBuilder.Rand(seed^(uint)((n.x+2)*7+(n.y+2)*31+(n.z+2)*131),k);
             public bool Cont(Vector3Int step)=>s.Continues(cell,p,n,step);
@@ -75,7 +77,7 @@ namespace DeathStar
 
         public TileMesh Build(Vector3Int cell)
         {
-            var m=new TileMesh{stationOffset=TileStructure.Center(cell),cellHalf=Half};
+            var m=new TileMesh{stationOffset=TileStructure.Center(cell),cellHalf=Half,retainWarpData=s.automatic};
             if(!s.TryGet(cell,out var p))return m;
             m.seed=Rand(Hash(cell),0);
             // armour courses stack along the tile's axis, so they wrap round a tower
@@ -88,6 +90,7 @@ namespace DeathStar
             foreach(var n in TileStructure.Directions)
             {
                 if(s.Solid(cell+n))continue;
+                m.surfaceFrame=new Vector4(n.x,n.y,n.z,Vector3.Dot(n,c)+Half);
                 var face=Forms(m,cell,p,n,primary);
                 m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),face.recess);
                 m.Pop();
@@ -140,12 +143,20 @@ namespace DeathStar
             bool axial=n==p.axis||n==-p.axis;
             var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=axial?p.side:p.axis,primary=n==primary,axial=axial,seed=Hash(cell)};
             f.x=TileStructure.Cross(f.y,-n);
+            if(curved!=null)
+            {
+                // A whole coplanar frontage uses one metric, so joined rows have identical sill/head positions
+                // and pane pitch on both sides of a cell boundary even where the sphere compresses the wall.
+                var at=TileStructure.Center(p.anchor);
+                at+=(Vector3)n*(Vector3.Dot(TileStructure.Center(cell)-at,n)+Half);
+                f.metric=new Vector2(Mathf.Max(0.3f,curved.Scale(at,f.x)),Mathf.Max(0.3f,curved.Scale(at,f.y)));
+            }
             m.Push((Vector3)n*Half,Quaternion.LookRotation(-(Vector3)n,(Vector3)f.y));
             // A corridor or conduit arriving at this face takes it over: a socket for the corridor's collar, a
             // manifold for the pipes.
             if(s.TryGet(cell+n,out var nb))
             {
-                if(nb.family==TileFamily.Corridor&&(nb.axis==n||nb.axis==-n)){Socket(f);return f;}
+                if(nb.family==TileFamily.Corridor&&s.CorridorLinks(cell+n,nb).Contains(-n)){Socket(f);return f;}
                 if(nb.family==TileFamily.Conduit&&ConduitLinks(cell+n,nb).Contains(-n)){Port(f,nb);return f;}
             }
             switch(p.family)
@@ -175,20 +186,24 @@ namespace DeathStar
         // carry on into the same family it stops short of the edge, leaving a pier.
         static void WindowRow(Face f,float v0,float v1,bool visor=true)
         {
+            float mid=(v0+v1)*0.5f,h=(v1-v0)/f.metric.y;
+            v0=Mathf.Max(mid<0?-Half+0.1f:0.1f,mid-h*0.5f);
+            v1=Mathf.Min(mid<0?-0.1f:Half-0.1f,mid+h*0.5f);
             bool l=f.Cont(-f.x),r=f.Cont(f.x);
-            float u0=l?-Half:-Half+0.6f,u1=r?Half:Half-0.6f;
-            const float depth=0.4f,mull=0.11f;
+            float u0=l?-Half:-Half+0.6f/f.metric.x,u1=r?Half:Half-0.6f/f.metric.x;
+            const float depth=0.4f;float mull=0.11f/f.metric.x;
+            int panes=Mathf.Max(1,Mathf.CeilToInt(Cell*f.metric.x/1.25f));float pitch=Cell/panes;
             var band=Rect.MinMaxRect(u0,v0,u1,v1);
             f.recess.Add(band);
             f.m.Reveal(Armor,band,depth,(l?0:1)|(r?0:2)|4|8);
-            for(int k=0;k<4;k++)
+            for(int k=0;k<panes;k++)
             {
-                float a=Mathf.Max(-Half+k*1.25f+mull,u0),b=Mathf.Min(-Half+(k+1)*1.25f-mull,u1);
+                float a=Mathf.Max(-Half+k*pitch+mull,u0),b=Mathf.Min(-Half+(k+1)*pitch-mull,u1);
                 if(b-a>0.2f)f.m.Glass(Rect.MinMaxRect(a,v0,b,v1),depth);
             }
-            for(int k=0;k<=4;k++)
+            for(int k=0;k<=panes;k++)
             {
-                float mid=-Half+k*1.25f,a=Mathf.Max(mid-mull,u0),b=Mathf.Min(mid+mull,u1);
+                float center=-Half+k*pitch,a=Mathf.Max(center-mull,u0),b=Mathf.Min(center+mull,u1);
                 if(b-a>0.01f)f.Box(Armor,a,v0,b,v1,-depth,0,0);
             }
             float e0=l?-Half:Mathf.Max(-Half,u0-0.2f),e1=r?Half:Mathf.Min(Half,u1+0.2f);
@@ -209,6 +224,12 @@ namespace DeathStar
 
         // A round hatch: a raised collar round a slightly proud door disc, at (u,v) on the face.
         static void Hatch(Face f,float u,float v,float r)
+        {
+            var at=TileStructure.Center(f.cell)+(Vector3)f.n*Half+(Vector3)f.x*u+(Vector3)f.y*v;
+            var saved=f.m.metricAnchor;f.m.metricAnchor=new Vector4(at.x,at.y,at.z,1);
+            HatchGeometry(f,u,v,r);f.m.metricAnchor=saved;
+        }
+        static void HatchGeometry(Face f,float u,float v,float r)
         {
             var o=new Vector3(u,v,0);
             f.m.Lathe(Smooth,o,Vector3.back,new[]{new Vector2(r+0.22f,0),new Vector2(r+0.22f,0.32f),new Vector2(r,0.32f),new Vector2(r,0)},24,false);
@@ -277,6 +298,7 @@ namespace DeathStar
         // Where a conduit plugs into this face: a manifold block round the pipe ends.
         static void Port(Face f,in TilePlacement conduit)
         {
+            if(conduit.spatial){f.Box(Armor,-1.4f,-1.4f,1.4f,1.4f,0,0.5f);f.bare.Add(new Rect(-1.4f,-1.4f,2.8f,2.8f));return;}
             Vector3 A=conduit.axis,L=Vector3.Cross(A,-(Vector3)f.n);
             Vector3 c=(Vector3)f.n*Half+A*(BedHeight+0.15f),x=f.x,y=f.y;
             float cx=Vector3.Dot(c,x),cy=Vector3.Dot(c,y);
@@ -620,6 +642,14 @@ namespace DeathStar
         static void Pad(Face f)
         {
             if(!f.primary){if(!f.axial)WindowRow(f,HighSill,HighHead);return;}
+            bool big=f.Block2(out var c,out _);
+            var at=TileStructure.Center(f.cell)+(Vector3)f.n*Half;
+            if(big)at+=(Vector3)f.x*c.x+(Vector3)f.y*c.y;
+            var saved=f.m.metricAnchor;f.m.metricAnchor=new Vector4(at.x,at.y,at.z,1);
+            PadGeometry(f);f.m.metricAnchor=saved;
+        }
+        static void PadGeometry(Face f)
+        {
             f.bare.Add(Whole);
             const float deck=0.7f,top=0.95f;
             var axis=Vector3.back;
@@ -667,7 +697,10 @@ namespace DeathStar
         // a docking collar with a round hatch where it ends in space.
         void Corridor(TileMesh m,Vector3Int cell,in TilePlacement p)
         {
-            Vector3 A=p.axis,B=p.side,C=p.Third;
+            var links=s.CorridorLinks(cell,p);
+            if(links.Count!=2||links[0]!=-links[1]){CorridorJunction(m,cell,p,links);return;}
+            var run=links[0];var side=Vector3.Dot(run,p.side)==0?p.side:p.Third;
+            Vector3 A=run,B=side,C=TileStructure.Cross(side,run);
             var oct=Octagon(1.4f);
             m.Prism(Armor,oct,Vector3.zero,B,C,A,-Half,Half,false);
             var rib=Octagon(1.75f);
@@ -685,8 +718,8 @@ namespace DeathStar
             var collar=Octagon(2.15f);
             foreach(int e in new[]{-1,1})
             {
-                var next=cell+p.axis*e;
-                if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor&&(q.axis==p.axis||q.axis==-p.axis))continue;
+                var next=cell+run*e;
+                if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor&&s.CorridorLinks(next,q).Contains(-run*e))continue;
                 float a0=e>0?Half-0.6f:-Half,a1=e>0?Half:-Half+0.6f;
                 bool open=!s.Solid(next);
                 m.Prism(Armor,collar,Vector3.zero,B,C,A,a0,a1,open);
@@ -697,6 +730,25 @@ namespace DeathStar
                     m.Lathe(Smooth,face,A*e,new[]{new Vector2(1.35f,0),new Vector2(1.35f,0.3f),new Vector2(1.1f,0.3f),new Vector2(1.1f,0)},24,false);
                     m.Lathe(Smooth,face,A*e,new[]{new Vector2(0,0),new Vector2(1.1f,0),new Vector2(1.1f,0.12f),new Vector2(0,0.12f)},24,false);
                 }
+            }
+        }
+        void CorridorJunction(TileMesh m,Vector3Int cell,in TilePlacement p,List<Vector3Int> links)
+        {
+            // A compact pressure junction with half-tubes to every occupied neighbour. Empty corners remain open.
+            m.Box(Armor,Vector3.zero,Vector3.one*2.8f,0.28f);
+            foreach(var d in links)
+            {
+                Vector3 a=d,b=Vector3.Dot(d,p.side)==0?p.side:p.Third,c=Vector3.Cross(b,a);
+                var oct=Octagon(1.4f);var rib=Octagon(1.75f);
+                m.Prism(Armor,oct,Vector3.zero,b,c,a,1,Half,false);
+                m.Prism(Armor,rib,Vector3.zero,b,c,a,1.65f,1.95f,false);
+                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.65f,-1);
+                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.95f,1);
+                var next=cell+d;
+                if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor)continue;
+                var collar=Octagon(2.15f);
+                m.Prism(Armor,collar,Vector3.zero,b,c,a,2.05f,Half,!s.Solid(next));
+                m.Annulus(Armor,oct,collar,Vector3.zero,b,c,a,2.05f,-1);
             }
         }
         static Vector2[] Octagon(float r)
@@ -715,6 +767,7 @@ namespace DeathStar
         {
             Vector3 A=p.axis;
             var links=ConduitLinks(cell,p);
+            if(p.spatial){SpatialConduit(m,cell,p,links);return;}
             bool bed=s.Solid(cell-p.axis);
             if(links.Count==2&&links[0]!=-links[1])
             {
@@ -762,11 +815,28 @@ namespace DeathStar
         List<Vector3Int> ConduitLinks(Vector3Int cell,in TilePlacement p)
         {
             var t3=p.Third;var links=new List<Vector3Int>();
-            foreach(var d in new[]{p.side,-p.side,t3,-t3})
+            foreach(var d in p.spatial?TileStructure.Directions:new[]{p.side,-p.side,t3,-t3})
                 if(s.TryGet(cell+d,out var q)&&q.family==TileFamily.Conduit&&q.axis==p.axis)links.Add(d);
+            if(p.spatial)foreach(var d in TileStructure.Directions)if(s.Solid(cell+d)&&!links.Contains(d))links.Add(d);
             if(links.Count==0){links.Add(p.side);links.Add(-p.side);}
             else if(links.Count==1)links.Add(-links[0]);
             return links;
+        }
+        void SpatialConduit(TileMesh m,Vector3Int cell,in TilePlacement p,List<Vector3Int> links)
+        {
+            m.Box(Armor,Vector3.zero,Vector3.one*1.7f,0.12f);
+            foreach(var d in links)
+            {
+                // Endpoints use the same unsigned cross-section on both sides of a shared face.
+                int axis=AxisOf(d);var u=Vector3.zero;u[(axis+1)%3]=1;var v=Vector3.zero;v[(axis+2)%3]=1;
+                bool connected=s.TryGet(cell+d,out var q)&&q.family==TileFamily.Conduit;
+                foreach(var (lat,lift,r) in Bundle)
+                {
+                    var offset=u*lat+v*lift;var end=offset+(Vector3)d*Half;
+                    m.Cylinder(Smooth,offset,end,r,16,false,!connected);
+                    m.Cylinder(Smooth,end-(Vector3)d*0.3f,end,r+0.12f,16,true,true,0.02f);
+                }
+            }
         }
         // Saddle under the bundle down to the bed face, across the run.
         static void Saddle(TileMesh m,Vector3 A,Vector3 at,Vector3 across)

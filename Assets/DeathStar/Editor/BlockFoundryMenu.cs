@@ -17,7 +17,30 @@ namespace DeathStar.EditorTools
         {
             if(EditorApplication.isPlaying){Debug.LogWarning("Stop Play mode before opening Block Foundry.");return;}
             if(!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())return;
-            CreateScene();EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
+            CreateScene();ConfigureScene();EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
+        }
+
+        // Upgrade the existing prototype through the Editor so player builds retain the tile material/shader assets.
+        public static void ConfigureScene()
+        {
+            if(EditorApplication.isPlaying)throw new InvalidOperationException("Cannot configure the Foundry in Play mode.");
+            CreateScene();var lib=TileGalleryMenu.EnsureLibrary();var previous=SceneManager.GetActiveScene();
+            var scene=SceneManager.GetSceneByPath(ScenePath);bool opened=!scene.isLoaded;
+            if(opened)scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Additive);
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                foreach(var root in scene.GetRootGameObjects())foreach(var foundry in root.GetComponentsInChildren<BlockFoundry>(true))
+                {
+                    foundry.tileLibrary=lib;TileGalleryMenu.SetUpCamera(foundry.viewer,lib);EditorUtility.SetDirty(foundry);
+                }
+                EditorSceneManager.SaveScene(scene);
+            }
+            finally
+            {
+                if(previous.IsValid()&&previous.isLoaded)SceneManager.SetActiveScene(previous);
+                if(opened)EditorSceneManager.CloseScene(scene,true);
+            }
         }
 
         [MenuItem("Death Star/Create Block Foundry Scene",false,1)]

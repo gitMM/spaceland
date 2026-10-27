@@ -107,9 +107,19 @@ Measured on 2026-10-26 in the Editor on an NVIDIA GeForce RTX 4080 Laptop GPU: t
 
 ## Settlement tiles — phase 1: massing
 
+**Block Foundry now grows settlement architecture.** Choose a family in the construction panel and click a face.
+The neighbourhood solver chooses orientation, joins compatible forms, and bends the result onto the shared sphere
+grid. The **Settlement** example demonstrates pads, a hangar, vaults, turret towers, bridges, a trench and an arch.
+Remove cells or undo to see assemblies split and reform. Saves retain family choices; old saves load as Hull.
+Press **C** or click **Debug colours** to tint the architecture by family. Swatches beside the family buttons
+are the legend (Hull stays grey); hovering in debug view shows the family, cell, axis and main face. The switch
+applies to both LODs, survives placement and undo, and does not change the gallery's colour setting.
+`Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
+`CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
+
 **Death Star → Open Tile Gallery** opens `Scenes/TileGallery.unity`: a floating station fragment (80 × 30 × 60 m) and
-nine specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. Phase 1 is shapes
-only: silhouettes, armour and how cubes combine. No doors, windows, tanks, pipes, lights or grime yet. The stage is
+eleven specimens, one per family of `doc/modular-settlement-tile-design.md`, in space with no floor. The stage shows
+silhouettes, armour, windows, equipment and how cubes combine. The stage is
 generated on enable, in edit mode too; nothing generated is saved with the scene.
 
 - **No up.** Every exposed face follows the same rules; a tile's own axis and side (any of the 24 cube
@@ -177,6 +187,8 @@ Judge the tiles headless instead of playing (edit mode only; it refreshes and co
 
 ```bash
 tools/tile-lab.sh report
+tools/tile-lab.sh validate
+tools/tile-lab.sh foundry
 tools/tile-lab.sh snap view=Trench
 tools/tile-lab.sh snap family=Defense back=1
 ```
@@ -186,3 +198,10 @@ picks, triangles and size per specimen, checks) and pictures:
 `station`, `fragment` (construction distance), `trench`, `under`, `surface`, `end`, `dish`, `hangars`, `craft`, `pod`, `seams`
 (a wide area of plain relief), `-coded` versions of station, fragment, trench and surface, and 3×3 sheets `specimens.png`,
 `specimens-coded.png` and `specimens-back.png`, rendered at 2× and averaged down.
+The report also includes `foundry.png`, `foundry-coded.png`, `foundry-trench.png`, `foundry-under.png` and
+`foundry-back.png`, plus `foundry-pad-complete.png` / `foundry-pad-incomplete.png`, using automatically solved
+family choices on curved cells. `validate` exercises the real
+Foundry placement/undo/picking path and geometric invariants without entering Play mode; `foundry` renders just
+the new construction views and runs the settlement checks.
+`foundry-coded.png` and `foundry-coded-far.png` exercise the Foundry's own debug switch, with image checks that
+the colours actually change the render on both detail levels.

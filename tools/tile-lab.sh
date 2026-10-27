@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tile lab: render the settlement tile exemplars headless and write pictures and a report to DeathStarRuns/Tiles/.
 #   tools/tile-lab.sh report
+#   tools/tile-lab.sh validate   # solver, curved geometry and Foundry edit/undo/picking checks
+#   tools/tile-lab.sh foundry    # automatically solved curved settlement pictures
 #   tools/tile-lab.sh snap family=<Name> [back=1] [clay=1]  |  snap x= y= z= tx= ty= tz= [fov=] [clay=1]  -> DeathStarRuns/Tiles/snap.png
 # Needs the spaceland editor open and not in play mode. Imports changed scripts first so the run uses the code
 # on disk (set TILE_LAB_NO_COMPILE=1 to skip).

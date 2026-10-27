@@ -373,6 +373,39 @@ Rules:
 - Hangar mouths and pads are split, each tile building its own quarter.
 - Tiles not in a complete block keep their single-tile forms, so a landmark appears only once the player completes the block.
 
+## Foundry neighbourhood solver
+
+The Foundry stores a family per occupied cell (save version 6; older saves become Hull). `SettlementSolver`
+derives the forms from current occupancy, independently of placement order. No WFC is needed for this palette.
+
+- A face-connected family group scores all 24 `(axis, side)` orientations. Solid backing and open main faces
+  favour outward installations; in-plane neighbours favour pad decks and frontages; axial neighbours favour
+  Defense towers. Storage aligns its slot with the row, Life Support aligns its vault, and connectors follow
+  their links. Coordinate hashes break equal scores and seed detail. No score refers to world up or the camera.
+- The existing face and corner rules then choose the mesh: covered faces disappear, Habitat rows leave piers
+  where they stop, continuous rows wrap compatible corners, and occupied edge diagonals create fillets or tower
+  buttresses. Stacked mass forms terraces and trenches; solid spans get sloped arch haunches where they meet
+  their supports. Defense columns carry a turret only on the exposed axial tip.
+- Complete even-grid 2 × 2 groups share one pad, hangar or other family landmark; removing a quarter restores
+  individual forms. Storage rows merge into slots and Life Support rows become vaults. Corridor branches join
+  at pressure junctions; nonplanar Conduit groups use pipe manifolds with links on all six faces. Corridor and
+  Conduit remain open cells, so adjacent solid walls stay exposed.
+- An edit re-solves the affected family relationships and compares the placements with the previous solution.
+  Changed orientations, removed cells and a two-cell neighbourhood rebuild together, including diagonal
+  dependants and cells across rendering chunks. Undo and load use the same path. A group can reorient when its
+  shape changes; restoring identical coordinates and families restores identical architecture.
+- Rendering uses 5 m per guide unit. Tile geometry samples the shared eight-corner lattice of `BlockGuide.Map`;
+  shared assemblies sample by station position, including across cell boundaries. The relief is still generated
+  once conceptually in station space: its plane coordinates and seeds never restart at a cube edge. Interpolated
+  surface normals keep its 0.1–0.8 m depth in metres. A shared tangent metric compensates pad decks and hatches
+  for local stretch/shear, and window rows adjust pane count and height to the available physical wall. Shells
+  and large spans follow the curvature; these dimensions are locally metric-correct, not rigid flat inserts.
+
+`tools/tile-lab.sh report` includes `foundry*.png`, generated from family-labelled occupancy through the same
+solver and renderer as placement. `tools/tile-lab.sh validate` checks save migration, all cube orientations,
+insertion order, connector openness, shared-corner/relief continuity, scale compensation, and actual Foundry
+placement, pad completion, removal, undo/redo and picking in an isolated edit-mode scene.
+
 ## Angled and round forms
 
 A grid of cubes easily looks blocky. Break it with angles and curves at every scale, while keeping the cube grid underneath:

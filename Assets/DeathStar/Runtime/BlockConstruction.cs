@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace DeathStar
 {
-    // Legacy v3/v4 save data only; construction now has one sphere-mapped block type.
+    // Legacy v3/v4 shape types only; current cells carry settlement families on the fixed sphere grid.
     public enum BlockType { Round, Square }
     // The original fixed guide maps lattice shells onto a sphere. Flat/Tapered
     // remain readable for legacy saves; new builds use Rounded.
@@ -37,10 +37,11 @@ namespace DeathStar
     [Serializable]
     public sealed class BlockSave
     {
-        public int version=5;
+        public int version=6;
         public BlockGuide guide;
         public Vector3Int[] cells;
         public BlockType[] types;
+        public TileFamily[] families;
         public BlockCorner[] corners;
     }
 
@@ -52,6 +53,7 @@ namespace DeathStar
         public static readonly Vector3Int[] Steps={Vector3Int.right,Vector3Int.left,Vector3Int.up,Vector3Int.down,Vector3Int.forward,Vector3Int.back};
         public static readonly int[,] FaceCorners={{1,3,7,5},{4,6,2,0},{2,6,7,3},{4,0,1,5},{5,7,6,4},{0,2,3,1}};
         HashSet<Vector3Int> cells=new HashSet<Vector3Int>();
+        Dictionary<Vector3Int,TileFamily> families=new Dictionary<Vector3Int,TileFamily>();
         Dictionary<Vector3Int,Vector3> corners=new Dictionary<Vector3Int,Vector3>();
         BlockGuide guide=new BlockGuide{shape=BlockShape.Rounded,strength=1,center=Vector3.one*0.5f,extents=Vector3.one*0.5f};
         public BlockGuide Guide=>guide;
@@ -72,6 +74,8 @@ namespace DeathStar
         public static bool InRange(Vector3Int p)=>p.x>=-CoordinateLimit&&p.y>=-CoordinateLimit&&p.z>=-CoordinateLimit&&p.x<CoordinateLimit&&p.y<CoordinateLimit&&p.z<CoordinateLimit;
         public static Vector3Int CornerOffset(int corner)=>new Vector3Int(corner&1,(corner>>1)&1,(corner>>2)&1);
         public bool Contains(Vector3Int p)=>cells.Contains(p);
+        public TileFamily Family(Vector3Int p)=>families.TryGetValue(p,out var f)?f:TileFamily.Hull;
+        public bool Solid(Vector3Int p)=>Contains(p)&&Family(p)!=TileFamily.Corridor&&Family(p)!=TileFamily.Conduit;
         public bool HasCorner(Vector3Int key)=>corners.ContainsKey(key);
         public Vector3 Corner(Vector3Int key)=>corners.TryGetValue(key,out var p)?p:(Vector3)key;
         public bool CanAdd(Vector3Int p)
@@ -81,6 +85,11 @@ namespace DeathStar
             return false;
         }
         public bool Add(Vector3Int p)=>ApplyEdit(p,false);
+        public bool Add(Vector3Int p,TileFamily family)
+        {
+            if(!TryEdit(p,false,out var next,family))return false;
+            Adopt(next);return true;
+        }
         public bool Remove(Vector3Int p)=>ApplyEdit(p,true);
         bool ApplyEdit(Vector3Int p,bool remove)
         {
@@ -89,21 +98,23 @@ namespace DeathStar
         }
         void Adopt(BlockConstruction next)
         {
-            cells=next.cells;corners=next.corners;ChangedCells=next.ChangedCells;
+            cells=next.cells;families=next.families;corners=next.corners;ChangedCells=next.ChangedCells;
             LastMaxMovement=next.LastMaxMovement;LastSafetyScale=next.LastSafetyScale;LastError=null;
             guide=next.guide;
         }
         // Preview and commit use the same result. Hovering never changes the live construction.
-        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next)
+        public bool TryEdit(Vector3Int edit,bool remove,out BlockConstruction next,TileFamily family=TileFamily.Hull)
         {
             next=null;LastError=null;
+            if(!Enum.IsDefined(typeof(TileFamily),family)){LastError="Unknown tile family.";return false;}
             if(remove?(Count<=1||!Contains(edit)):!CanAdd(edit)){LastError="No available block placement.";return false;}
-            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide};
+            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),families=new Dictionary<Vector3Int,TileFamily>(families),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide};
             candidate.ChangedCells=new HashSet<Vector3Int>{edit};foreach(var step in Steps)candidate.ChangedCells.Add(edit+step);
-            if(remove){candidate.cells.Remove(edit);candidate.PruneCorners(edit);}
+            if(remove){candidate.cells.Remove(edit);candidate.families.Remove(edit);candidate.PruneCorners(edit);}
             else
             {
                 candidate.cells.Add(edit);
+                candidate.families[edit]=family;
                 for(int i=0;i<8;i++)
                 {
                     var key=edit+CornerOffset(i);
@@ -145,6 +156,16 @@ namespace DeathStar
             }
             if(!model.GeometryIsValid())throw new ArgumentException("The sphere guide produced invalid cells.");
             model.ChangedCells=new HashSet<Vector3Int>(all);return model;
+        }
+        public static BlockConstruction FromFamilies(IReadOnlyDictionary<Vector3Int,TileFamily> input)
+        {
+            var model=FromCells(input.Keys);
+            foreach(var pair in input)
+            {
+                if(!Enum.IsDefined(typeof(TileFamily),pair.Value))throw new ArgumentException("Unknown tile family.");
+                model.families[pair.Key]=pair.Value;
+            }
+            return model;
         }
         public Vector3 Point(Vector3Int cell,Vector3 uvw)
         {
@@ -190,19 +211,26 @@ namespace DeathStar
             var blocks=new List<Vector3Int>(cells);blocks.Sort(Compare);
             var keys=new List<Vector3Int>(corners.Keys);keys.Sort(Compare);
             var vertices=new BlockCorner[keys.Count];for(int i=0;i<keys.Count;i++)vertices[i]=new BlockCorner{key=keys[i],position=corners[keys[i]]};
-            return new BlockSave{guide=guide,cells=blocks.ToArray(),corners=vertices};
+            var palette=new TileFamily[blocks.Count];for(int i=0;i<blocks.Count;i++)palette[i]=Family(blocks[i]);
+            return new BlockSave{guide=guide,cells=blocks.ToArray(),families=palette,corners=vertices};
         }
         public void Restore(BlockSave save)
         {
-            if(save==null||(save.version<1||save.version>5)||save.cells==null||save.cells.Length==0||save.cells.Length>MaxBlocks)
+            if(save==null||(save.version<1||save.version>6)||save.cells==null||save.cells.Length==0||save.cells.Length>MaxBlocks)
                 throw new ArgumentException("Unsupported or empty construction file.");
             if((save.version==3||save.version==4)&&(save.types==null||save.types.Length!=save.cells.Length))throw new ArgumentException("Incomplete block types.");
+            if(save.version>=6&&(save.families==null||save.families.Length!=save.cells.Length))throw new ArgumentException("Incomplete tile families.");
             var next=new BlockConstruction();next.cells.Clear();next.corners.Clear();
             var needed=new HashSet<Vector3Int>();
             foreach(var cell in save.cells)
             {
                 if(!InRange(cell)||!next.cells.Add(cell))throw new ArgumentException("Invalid or duplicate block coordinate.");
                 for(int i=0;i<8;i++)needed.Add(cell+CornerOffset(i));
+            }
+            if(save.version>=6)for(int i=0;i<save.cells.Length;i++)
+            {
+                if(!Enum.IsDefined(typeof(TileFamily),save.families[i]))throw new ArgumentException("Unknown tile family.");
+                next.families[save.cells[i]]=save.families[i];
             }
             // Read old typed saves without changing their stored geometry. New
             // placements and new saves use only the sphere mapping.
