@@ -410,9 +410,47 @@ namespace DeathStar.EditorTools
                 shots.Add(("foundry-pad-incomplete.png","removing a quarter restores three separate pads"));
             }
             finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
-            try{RidgesReport(rig,checks,shots,notes);}
+            try{RidgesReport(rig,checks,shots,notes);StationReport(rig,checks,shots,notes);}
             finally{rig.Stage.root.SetActive(true);}
             return notes;
+        }
+        // The whole station: every family on every shape (SettlementExamples.Station).
+        static void StationReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)
+        {
+            var root=new GameObject("Station lab");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var model=SettlementExamples.Station();var view=new FoundrySettlement(root.transform,rig.Library.materials);
+            try
+            {
+                view.measureFixedParts=true;view.Rebuild(model);view.measureFixedParts=false;var full=view.LastTimings;
+                notes.Add($"Station example, cells: {ShapeCounts(model)}");
+                notes.Add($"Station example, full rebuild: {full.Total:0} ms for {full.tiles} tiles ({full.Total/Mathf.Max(1,full.tiles):0.0} ms per tile): {Split(full)}");
+                ScaleCheck("Station",view,checks,notes);
+                KitCheck("Station",model,checks,notes);
+                var landmarks=new[]{"dish","reactor","sphere tank","pad quarter"};
+                var missing=landmarks.Where(l=>!view.fixedPartSizes.Exists(p=>p.name.StartsWith(l))).ToList();
+                checks.Add((missing.Count==0,"Station: the 2 x 2 landmarks build (dish, reactor, sphere tank, big pad)"+(missing.Count>0?"; missing "+string.Join(", ",missing):"")));
+                TileLook.AddLights(root.transform);
+                var warp=new CurvedTileMesh(model);
+                var bounds=view.Bounds;var center=bounds.center;float radius=bounds.extents.magnitude;
+                var lit=(new Vector3(-1,1,-1).normalized+new Vector3(0.35f,-0.1f,-0.3f)).normalized;
+                var front=new TileGallery.View(center+lit*radius*1.95f,center,Vector3.up,42);
+                var back=new TileGallery.View(center-lit*radius*1.95f,center,Vector3.up,42);
+                var t=rig.Shoot(front,320,180);UnityEngine.Object.DestroyImmediate(t);
+                t=rig.Shoot(front,W,H);Save(t,Path.Combine(Dir,"station.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("station.png","the whole station from its lit side: every family on ridges, crowns and faces"));
+                foreach(var (mode,file,what) in new[]{(DebugView.Family,"station-coded.png","the same, coloured by family"),(DebugView.Shape,"station-shapes.png","the same, coloured by cell shape")})
+                {
+                    view.SetDebugView(mode);t=rig.Shoot(front,W,H);Save(t,Path.Combine(Dir,file));UnityEngine.Object.DestroyImmediate(t);shots.Add((file,what));
+                }
+                view.SetDebugView(DebugView.Off);
+                t=rig.Shoot(back,W,H);Save(t,Path.Combine(Dir,"station-back.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("station-back.png","the far side, lit by the planet"));
+                const int R=SettlementExamples.StationRadius;
+                var spike=warp.Map((Vector3)new Vector3Int(-1,-1,1)*(R-1)*5);
+                t=rig.Shoot(new TileGallery.View(spike*0.15f+Vector3.up*3,spike,Vector3.up,70),W,H);Save(t,Path.Combine(Dir,"station-inside.png"));UnityEngine.Object.DestroyImmediate(t);
+                shots.Add(("station-inside.png","inside the hollow: the spike under the Life Support crown"));
+            }
+            finally{view.Dispose();UnityEngine.Object.DestroyImmediate(root);}
         }
         // The cap round a cube corner: every family on a ridge, a crown, a keel inside, a half-covered roof, gables.
         static void RidgesReport(Rig rig,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)

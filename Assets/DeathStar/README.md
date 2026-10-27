@@ -118,7 +118,15 @@ wedge (two faces folded flat into one roof, on the cube's edge diagonals), magen
 diagonals). Hovering shows the shape, how it meets open space (ridge, half, keel, crown, spike, gable), the ridge's
 axis and the edge lengths in metres. Both views apply to both LODs, survive placement and undo, and do not change
 the gallery's colour setting. The **Ridges** example is a cap round one cube corner: three ridges meet at a crown,
-with every family on a ridge, a keel inside, a half-covered roof and gables. `BlockConstruction.Shape` and
+with every family on a ridge, a keel inside, a half-covered roof and gables. The **Station** example is a whole
+two-layer hollow sphere with every family on every shape:
+- all 12 ridges, each in one family;
+- 8 crowns in the 8 non-Hull solid families, each met by its own family's ridge, plus a sunken Hull crown in a pit;
+- 2 × 2 landmarks at five face centres, with rows, towers, pits, pads, a corridor out into space and a conduit on
+  saddles;
+- a half-covered roof, a gap with two gables, and a keel and a spike inside.
+
+It takes several seconds to build. `BlockConstruction.Shape` and
 `Exposure` classify cells from their eight corners; see `doc/curved-grid-tiles-plan.md`. Wedge and apex cells keep
 the skin and relief on their open faces but build no family forms. Instead they build their shape's kit in curved
 space from their real corners (`TileBuilder.Shapes.cs`, `TileMesh.BeginWorld`). The Hull kit: an armoured crest
@@ -253,5 +261,7 @@ class). Checks hold those parts within 5% and the rebuild, edit and triangle cou
 conduit cross-sections must come out within 2% of true size at every tube end, and tubes meeting across a face within
 1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge); every open wedge and apex cell must
 build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
-`crowns-sheet.png` the crown in each family with a kit). The script submits the lab as a
+`crowns-sheet.png` the crown in each family with a kit). `station.png`, `station-coded.png`, `station-shapes.png`,
+`station-back.png` and `station-inside.png` show the Station example; the validation checks that it holds every
+shape and exposure, every family on a ridge and every solid family on a crown. The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.

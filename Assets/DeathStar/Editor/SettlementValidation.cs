@@ -141,6 +141,21 @@ namespace DeathStar.EditorTools
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R-1,R-1,1),out _)==CellExposure.Keel,"Ridges example lost its keel");
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R,SettlementExamples.RidgeLow,R),out _)==CellExposure.Half,"Ridges example lost its half-covered roof");
             Require(ridges.Exposure(SettlementExamples.RidgeCell(R,R,R),out _)==CellExposure.Crown,"Ridges example lost its crown");
+            // The station example has every shape and exposure, every family on a ridge and every solid family on a crown.
+            var station=SettlementExamples.Station();
+            var seen=new HashSet<string>();var onRidge=new HashSet<TileFamily>();var onCrown=new HashSet<TileFamily>();
+            foreach(var c in station.Cells)
+            {
+                var s=station.Shape(c);var e=station.Exposure(c,out bool open);var f=station.Family(c);
+                seen.Add(s.kind==CellShape.Box?(s.Small?"small box":"box"):e.ToString());if(open)seen.Add("gable");
+                if(e==CellExposure.Ridge)onRidge.Add(f);if(e==CellExposure.Crown)onCrown.Add(f);
+            }
+            foreach(var name in new[]{"box","small box","Ridge","Half","Keel","Crown","Spike","Buried","gable"})Require(seen.Contains(name),"Station example lacks "+name);
+            foreach(TileFamily f in Enum.GetValues(typeof(TileFamily)))
+            {
+                Require(onRidge.Contains(f),"Station example lacks "+f+" on a ridge");
+                if(f!=TileFamily.Corridor&&f!=TileFamily.Conduit)Require(onCrown.Contains(f),"Station example lacks a "+f+" crown");
+            }
         }
         public static string FoundryInteraction(TileLibrary library)
         {
