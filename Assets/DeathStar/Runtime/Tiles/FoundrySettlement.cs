@@ -32,9 +32,16 @@ namespace DeathStar
         public bool ColorCoding=>View!=DebugView.Off;
         public TileStructure Structure {get;private set;}
         public Timings LastTimings {get;private set;}
-        // Lab: while set, rebuilds record how every fixed-size part comes out (CurvedTileMesh.SizeRatio), untimed.
-        public bool measureFixedParts;
-        public readonly List<(string name,float ratio)> fixedPartSizes=new List<(string,float)>();
+        // Lab: while set, rebuilds hand every tile they build to it, untimed (see Built).
+        public System.Action<Built> observe;
+        // A tile as the lab measures it: its source (its triangles before carving in plain), its meshes once bent, and
+        // the vertices and warp data (UV4 frames, UV5 anchors) of each mesh before bending.
+        public struct Built
+        {
+            public Vector3Int cell;public TileFamily family;public TileMesh source;public int plain;public Mesh near,far;
+            public CurvedTileMesh warp;   // null if not bent
+            public Vector3[] nearBefore,farBefore;public List<Vector4> frames,anchors,farAnchors;
+        }
         public int MeshCount=>tiles.Count;
         public FoundrySettlement(Transform parent,Material[] materials)
         {this.parent=parent;this.materials=materials;debugProperties.SetFloat(OverlayId,0);}
@@ -73,19 +80,7 @@ namespace DeathStar
             {
                 Remove(cell);if(!next.TryGet(cell,out var placement)){timings.objects+=Lap();continue;}
                 timings.objects+=Lap();
-                var source=builder.Build(cell);timings.forms+=Lap();if(source.VertexCount==0)continue;
-                var (near,far)=source.ToMeshes(placement.family+" "+cell);
-                Vector3[] before=null;List<Vector4> frames=null,anchors=null;
-                if(measureFixedParts&&source.fixedParts.Count>0)
-                {before=near.vertices;frames=new List<Vector4>();near.GetUVs(4,frames);anchors=new List<Vector4>();near.GetUVs(5,anchors);}
-                timings.meshes+=Lap();
-                warp.Bend(near,cell);if(far!=null)warp.Bend(far,cell,near,source.SharedVertices);timings.bend+=Lap();
-                if(before!=null)
-                {
-                    var after=near.vertices;
-                    foreach(var (name,start,end) in source.fixedParts)fixedPartSizes.Add((name,warp.SizeRatio(before,after,frames,anchors,start,end)));
-                    clock.Restart();
-                }
+                var (near,far)=Build(builder,warp,cell,placement.family,ref timings,clock,observe);if(near==null)continue;
                 var root=new GameObject(near.name){hideFlags=HideFlags.DontSave};root.transform.SetParent(parent,false);
                 var tile=new Tile{root=root,near=near,far=far,shape=TileLook.ShapeColor(model.Shape(cell))};tiles.Add(cell,tile);
                 MeshRenderer Add(string name,Mesh mesh)
@@ -104,6 +99,25 @@ namespace DeathStar
                 ApplyDebug(tile);timings.tiles++;timings.objects+=Lap();
             }
             LastTimings=timings;
+        }
+        // One tile's near and far meshes, bent onto the grid when there is a warp (null if it builds nothing), its time
+        // added to timings from clock. observe (the lab) sees it untimed.
+        public static (Mesh near,Mesh far) Build(TileBuilder builder,CurvedTileMesh warp,Vector3Int cell,TileFamily family,ref Timings timings,Stopwatch clock,System.Action<Built> observe=null)
+        {
+            double Lap(){double ms=clock.Elapsed.TotalMilliseconds;clock.Restart();return ms;}
+            var source=builder.Build(cell);timings.forms+=Lap();if(source.VertexCount==0)return default;
+            int plain=source.TriangleCount;
+            var (near,far)=source.ToMeshes(family+" "+cell);timings.meshes+=Lap();
+            var built=new Built{cell=cell,family=family,source=source,plain=plain,near=near,far=far,warp=warp};
+            if(observe!=null)
+            {
+                built.nearBefore=near.vertices;near.GetUVs(4,built.frames=new List<Vector4>());near.GetUVs(5,built.anchors=new List<Vector4>());
+                if(far!=null){built.farBefore=far.vertices;far.GetUVs(5,built.farAnchors=new List<Vector4>());}
+                clock.Restart();
+            }
+            if(warp!=null){warp.Bend(near,cell);if(far!=null)warp.Bend(far,cell,near,source.FarFromNear);timings.bend+=Lap();}
+            if(observe!=null){observe(built);clock.Restart();}
+            return (near,far);
         }
         public Bounds Bounds
         {

@@ -10,20 +10,6 @@ namespace DeathStar
     // Surface treatment read by DeathStar/Tile Surface from uv0.x.
     public enum TilePattern { Plain, Panels, Hazard, Deck, Grille, Markings, Armour }
 
-    public static class TileFace
-    {
-        public const int Front=0, Right=1, Back=2, Left=3, Top=4, Bottom=5;
-        public const int AllExposed=(1<<Front)|(1<<Right)|(1<<Back)|(1<<Left)|(1<<Top);
-        static readonly Vector3Int[] Directions={new Vector3Int(0,0,-1),new Vector3Int(1,0,0),new Vector3Int(0,0,1),new Vector3Int(-1,0,0),Vector3Int.up,Vector3Int.down};
-        // Direction of a tile's local face after turning the tile by quarter turns about +Y (Quaternion.Euler(0,90*turns,0)).
-        public static Vector3Int Direction(int face,int turns)
-        {
-            var d=Directions[face];
-            for(int i=0;i<((turns%4)+4)%4;i++)d=new Vector3Int(d.z,d.y,-d.x);
-            return d;
-        }
-    }
-
     public readonly struct Finish
     {
         public readonly TileSlot slot;
@@ -38,7 +24,7 @@ namespace DeathStar
     }
 
     // Builds a tile's mesh from flat-shaded primitives. Each primitive is placed through a transform stack; face
-    // frames (PushFace) have x to the right and y up as seen from outside, and z pointing into the face.
+    // frames (TileBuilder.Face) have x to the right and y up as seen from outside, and z pointing into the face.
     public sealed partial class TileMesh
     {
         public const int SlotCount=8;
@@ -100,44 +86,43 @@ namespace DeathStar
         // Any local transform on the stack (e.g. undoing a cell's stretch along a tube's run).
         public void PushMatrix(Matrix4x4 local){stack.Push(matrix);matrix=matrix*local;}
 
-        // Kit parts have a far level of their own: Detail builds them twice, as they are for the near mesh and coarse
-        // for the far one. They must be the last thing the tile builds: ToMeshes swaps that tail of the mesh for the
-        // coarse build. Coarse: a third of the sides on revolutions (never under six to the turn), no chamfers, armour
-        // plain.
-        public bool coarse;
-        TileMesh farDetail;int detailVertices,detailJobs;readonly int[] detailIndices=new int[SlotCount];
+        // Parts with a far level of their own (kits, family forms, relief): Detail builds them as they are for the near
+        // mesh and keeps the build, which ToMeshes runs again coarse for the far mesh in their place. Coarse level 1: a
+        // third of the sides on revolutions (never under six to the turn), half the steps on domes and dishes, no
+        // chamfers, armour plain. A far mesh still over farBudget is built at level 2: a fifth of the sides (never
+        // under four), a third of the steps.
+        public int coarse,farBudget;
+        bool inDetail;
+        readonly List<(int v0,int v1,int j0,int j1,int[] i0,int[] i1)> details=new List<(int,int,int,int,int[],int[])>();
+        readonly List<(System.Action<TileMesh> build,Matrix4x4 matrix,Vector4 frame,Vector4 anchor,int panes)> farBuilds=
+            new List<(System.Action<TileMesh>,Matrix4x4,Vector4,Vector4,int)>();
+        int[] IndexCounts(){var c=new int[SlotCount];for(int i=0;i<SlotCount;i++)c[i]=indices[i].Count;return c;}
         public void Detail(System.Action<TileMesh> build)
         {
-            detailVertices=positions.Count;detailJobs=jobs.Count;for(int i=0;i<SlotCount;i++)detailIndices[i]=indices[i].Count;
-            farDetail=new TileMesh{stationOffset=stationOffset,cellHalf=cellHalf,retainWarpData=retainWarpData,courseAxis=courseAxis,
-                courseSide=courseSide,seed=seed,overlay=overlay,surfaceFrame=surfaceFrame,metricAnchor=metricAnchor,coarse=true,matrix=matrix,panes=panes};
-            build(this);build(farDetail);
+            if(coarse>0||inDetail){build(this);return;}
+            int v0=positions.Count,j0=jobs.Count;var i0=IndexCounts();
+            farBuilds.Add((build,matrix,surfaceFrame,metricAnchor,panes));
+            inDetail=true;build(this);inDetail=false;
+            details.Add((v0,positions.Count,j0,jobs.Count,i0,IndexCounts()));
         }
-        int Sides(int n,float arc=Mathf.PI*2)=>coarse?Mathf.Max(Mathf.CeilToInt(6*arc/(Mathf.PI*2)-1e-3f),Mathf.CeilToInt(n/3f)):n;
+        TileMesh Coarse(int level)
+        {
+            var t=new TileMesh{coarse=level,stationOffset=stationOffset,cellHalf=cellHalf,retainWarpData=retainWarpData,courseAxis=courseAxis,
+                courseSide=courseSide,seed=seed,overlay=overlay};
+            foreach(var (build,m,frame,anchor,p) in farBuilds){t.matrix=m;t.surfaceFrame=frame;t.metricAnchor=anchor;t.panes=p;build(t);}
+            return t;
+        }
+        int Sides(int n,float arc=Mathf.PI*2)
+        {
+            if(coarse==0)return n;
+            float turn=arc/(Mathf.PI*2);
+            return coarse==1?Mathf.Max(Mathf.CeilToInt(6*turn-1e-3f),Mathf.CeilToInt(n/3f)):Mathf.Max(Mathf.CeilToInt(4*turn-1e-3f),Mathf.CeilToInt(n/5f));
+        }
+        int Steps(int n,int least=2)=>coarse==0?n:Mathf.Max(least,coarse==1?n/2:n/3);
 
-        // Frame on one face of the box min..max. Side faces put y=0 at the tile's ground so heights read the same on
-        // every face; the top face has y towards the back (+Z).
-        public void PushFace(int face,Vector3 min,Vector3 max)
-        {
-            Vector3 c=(min+max)*0.5f;
-            switch(face)
-            {
-                case TileFace.Front:Push(new Vector3(c.x,0,min.z),Quaternion.identity);break;
-                case TileFace.Right:Push(new Vector3(max.x,0,c.z),Quaternion.Euler(0,-90,0));break;
-                case TileFace.Back:Push(new Vector3(c.x,0,max.z),Quaternion.Euler(0,180,0));break;
-                case TileFace.Left:Push(new Vector3(min.x,0,c.z),Quaternion.Euler(0,90,0));break;
-                case TileFace.Top:Push(new Vector3(c.x,max.y,c.z),Quaternion.Euler(90,0,0));break;
-                default:Push(new Vector3(c.x,min.y,c.z),Quaternion.Euler(-90,0,0));break;
-            }
-        }
-        // Face rectangle of the box in that face's frame.
-        public static Rect FaceRect(int face,Vector3 min,Vector3 max)
-        {
-            Vector3 s=max-min;
-            if(face==TileFace.Top||face==TileFace.Bottom)return new Rect(-s.x*0.5f,-s.z*0.5f,s.x,s.z);
-            float w=face==TileFace.Front||face==TileFace.Back?s.x:s.z;
-            return new Rect(-w*0.5f,min.y,w,s.y);
-        }
+        // Dry: the primitives return at once and build nothing (the transform stack and part scopes still work), for
+        // running a face's forms only for the rects they report (TileBuilder.FaceHoles).
+        public bool dry;
 
         int Vertex(Vector3 p,Vector3 n,Vector4 t,in Finish f,Vector2 g=default,Vector2 size=default)
         {
@@ -160,19 +145,20 @@ namespace DeathStar
 
         public void Quad(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 d,Vector3 n,Vector3 t)
         {
-            if(Hidden(a,b,c,d,n))return;
-            if(f.pattern==TilePattern.Armour&&!coarse&&Carve(f,a,b,c,d,n))return;
+            if(dry||Hidden(a,b,c,d,n))return;
+            if(f.pattern==TilePattern.Armour&&coarse==0&&Carve(f,a,b,c,d,n))return;
             Vector4 t4=t;t4.w=1;
             Emit(f.slot,Vertex(a,n,t4,f),Vertex(b,n,t4,f),Vertex(c,n,t4,f),Vertex(d,n,t4,f),Flip(a,b,c,d,n));
         }
         public void QuadSmooth(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 d,Vector3 na,Vector3 nb,Vector3 nc,Vector3 nd,Vector3 t)
         {
-            if(Hidden(a,b,c,d,na+nb+nc+nd))return;
+            if(dry||Hidden(a,b,c,d,na+nb+nc+nd))return;
             Vector4 t4=t;t4.w=1;
             Emit(f.slot,Vertex(a,na,t4,f),Vertex(b,nb,t4,f),Vertex(c,nc,t4,f),Vertex(d,nd,t4,f),Flip(a,b,c,d,na+nb+nc+nd));
         }
         public void Triangle(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 n)
         {
+            if(dry)return;
             Vector4 t4=(b-a).normalized;t4.w=1;
             int i=Vertex(a,n,t4,f),j=Vertex(b,n,t4,f),k=Vertex(c,n,t4,f);
             var list=indices[(int)f.slot];
@@ -190,27 +176,24 @@ namespace DeathStar
 
         public void Box(in Finish f,Vector3 center,Vector3 size,float chamfer=0)
         {
-            Vector3 h=size*0.5f;if(coarse)chamfer=0;
+            if(dry)return;
+            Vector3 h=size*0.5f;if(coarse>0)chamfer=0;
             SolidBox(center,h);
-            ChamferedBox(f,center,h,Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f),true);
+            ChamferedBox(f,center,h,Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f));
         }
-        // Chamfered edges catch grazing light; faces=false leaves the six main faces to the caller (shells cut them).
-        void ChamferedBox(in Finish f,Vector3 o,Vector3 h,float c,bool faces)
+        // Chamfered edges catch grazing light.
+        void ChamferedBox(in Finish f,Vector3 o,Vector3 h,float c)
         {
             for(int a=0;a<3;a++)
             {
                 int b=(a+1)%3,k=(a+2)%3;
                 for(int s=-1;s<=1;s+=2)
                 {
-                    if(faces)
-                    {
-                        float hb=h[b]-c,hk=h[k]-c,ha=s*h[a];
-                        Quad(f,o+P(a,ha,b,-hb,k,-hk),o+P(a,ha,b,hb,k,-hk),o+P(a,ha,b,hb,k,hk),o+P(a,ha,b,-hb,k,hk),Axis(a)*s,Axis(b));
-                    }
+                    float hb=h[b]-c,hk=h[k]-c,ha=s*h[a];
+                    Quad(f,o+P(a,ha,b,-hb,k,-hk),o+P(a,ha,b,hb,k,-hk),o+P(a,ha,b,hb,k,hk),o+P(a,ha,b,-hb,k,hk),Axis(a)*s,Axis(b));
                     if(c<=0)continue;
                     for(int s2=-1;s2<=1;s2+=2)
                     {
-                        float hk=h[k]-c;
                         Vector3 p0=P(a,s*h[a],b,s2*(h[b]-c),k,-hk),p1=P(a,s*(h[a]-c),b,s2*h[b],k,-hk);
                         Vector3 p2=P(a,s*(h[a]-c),b,s2*h[b],k,hk),p3=P(a,s*h[a],b,s2*(h[b]-c),k,hk);
                         Quad(f,o+p0,o+p1,o+p2,o+p3,(Axis(a)*s+Axis(b)*s2).normalized,Axis(k));
@@ -223,23 +206,10 @@ namespace DeathStar
                     o+new Vector3(sx*(h.x-c),sy*(h.y-c),sz*h.z),new Vector3(sx,sy,sz).normalized);
         }
 
-        // A chamfered box whose side and top walls have rectangular holes (in each face's frame). No bottom.
-        public void Shell(in Finish f,Vector3 min,Vector3 max,float chamfer,List<Rect>[] holes)
-        {
-            Vector3 h=(max-min)*0.5f;if(coarse)chamfer=0;
-            float c=Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f);
-            ChamferedBox(f,(min+max)*0.5f,h,c,false);
-            for(int face=0;face<5;face++)
-            {
-                Rect r=FaceRect(face,min,max);
-                r=Rect.MinMaxRect(r.xMin+c,r.yMin+c,r.xMax-c,r.yMax-c);
-                PushFace(face,min,max);Wall(f,r,holes?[face]);Pop();
-            }
-        }
-
         // Planar wall at z=0 facing out (-z), minus rectangular holes.
         public void Wall(in Finish f,Rect r,List<Rect> holes)
         {
+            if(dry)return;
             var xs=new List<float>{r.xMin,r.xMax};var ys=new List<float>{r.yMin,r.yMax};
             if(holes!=null)foreach(var hole in holes)
             {
@@ -283,6 +253,7 @@ namespace DeathStar
         // Glazing at depth z: uv1 holds metres across the pane, uv2 its size; the glass shader builds a room behind it.
         public void Glass(Rect r,float z)
         {
+            if(dry)return;
             var f=new Finish(TileSlot.Glass);var size=r.size;
             // Tangent along x; w makes cross(normal,tangent)*w point up the pane.
             var t=new Vector4(1,0,0,-1);
@@ -300,6 +271,7 @@ namespace DeathStar
         // Convex hexahedron from 8 corners indexed by bits (1: +x side, 2: top, 4: +z side). Degenerate faces are skipped.
         public void Hexa(in Finish f,Vector3[] c)
         {
+            if(dry)return;
             Vector3 centroid=Vector3.zero;foreach(var p in c)centroid+=p;centroid/=8;
             int[,] faces={{0,2,6,4},{1,3,7,5},{0,1,5,4},{2,3,7,6},{0,1,3,2},{4,5,7,6}};
             var planes=new List<(Vector3,Vector3)>(6);
@@ -321,6 +293,7 @@ namespace DeathStar
         // Part of a revolution: from start (perpendicular to axis) through arc radians towards cross(axis,start).
         public void Lathe(in Finish f,Vector3 origin,Vector3 axis,IList<Vector2> profile,int segments,bool smooth,Vector3 start,float arc)
         {
+            if(dry)return;
             axis.Normalize();segments=Sides(segments,arc);
             Vector3 u=Vector3.ProjectOnPlane(start,axis).normalized,w=Vector3.Cross(axis,u);
             int n=profile.Count;var seg=new Vector2[n-1];
@@ -343,7 +316,7 @@ namespace DeathStar
 
         public void Cylinder(in Finish f,Vector3 a,Vector3 b,float r,int segments=16,bool capA=true,bool capB=true,float chamfer=0)
         {
-            float len=(b-a).magnitude;if(coarse)chamfer=0;float c=Mathf.Min(chamfer,Mathf.Min(r*0.5f,len*0.25f));
+            float len=(b-a).magnitude;if(coarse>0)chamfer=0;float c=Mathf.Min(chamfer,Mathf.Min(r*0.5f,len*0.25f));
             var p=new List<Vector2>();
             if(capA){p.Add(new Vector2(0,0));if(c>0){p.Add(new Vector2(r-c,0));p.Add(new Vector2(r,c));}else p.Add(new Vector2(r,0));}
             else p.Add(new Vector2(r,0));
@@ -358,25 +331,13 @@ namespace DeathStar
             axis.Normalize();
             Lathe(f,bottom,axis,new[]{new Vector2(0,0),new Vector2(r,0),new Vector2(r,body)},segments,false);
             var cap=new List<Vector2>();
-            int steps=coarse?3:6;
+            int steps=Steps(6);
             for(int k=0;k<=steps;k++){float t=k/(float)steps*Mathf.PI*0.5f;cap.Add(new Vector2(r*Mathf.Cos(t),body+dome*Mathf.Sin(t)));}
             Lathe(f,bottom,axis,cap,segments,true);
         }
-        // Horizontal vessel: domes at both ends.
-        public void Capsule(in Finish f,Vector3 a,Vector3 b,float r,float dome,int segments=24)
-        {
-            Vector3 axis=(b-a).normalized;float len=(b-a).magnitude;
-            var p=new List<Vector2>();int steps=coarse?3:6;
-            for(int k=0;k<=steps;k++){float t=-Mathf.PI*0.5f+k/(float)steps*Mathf.PI*0.5f;p.Add(new Vector2(r*Mathf.Cos(t),dome+dome*Mathf.Sin(t)));}
-            Lathe(f,a-axis*dome,axis,p,segments,true);
-            Lathe(f,a,axis,new[]{new Vector2(r,0),new Vector2(r,len)},segments,false);
-            var q=new List<Vector2>();
-            for(int k=0;k<=steps;k++){float t=k/(float)steps*Mathf.PI*0.5f;q.Add(new Vector2(r*Mathf.Cos(t),len+dome*Mathf.Sin(t)));}
-            Lathe(f,a,axis,q,segments,true);
-        }
         public void Sphere(in Finish f,Vector3 center,float r,int segments=16)
         {
-            var p=new List<Vector2>();int steps=coarse?4:8;
+            var p=new List<Vector2>();int steps=Steps(8,3);
             for(int k=0;k<=steps;k++){float t=-Mathf.PI*0.5f+k/(float)steps*Mathf.PI;p.Add(new Vector2(r*Mathf.Cos(t),r*Mathf.Sin(t)));}
             p[0]=new Vector2(0,-r);p[steps]=new Vector2(0,r);
             Lathe(f,center,Vector3.up,p,segments,true);
@@ -393,25 +354,12 @@ namespace DeathStar
         {
             const float thickness=0.035f;
             var back=new List<Vector2>();var front=new List<Vector2>();
-            int steps=coarse?3:6;
+            int steps=Steps(6);
             for(int i=0;i<=steps;i++){float r=radius*i/steps;back.Add(new Vector2(r,depth*(r/radius)*(r/radius)));}
             for(int i=steps;i>=0;i--){float r=radius*i/steps;front.Add(new Vector2(r,depth*(r/radius)*(r/radius)+thickness));}
             Lathe(f,center,axis,back,segments,true);
             Lathe(f,center,axis,new[]{new Vector2(radius,depth),new Vector2(radius,depth+thickness)},segments,false);
             Lathe(f,center,axis,front,segments,true);
-        }
-
-        // Pipe run through points, with fittings at the bends and flanges at the ends.
-        public void Pipe(in Finish f,float r,params Vector3[] points)
-        {
-            for(int i=0;i<points.Length-1;i++)Cylinder(f,points[i],points[i+1],r,10,false,false);
-            for(int i=1;i<points.Length-1;i++)Box(f,points[i],Vector3.one*r*2.5f,r*0.4f);
-            for(int e=0;e<2;e++)
-            {
-                Vector3 end=e==0?points[0]:points[points.Length-1],next=e==0?points[1]:points[points.Length-2];
-                Vector3 d=(next-end).normalized;
-                Cylinder(f,end,end+d*r*0.7f,r*1.45f,10,true,true,r*0.15f);
-            }
         }
 
         // Extrude a convex polygon (in the plane of pu, pv) along axis from a0 to a1. skip: bit per edge to leave out.
@@ -449,33 +397,60 @@ namespace DeathStar
         }
 
         public Mesh ToMesh(string name){Flush();return Build(name);}
-        // Vertices at the start of both meshes from the last ToMeshes: identical in near and far.
-        public int SharedVertices {get;private set;}
-        // The mesh with the armour carved, and a far level of detail with the armour plain and the coarse kit parts
-        // (null if nothing is carved and there is no Detail).
+        // For each vertex of the far mesh from the last ToMeshes, the near vertex it is identical to (-1: its own).
+        public int[] FarFromNear {get;private set;}
+        // The coarse level the last ToMeshes built the Detail parts at (0: none).
+        public int FarLevel {get;private set;}
+        // The mesh with the armour carved, and a far level of detail: the armour plain, the Detail parts coarse (null if
+        // nothing is carved and there is no Detail).
         public (Mesh near,Mesh far) ToMeshes(string name)
         {
-            SharedVertices=0;
-            if(jobs.Count==0&&farDetail==null)return (Build(name),null);
-            bool detail=farDetail!=null;
-            int mark=detail?detailVertices:positions.Count,jobMark=detail?detailJobs:jobs.Count;
-            var marks=new int[SlotCount];for(int i=0;i<SlotCount;i++)marks[i]=detail?detailIndices[i]:indices[i].Count;
-            SharedVertices=mark;
-            // The far mesh: everything before the detail, the coarse detail, then the armour plain.
-            var nearDetail=new TileMesh();MoveTail(nearDetail,mark,marks);
-            if(detail){farDetail.MoveTail(this,0,new int[SlotCount]);farDetail=null;}
-            for(int k=0;k<jobMark;k++)
+            FarFromNear=null;FarLevel=0;
+            if(jobs.Count==0&&details.Count==0)return (Build(name),null);
+            var far=new TileMesh{retainWarpData=retainWarpData,seed=seed,overlay=overlay};var map=new List<int>(positions.Count);
+            // Everything outside the Detail ranges, in order; then the armour plain; then the Detail parts, coarse.
+            var into=new int[positions.Count];int d=0;
+            for(int v=0;v<positions.Count;v++)
             {
-                var j=jobs[k];
-                surfaceFrame=j.frame;
-                metricAnchor=j.anchor;
-                Vector4 t4=(j.B-j.A).normalized;t4.w=1;
-                Emit(j.f.slot,Raw(j.A,j.N,t4,j.f),Raw(j.B,j.N,t4,j.f),Raw(j.C,j.N,t4,j.f),Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
+                while(d<details.Count&&v>=details[d].v1)d++;
+                if(d<details.Count&&v>=details[d].v0){into[v]=-1;continue;}
+                into[v]=far.positions.Count;map.Add(v);
+                far.positions.Add(positions[v]);far.normals.Add(normals[v]);far.tangents.Add(tangents[v]);far.codes.Add(codes[v]);
+                far.local.Add(local[v]);far.extent.Add(extent[v]);far.colors.Add(colors[v]);far.overlays.Add(overlays[v]);
+                far.surfaceFrames.Add(surfaceFrames[v]);far.metricAnchors.Add(metricAnchors[v]);
             }
-            var far=Build(name+" far");
-            Truncate(mark,marks);nearDetail.MoveTail(this,0,new int[SlotCount]);
+            for(int i=0;i<SlotCount;i++)
+            {
+                var src=indices[i];var dst=far.indices[i];d=0;
+                for(int k=0;k<src.Count;k++)
+                {
+                    while(d<details.Count&&k>=details[d].i1[i])d++;
+                    if(d<details.Count&&k>=details[d].i0[i]){k=details[d].i1[i]-1;continue;}
+                    dst.Add(into[src[k]]);
+                }
+            }
+            d=0;
+            for(int k=0;k<jobs.Count;k++)
+            {
+                while(d<details.Count&&k>=details[d].j1)d++;
+                if(d<details.Count&&k>=details[d].j0)continue;
+                var j=jobs[k];
+                far.surfaceFrame=j.frame;far.metricAnchor=j.anchor;
+                Vector4 t4=(j.B-j.A).normalized;t4.w=1;
+                far.Emit(j.f.slot,far.Raw(j.A,j.N,t4,j.f),far.Raw(j.B,j.N,t4,j.f),far.Raw(j.C,j.N,t4,j.f),far.Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
+                for(int q=0;q<4;q++)map.Add(-1);
+            }
+            if(farBuilds.Count>0)
+            {
+                var twin=Coarse(1);
+                FarLevel=1;
+                if(farBudget>0&&far.TriangleCount+twin.TriangleCount>farBudget){twin=Coarse(2);FarLevel=2;}
+                int n=twin.positions.Count;twin.MoveTail(far,0,new int[SlotCount]);for(int k=0;k<n;k++)map.Add(-1);
+            }
+            var farMesh=far.Build(name+" far");FarFromNear=map.ToArray();
+            farBuilds.Clear();details.Clear();
             Flush();
-            return (Build(name),far);
+            return (Build(name),farMesh);
         }
         // Moves the vertices from v0 on, and the triangles from i0 on in each slot (which use only those), to the end
         // of another mesh.

@@ -37,7 +37,6 @@ public static class BlockFoundryPlayCheck
             for(int i=0;i<10;i++)Require(foundry.EditFace(new BlockFace(new Vector3Int(i,0,0),0),false),"Positive chunk growth failed.");
             for(int i=0;i<10;i++)Require(foundry.EditFace(new BlockFace(new Vector3Int(-i,0,0),1),false),"Negative chunk growth failed.");
             Require(foundry.Model.Count==21&&foundry.ExposedFaces==86,"Chunk seams left duplicate/missing faces.");
-            foundry.CompleteMorph();
             foundry.LoadExample(2);
             Require(foundry.Model.Count==712,"Orbital shell occupancy incorrect.");
             // All exterior exposed triangles should pick back to the originating face, including across chunks.
@@ -54,9 +53,9 @@ public static class BlockFoundryPlayCheck
                 Require(foundry.Pick(ray,out var face,out _)&&face.cell==cell&&face.side==side,"Deformed face picking failed: "+cell+" / "+side);
                 picks++;
             }
-            // Exercise a visible deformation and ensure both mesh and collider settle at the target.
-            foundry.LoadExample(3);foundry.CompleteMorph();
-            var beforeMorph=foundry.Model.Capture();
+            // Two quick edits on the sphere, then undo both back to its exact corners.
+            foundry.LoadExample(3);
+            var beforeEdits=foundry.Model.Capture();
             BlockFace editFace=default;bool selected=false;
             foreach(var cell in foundry.Model.Cells)
             {
@@ -64,19 +63,8 @@ public static class BlockFoundryPlayCheck
                 editFace=new BlockFace(cell,0);selected=true;break;
             }
             Require(selected&&foundry.EditFace(editFace,false),"Sphere attachment failed.");
-            Require(foundry.Model.LastMaxMovement<=BlockConstruction.MaxEditMovement+0.00001f,"Unbounded live deformation.");
-            Require(foundry.IsMorphing,"Live edit did not ease into its new shape.");
-            var displayed=new System.Collections.Generic.Dictionary<Vector3Int,Vector3>();
-            foreach(var key in foundry.Model.CornerKeys)displayed[key]=foundry.DisplayCorner(key);
             Require(foundry.EditFace(new BlockFace(new Vector3Int(4,0,0),0),false),"Rapid follow-up edit failed.");
-            foreach(var pair in displayed)
-                Require(Vector3.Distance(foundry.DisplayCorner(pair.Key),pair.Value)<0.00001f,"Rapid edit snapped an in-progress deformation.");
-            float settleStarted=Time.unscaledTime;
-            while((foundry.IsSettling||foundry.IsMorphing)&&Time.unscaledTime-settleStarted<12)await Task.Delay(50);
-            Require(!foundry.IsSettling&&!foundry.IsMorphing,"Deformation did not finish.");
-            foreach(var key in foundry.Model.CornerKeys)
-                Require(foundry.DisplayCorner(key)==foundry.Model.Corner(key),"Displayed corner did not reach saved geometry.");
-            foundry.Undo();foundry.Undo();Require(JsonUtility.ToJson(foundry.Model.Capture())==JsonUtility.ToJson(beforeMorph),"Undo lost exact corner positions.");
+            foundry.Undo();foundry.Undo();Require(JsonUtility.ToJson(foundry.Model.Capture())==JsonUtility.ToJson(beforeEdits),"Undo lost exact corner positions.");
             foundry.Redo();Require(foundry.Model.GeometryIsValid(),"Redo restored invalid deformation.");
             foundry.NewBuild();foundry.FrameBuild(true);
             await Task.Delay(150);
@@ -96,7 +84,7 @@ public static class BlockFoundryPlayCheck
             }
             finally{InputSystem.RemoveDevice(mouse);}
             foundry.NewBuild();foundry.FrameBuild(true);
-            return new {status="PASS",picks,framesAdvanced=Time.frameCount-frame,checks="Six-sided picking, placement/removal, exact corner undo/redo, chunk seams, hollow sphere, every deformed exposed face, bounded smooth animation, rapid-edit continuity, actual Input System click",blocks=foundry.Model.Count};
+            return new {status="PASS",picks,framesAdvanced=Time.frameCount-frame,checks="Six-sided picking, placement/removal, exact corner undo/redo, chunk seams, hollow sphere, every deformed exposed face, actual Input System click",blocks=foundry.Model.Count};
         }
         finally{Application.runInBackground=background;}
     }

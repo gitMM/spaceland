@@ -90,8 +90,18 @@ namespace DeathStar
             var changed=new HashSet<Vector3Int>(edited);
             foreach(var p in before.cells)if(!after.TryGet(p.Key,out var q)||!p.Value.SameAs(q))changed.Add(p.Key);
             foreach(var p in after.cells)if(!before.TryGet(p.Key,out var q)||!p.Value.SameAs(q))changed.Add(p.Key);
+            // A truss face's bracing pattern follows the 4 x 4 block it lies in (TileBuilder.FaceBlock), and whether a
+            // face is braced follows the cell in front of it, so near trusses the halo reaches four cells.
+            bool Truss(TileStructure s,Vector3Int c)=>s.TryGet(c,out var p)&&p.family==TileFamily.Truss;
+            int halo=2;
+            foreach(var c in changed)
+            {
+                if(halo==4)break;
+                if(Truss(before,c)||Truss(after,c))halo=4;
+                else foreach(var d in TileStructure.Directions)if(Truss(before,c+d)||Truss(after,c+d)){halo=4;break;}
+            }
             var dirty=new HashSet<Vector3Int>();
-            foreach(var c in changed)for(int x=-2;x<=2;x++)for(int y=-2;y<=2;y++)for(int z=-2;z<=2;z++)
+            foreach(var c in changed)for(int x=-halo;x<=halo;x++)for(int y=-halo;y<=halo;y++)for(int z=-halo;z<=halo;z++)
                 dirty.Add(c+new Vector3Int(x,y,z));
             return dirty;
         }

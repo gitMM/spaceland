@@ -152,8 +152,8 @@ namespace DeathStar.EditorTools
             var truss=SettlementExamples.Truss();
             Require(truss.Family(SettlementExamples.RidgeCell(R,R,R))==TileFamily.Truss&&truss.Exposure(SettlementExamples.RidgeCell(R,R,R),out _)==CellExposure.Crown,"Truss example lost its crown");
             Require(truss.Exposure(SettlementExamples.RidgeCell(SettlementExamples.RidgeLow,R,R),out bool cutEnd)==CellExposure.Ridge&&cutEnd,"Truss example's ridge lost its gable");
-            var trussStructure=SettlementSolver.Solve(truss);var habitat=SettlementExamples.RidgeCell(3,1,R+1);
-            Require(trussStructure.Solid(habitat)&&!trussStructure.Solid(SettlementExamples.RidgeCell(2,1,R+1))&&trussStructure.Covered(SettlementExamples.RidgeCell(2,1,R+1)),"A truss is solid, or doesn't cover what it stands on");
+            var trussStructure=SettlementSolver.Solve(truss);var habitat=SettlementExamples.RidgeCell(5,1,R+1);
+            Require(trussStructure.Solid(habitat)&&!trussStructure.Solid(SettlementExamples.RidgeCell(4,1,R+1))&&trussStructure.Covered(SettlementExamples.RidgeCell(4,1,R+1)),"A truss is solid, or doesn't cover what it stands on");
             // The station example has every shape and exposure, every family on a ridge and every solid family on a crown.
             var station=SettlementExamples.Station();
             var seen=new HashSet<string>();var onRidge=new HashSet<TileFamily>();var onCrown=new HashSet<TileFamily>();

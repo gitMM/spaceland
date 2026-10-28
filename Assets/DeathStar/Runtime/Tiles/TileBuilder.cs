@@ -27,6 +27,8 @@ namespace DeathStar
     public sealed partial class TileBuilder
     {
         public const float Cell=5f,Half=2.5f;
+        // Triangles a tile may have (doc/curved-grid-tiles-plan.md): near, with its carving, and far, past ~110 m.
+        public const int NearBudget=8000,FarBudget=2500;
         // Flat armour is carved into plates (TileMesh.Carving), in courses along the tile's axis; round forms and the
         // walls under the relief stay smooth.
         static readonly Finish Armor=new Finish(TileSlot.Paint,TilePattern.Armour,Color.white,0f);
@@ -122,7 +124,7 @@ namespace DeathStar
 
         public TileMesh Build(Vector3Int cell)
         {
-            var m=new TileMesh{stationOffset=TileStructure.Center(cell),cellHalf=Half,retainWarpData=s.automatic};
+            var m=new TileMesh{stationOffset=TileStructure.Center(cell),cellHalf=Half,retainWarpData=s.automatic,nearBudget=NearBudget,farBudget=FarBudget};
             if(!s.TryGet(cell,out var p))return m;
             m.seed=Rand(Hash(cell),0);
             // armour courses stack along the tile's axis, so they wrap round a tower
@@ -133,22 +135,30 @@ namespace DeathStar
             if(p.family==TileFamily.Truss){Truss(m,cell,p);return m;}
             if(curved!=null&&s.special.TryGetValue(cell,out var shape)){Special(m,cell,p,shape);return m;}
             var primary=s.Primary(cell,p);
+            var place=p;
+            Faces(m,cell,(i,n)=>{Face face=default;m.Detail(t=>{var built=Forms(t,cell,place,n,primary);if(t==m)face=built;});return face;});
+            return m;
+        }
+
+        // Every open face of a cell: forms(i, n) builds face i's forms under its surface frame and leaves the face's
+        // frame pushed; then the wall round their recesses and the station relief clear of the face's holes.
+        void Faces(TileMesh m,Vector3Int cell,System.Func<int,Vector3Int,Face> forms)
+        {
             var c=TileStructure.Center(cell);
-            foreach(var n in TileStructure.Directions)
+            for(int i=0;i<6;i++)
             {
+                var n=TileStructure.Directions[i];
                 if(s.Solid(cell+n))continue;
                 m.surfaceFrame=new Vector4(n.x,n.y,n.z,Vector3.Dot(n,c)+Half);
-                var face=Forms(m,cell,p,n,primary);
-                m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),face.recess);
+                var face=forms(i,n);
+                m.Wall(Smooth,Whole,face.recess);
                 m.Pop();
                 int a=AxisOf(n),ua=(a+1)%3,va=(a+2)%3;
-                var holes=StationRects(face,c,ua,va);fieldHoles[(cell,n)]=holes;
-                var nn=n;
+                var holes=FaceHoles(cell,n,face);
                 var gf=new GreebleField.Face{axis=a,sign=n[a],plane=c[a]+n[a]*Half,window=new Rect(c[ua]-Half,c[va]-Half,Cell,Cell),
-                    holes=holes,origin=c,continues=(u,v)=>ReliefContinues(cell,nn,c,ua,va,u,v)};
+                    holes=holes,origin=c,continues=(u,v)=>ReliefContinues(cell,n,c,ua,va,u,v)};
                 GreebleField.Build(m,gf,Relief);
             }
-            return m;
         }
 
         // Relief carries on past this face's edge if the neighbour there shows the same plane with relief at (u,v).
@@ -161,17 +171,19 @@ namespace DeathStar
             foreach(var r in Holes(next,n))if(u>r.xMin&&u<r.xMax&&v>r.yMin&&v<r.yMax)return false;
             return true;
         }
-        List<Rect> Holes(Vector3Int cell,Vector3Int n)
+        List<Rect> Holes(Vector3Int cell,Vector3Int n)=>fieldHoles.TryGetValue((cell,n),out var list)?list:FaceHoles(cell,n,null);
+        // Station rects on face n of cell the relief stays clear of, kept for the neighbours: a wedge's or apex's own
+        // (SpecialHoles), else those the family forms report. face: the forms built there, or null to run them dry.
+        List<Rect> FaceHoles(Vector3Int cell,Vector3Int n,Face face)
         {
-            if(fieldHoles.TryGetValue((cell,n),out var list))return list;
-            if(curved!=null&&s.special.TryGetValue(cell,out var shape)){list=SpecialHoles(cell,n,shape);fieldHoles[(cell,n)]=list;return list;}
-            s.TryGet(cell,out var p);
-            var face=Forms(new TileMesh(),cell,p,n,s.Primary(cell,p));
-            face.m.Pop();
-            int a=AxisOf(n);
-            list=StationRects(face,TileStructure.Center(cell),(a+1)%3,(a+2)%3);
-            fieldHoles[(cell,n)]=list;
-            return list;
+            List<Rect> list;
+            if(curved!=null&&s.special.TryGetValue(cell,out var shape))list=SpecialHoles(cell,n,shape);
+            else
+            {
+                if(face==null){s.TryGet(cell,out var p);face=Forms(new TileMesh{dry=true},cell,p,n,s.Primary(cell,p));face.m.Pop();}
+                int a=AxisOf(n);list=StationRects(face,TileStructure.Center(cell),(a+1)%3,(a+2)%3);
+            }
+            return fieldHoles[(cell,n)]=list;
         }
         static List<Rect> StationRects(Face f,Vector3 c,int ua,int va)
         {

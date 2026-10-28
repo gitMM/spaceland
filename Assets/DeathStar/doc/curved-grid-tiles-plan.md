@@ -418,10 +418,33 @@ tile of all five examples (Foundry, Ridges, Limit, Station, Truss) and on the cr
   and whole truss frames use it; truss tiles, which have no carving, now get a LOD group too.
 - **Now:** most far 1.8k (Truss crown), mean far 0.5k (was 0.8k); near unchanged. Full Foundry rebuild 1.87–2.06 s
   over repeat runs (2.45 s on the first run after a recompile), single edits p50 0.56–0.60 s.
-- **Box tiles are not held to it.** The heaviest is a Power box at 20.2k near (mostly carving, which its far level
-  drops) and a Life Support box at 3.0k far.
 - **Lab:** `ridges-lod.png` (near and far side by side), `crowns-far.png`; `tools/tile-lab.sh budget` runs only the
   budget.
+
+### Every tile held to it
+
+Same day, at the user's request: the budget now holds for every tile, box tiles and the gallery included (2,170 tiles
+in the five examples, 543 in the gallery; 62/62 checks pass).
+
+- **Before:** 37 box tiles over, nearly all near, from armour carving: gallery Power up to 37.1k, Defense, Command and
+  Industrial towers 8–10k. Over far: Life Support up to 7.2k, Hull, Industrial and Command near 3k.
+- **Hidden armour stays plain.** A face that looks at another solid within a metre over most of its area (a ray from 4
+  of 5 points meets one) is not carved: radiator fin sides in their 0.6 m slots, the insides of narrow gaps. Power
+  fell from 37.1k to 12.4k.
+- **Near cap** (`TileMesh.nearBudget`, 8k). A tile still over switches armour faces to calm plates, those that save the
+  most first, until it fits; past that, faces would be left plain largest last (never needed). 6 tiles: 1–16 calm faces
+  each (gallery Defense, Industrial, two Power; Station two Power).
+- **Far level for box forms.** `Detail` now takes any number of ranges and keeps their builds; `ToMeshes` replays
+  them coarse for the far mesh, which copies the near mesh's bending for every vertex it shares
+  (`TileMesh.FarFromNear`). Family forms use it on every box tile. Relief does not: bending its coarse copy cost ~30% on
+  relief-heavy rebuilds and nothing needed it.
+- **Far cap** (`TileMesh.farBudget`, 2.5k): a far mesh still over is rebuilt at coarse level 2 (a fifth of the sides,
+  never under four; a third of the steps). One tile: a gallery Life Support block anchoring a 2 × 2 sphere tank.
+- **Now:** gallery 964k → 738k near, 391k → 315k far; the fragment view draws 585k (was 810k). Three back-to-back
+  runs each: Foundry rebuild 1.54–1.71 s (was 1.94–2.12 s), edits p50 0.57 s (0.53–0.62), p95 0.71–0.86 s
+  (0.96–1.21); Limit rebuild 2.08–2.23 s (was 1.62–1.77 s, its forms now build twice), Truss +10%, Ridges and Station
+  unchanged.
+- **Lab:** `budget-capped.png` and `station-capped.png` show the capped tiles close up (a far-capped tile near and far).
 
 ## Phases
 

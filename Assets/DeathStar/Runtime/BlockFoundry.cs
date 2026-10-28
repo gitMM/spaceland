@@ -44,7 +44,8 @@ namespace DeathStar
         }
         readonly Dictionary<Vector3Int,Chunk> chunks = new Dictionary<Vector3Int,Chunk>();
         readonly Dictionary<Vector3Int,HashSet<Vector3Int>> groups = new Dictionary<Vector3Int,HashSet<Vector3Int>>();
-        readonly List<BlockSave> undo = new List<BlockSave>(), redo = new List<BlockSave>();
+        // Each step keeps the cells its edit touched, so undo and redo rebuild incrementally like the edit did; null rebuilds all.
+        readonly List<(BlockSave state,HashSet<Vector3Int> changed)> undo = new List<(BlockSave,HashSet<Vector3Int>)>(), redo = new List<(BlockSave,HashSet<Vector3Int>)>();
         readonly LineRenderer[] outline = new LineRenderer[12];
         static readonly int[,] Edges = { {0,1},{2,3},{4,5},{6,7},{0,2},{1,3},{4,6},{5,7},{0,4},{1,5},{2,6},{3,7} };
         Material lineMaterial;
@@ -54,14 +55,13 @@ namespace DeathStar
         TileFamily previewFamily;
         string previewText;
         int previewRevision=-1;
-        readonly Dictionary<Vector3Int,Vector3> transitionFrom=new Dictionary<Vector3Int,Vector3>();
-        readonly HashSet<Vector3Int> animatedChunks=new HashSet<Vector3Int>();
-        float transitionStarted;
-        public const float MorphDuration=0.1f;
-        public bool IsMorphing=>transitionFrom.Count>0;
-        public bool IsSettling=>Model!=null&&Model.RelaxationPending;
-        Vector3 focus, targetFocus;
+        Vector3 focus, targetFocus, focusVelocity;
         float distance=6,targetDistance=6,yaw=35,pitch=25;
+        // After an attach the view glides onto the new cell on a critically damped spring: eases in and out, settles in ~0.5 s.
+        const float PanTime=0.18f;
+        // Only cells placed more than halfway from the view centre to the screen edge pull the camera.
+        const float PanTolerance=0.5f;
+        bool autoPan;
         bool showHud=true,removeMode,hasHover;
         BlockFace hovered;
         string message="Click a face to attach a block.", failure;
@@ -126,43 +126,19 @@ namespace DeathStar
         }
         void RebuildAll()
         {
-            transitionFrom.Clear();animatedChunks.Clear();
             groups.Clear(); foreach(var cell in Model.Cells)AddGroup(cell);
             var keys=new HashSet<Vector3Int>(chunks.Keys); keys.UnionWith(groups.Keys);
             foreach(var key in keys)RebuildChunk(key);
             Settlement.Rebuild(Model);
             FinishRebuild();
         }
-        public Vector3 DisplayCorner(Vector3Int key)
+        // Corners never move while their cell exists, so only the chunks and tiles around the changed cells differ.
+        void Rebuild(HashSet<Vector3Int> changed)
         {
-            if(!transitionFrom.TryGetValue(key,out var from))return Model.Corner(key);
-            float t=Mathf.Clamp01((Time.unscaledTime-transitionStarted)/MorphDuration);t=t*t*(3-2*t);
-            return Vector3.Lerp(from,Model.Corner(key),t);
-        }
-        public void CompleteMorph()
-        {
-            transitionFrom.Clear();
-            foreach(var key in animatedChunks)RebuildChunk(key);
-            animatedChunks.Clear();
-        }
-        void AdvanceMorph()
-        {
-            if(!IsMorphing)return;
-            if(Time.unscaledTime-transitionStarted>=MorphDuration){CompleteMorph();return;}
-            foreach(var key in animatedChunks)RebuildChunk(key);
-        }
-        void Commit(BlockConstruction next)
-        {
-            foreach(var cell in next.ChangedCells)animatedChunks.Add(ChunkKey(cell));
-            Model=next;
-            // Architectural joints appear together. A transient collapsed picking cell must not disagree
-            // with the finished pad, tube or hangar that the player sees.
-            transitionFrom.Clear();
-            transitionStarted=Time.unscaledTime;
             groups.Clear();foreach(var cell in Model.Cells)AddGroup(cell);
-            foreach(var key in animatedChunks)RebuildChunk(key);
-            if(!IsMorphing)animatedChunks.Clear();
-            Settlement.Rebuild(Model,next.ChangedCells);
+            var keys=new HashSet<Vector3Int>();foreach(var cell in changed)keys.Add(ChunkKey(cell));
+            foreach(var key in keys)RebuildChunk(key);
+            Settlement.Rebuild(Model,changed);
             FinishRebuild();
         }
         void FinishRebuild()
@@ -178,7 +154,7 @@ namespace DeathStar
                 if(chunks.TryGetValue(key,out var old)){Release(old.root);Release(old.mesh);chunks.Remove(key);}
                 return;
             }
-            var data=BlockMeshData.Build(Model,group,DisplayCorner);
+            var data=BlockMeshData.Build(Model,group);
             for(int i=0;i<data.vertices.Count;i++)data.vertices[i]*=TileBuilder.Cell;
             if(!chunks.TryGetValue(key,out var chunk))
             {
@@ -196,9 +172,9 @@ namespace DeathStar
             chunk.renderer.enabled=false; // Stable low-detail cell surfaces are picking proxies only.
         }
 
-        void Remember(BlockSave before)
+        void Remember(BlockSave before,HashSet<Vector3Int> changed=null)
         {
-            undo.Add(before); if(undo.Count>48)undo.RemoveAt(0);redo.Clear();
+            undo.Add((before,changed)); if(undo.Count>48)undo.RemoveAt(0);redo.Clear();
         }
         public bool EditFace(BlockFace face,bool remove)
         {
@@ -208,18 +184,25 @@ namespace DeathStar
             if(!remove && !Model.CanAdd(target)){Notice("That space is occupied or outside the prototype's build limit.");return false;}
             PreparePreview(face,remove);
             if(previewModel==null){Notice(Model.LastError??"This face cannot be extended safely.");return false;}
-            var before=Model.Capture();
-            var next=previewModel;Remember(before);Commit(next);return true;
+            var next=previewModel;Remember(Model.Capture(),next.ChangedCells);Model=next;Rebuild(next.ChangedCells);return true;
         }
-        public void Undo()
+        Vector3 CellCenter(Vector3Int cell)=>transform.TransformPoint(Model.Point(cell,Vector3.one*0.5f)*TileBuilder.Cell);
+        // How far a point sits from the view centre, as a fraction of the way to the screen edge.
+        float OffCentre(Vector3 point)
         {
-            if(undo.Count==0)return;
-            redo.Add(Model.Capture());var state=undo[undo.Count-1];undo.RemoveAt(undo.Count-1);Model.Restore(state);RebuildAll();
+            var p=viewer.transform.InverseTransformPoint(point);
+            if(p.z<=0.01f)return float.PositiveInfinity;
+            float half=Mathf.Tan(viewer.fieldOfView*Mathf.Deg2Rad*0.5f)*p.z;
+            return Mathf.Max(Mathf.Abs(p.x)/(half*viewer.aspect),Mathf.Abs(p.y)/half);
         }
-        public void Redo()
+        public void Undo()=>Step(undo,redo);
+        public void Redo()=>Step(redo,undo);
+        void Step(List<(BlockSave state,HashSet<Vector3Int> changed)> from,List<(BlockSave state,HashSet<Vector3Int> changed)> to)
         {
-            if(redo.Count==0)return;
-            undo.Add(Model.Capture());var state=redo[redo.Count-1];redo.RemoveAt(redo.Count-1);Model.Restore(state);RebuildAll();
+            if(from.Count==0)return;
+            var (state,changed)=from[from.Count-1];from.RemoveAt(from.Count-1);
+            to.Add((Model.Capture(),changed));Model.Restore(state);
+            if(changed==null)RebuildAll();else Rebuild(changed);
         }
         public void NewBuild()
         {
@@ -305,14 +288,13 @@ namespace DeathStar
         }
         public void FrameBuild(bool snap=false)
         {
-            Bounds bounds=BuildBounds;targetFocus=bounds.center;
+            Bounds bounds=BuildBounds;targetFocus=bounds.center;autoPan=false;
             targetDistance=Mathf.Max(4,bounds.extents.magnitude/Mathf.Sin(viewer.fieldOfView*Mathf.Deg2Rad*0.5f)*1.25f);
             if(snap){focus=targetFocus;distance=targetDistance;UpdateCamera(true);}
         }
         void Update()
         {
             if(Model==null||failure!=null)return;
-            AdvanceMorph();
             var mouse=Mouse.current;var keys=Keyboard.current;
             bool shift=keys!=null&&(keys.leftShiftKey.isPressed||keys.rightShiftKey.isPressed);
             if(keys!=null)
@@ -336,12 +318,17 @@ namespace DeathStar
                     Vector2 delta=mouse.delta.ReadValue();
                     if(mouse.rightButton.isPressed){yaw+=delta.x*0.2f;pitch=Mathf.Clamp(pitch-delta.y*0.2f,-85,85);}
                     if(mouse.middleButton.isPressed)
-                    {float scale=distance*0.0015f;targetFocus-=viewer.transform.right*delta.x*scale+viewer.transform.up*delta.y*scale;}
+                    {float scale=distance*0.0015f;targetFocus-=viewer.transform.right*delta.x*scale+viewer.transform.up*delta.y*scale;autoPan=false;}
                     targetDistance=Mathf.Clamp(targetDistance*Mathf.Exp(-mouse.scroll.ReadValue().y*0.07f),1,500);
                     if(!mouse.rightButton.isPressed&&!mouse.middleButton.isPressed&&Pick(viewer.ScreenPointToRay(position),out hovered,out _))
                     {
-                        hasHover=true;ShowPreview(hovered,removeMode||shift);
-                        if(mouse.leftButton.wasPressedThisFrame)EditFace(hovered,removeMode||shift);
+                        bool remove=removeMode||shift;
+                        hasHover=true;ShowPreview(hovered,remove);
+                        if(mouse.leftButton.wasPressedThisFrame&&EditFace(hovered,remove)&&!remove)
+                        {
+                            var placed=CellCenter(hovered.cell+BlockConstruction.Steps[hovered.side]);
+                            if(OffCentre(placed)>PanTolerance){targetFocus=placed;autoPan=true;}
+                        }
                     }
                 }
             }
@@ -350,7 +337,9 @@ namespace DeathStar
         void UpdateCamera(bool snap)
         {
             float t=snap?1:1-Mathf.Exp(-Time.unscaledDeltaTime*12);
-            focus=Vector3.Lerp(focus,targetFocus,t);distance=Mathf.Lerp(distance,targetDistance,t);
+            if(autoPan)focus=Vector3.SmoothDamp(focus,targetFocus,ref focusVelocity,PanTime,Mathf.Infinity,Time.unscaledDeltaTime);
+            else{focus=Vector3.Lerp(focus,targetFocus,t);focusVelocity=Vector3.zero;}
+            distance=Mathf.Lerp(distance,targetDistance,t);
             Quaternion rotation=Quaternion.Euler(pitch,yaw,0);
             viewer.transform.SetPositionAndRotation(focus+rotation*new Vector3(0,0,-distance),rotation);
             // Shift the construction into the open area beside the tool panel.
@@ -367,7 +356,6 @@ namespace DeathStar
             var cell=remove?face.cell:face.cell+BlockConstruction.Steps[face.side];
             Model.TryEdit(cell,remove,out previewModel,SelectedFamily);
             if(previewModel==null){previewText=Model.LastError??"This face cannot be extended safely.";return;}
-            previewModel=previewModel.SettleForEdit();
             previewText=remove?"Click to remove the highlighted block":
                 $"{FamilyName(SelectedFamily)} · {previewModel.Describe(cell,face.side)} · click to attach, Shift + click to remove";
         }
@@ -463,7 +451,7 @@ namespace DeathStar
             chunks.Clear();groups.Clear();
             foreach(var line in outline)if(line!=null)Release(line.gameObject);
             if(lineMaterial!=null)Release(lineMaterial);
-            transitionFrom.Clear();animatedChunks.Clear();previewModel=null;previewRevision=-1;
+            previewModel=null;previewRevision=-1;
             undo.Clear();redo.Clear();Model=null;
         }
         void CycleDebugView()=>DebugMode=(DebugView)(((int)debugView+1)%3);

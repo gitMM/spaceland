@@ -116,9 +116,11 @@ namespace DeathStar
         };
         // Trusses on a cap round a cube corner like Ridges: the x ridge is a truss girder from the cut edge, where a jib
         // reaches out, to a truss crown with its lattice tower; the y ridge stays Hull to compare. On the faces: a tower
-        // with a cantilevered boom out over the z ridge; a 2 x 2 frame standing on the surface beside a Habitat wall it
-        // bears on; a two-cell truss pit in the skin; a truss bridge between two Hull piers. Coordinates for the
-        // (+x, +y, +z) corner, mirrored by RidgeCell like Ridges.
+        // two cells square and five high, its upper stages braced as 2 x 2 blocks (one big X a side), with a boom of the
+        // same section cantilevered out over the z ridge; a 4 x 4 frame standing on the surface (a big X round a
+        // diamond) beside a Habitat wall it bears on; a two-cell truss pit in the skin; a truss bridge between two Hull
+        // piers. Coordinates for the (+x, +y, +z) corner, mirrored by RidgeCell like Ridges; the formations sit on
+        // station cells aligned for their blocks (x 1-4 here is -1 to -4 there).
         public static readonly Vector3Int TrussTower=new Vector3Int(1,RidgeRadius+1,1);
         public static BlockConstruction Truss()
         {
@@ -129,10 +131,13 @@ namespace DeathStar
                 if(Mathf.Max(x,Mathf.Max(y,z))>=R-1)Put(x,y,z,TileFamily.Hull);
             for(int x=RidgeLow;x<=R;x++)Put(x,R,R,TileFamily.Truss);
             var t=TrussTower;
-            for(int h=0;h<3;h++)Put(t.x,t.y+h,t.z,TileFamily.Truss);
-            for(int x=t.x+1;x<=t.x+3;x++)Put(x,t.y+2,t.z,TileFamily.Truss);
-            for(int x=1;x<=2;x++)for(int y=1;y<=2;y++)Put(x,y,R+1,TileFamily.Truss);
-            Put(3,1,R+1,TileFamily.Habitat);Put(3,2,R+1,TileFamily.Habitat);
+            for(int i=0;i<2;i++)for(int j=0;j<2;j++)
+            {
+                for(int h=0;h<5;h++)Put(t.x+i,t.y+h,t.z+j,TileFamily.Truss);
+                for(int x=t.x+2;x<=t.x+5;x++)Put(x,t.y+3+i,t.z+j,TileFamily.Truss);
+            }
+            for(int x=1;x<=4;x++)for(int y=0;y<=3;y++)Put(x,y,R+1,TileFamily.Truss);
+            Put(5,0,R+1,TileFamily.Habitat);Put(5,1,R+1,TileFamily.Habitat);
             Put(R,2,2,TileFamily.Truss);Put(R,2,3,TileFamily.Truss);
             foreach(int z in new[]{-1,3})for(int x=R+1;x<=R+2;x++)Put(x,-1,z,TileFamily.Hull);
             for(int z=0;z<=2;z++)Put(R+2,-1,z,TileFamily.Truss);

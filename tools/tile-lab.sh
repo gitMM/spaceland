@@ -5,7 +5,8 @@
 #   tools/tile-lab.sh foundry    # automatically solved curved settlement pictures
 #   tools/tile-lab.sh limit      # just the cap at the build limit (narrowest and flattest cells)
 #   tools/tile-lab.sh truss      # just the truss example (space frames on every cell shape)
-#   tools/tile-lab.sh budget     # just the triangle budget per special tile, in every example
+#   tools/tile-lab.sh ridges     # just the ridges example (and station: just the station)
+#   tools/tile-lab.sh budget     # just the triangle budget, every tile of every example and the gallery
 #   tools/tile-lab.sh snap family=<Name> [back=1] [clay=1]  |  snap x= y= z= tx= ty= tz= [fov=] [clay=1]  -> DeathStarRuns/Tiles/snap.png
 # Needs the spaceland editor open and not in play mode. Imports changed scripts first so the run uses the code
 # on disk (set TILE_LAB_NO_COMPILE=1 to skip).
@@ -35,13 +36,15 @@ if [ -z "${TILE_LAB_NO_COMPILE:-}" ]; then
 fi
 
 # Shaders that just changed only draw from a later editor update on: draw once in a call of its own, then let the
-# variants finish compiling.
-unity command run_script --timeout 120 --project-path "$P" --file tools/TileLabEntry.cs --entry TileLabEntry.Run --args '["warmup"]' --result-only --no-banner >/dev/null 2>&1
-for _ in $(seq 1 60); do
-  r=$(u eval 'return UnityEditor.ShaderUtil.anythingCompiling;' 2>&1)
-  echo "$r" | grep -q '"result": false' && break
-  sleep 1
-done
+# variants finish compiling. validate and budget draw nothing.
+if [ "${1:-report}" != validate ] && [ "${1:-report}" != budget ]; then
+  unity command run_script --timeout 120 --project-path "$P" --file tools/TileLabEntry.cs --entry TileLabEntry.Run --args '["warmup"]' --result-only --no-banner >/dev/null 2>&1
+  for _ in $(seq 1 60); do
+    r=$(u eval 'return UnityEditor.ShaderUtil.anythingCompiling;' 2>&1)
+    echo "$r" | grep -q '"result": false' && break
+    sleep 1
+  done
+fi
 
 args=$(printf '%s ' "${@:-report}")
 args=${args% }

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -22,14 +21,13 @@ namespace DeathStar
         public readonly List<BlockFace> faces = new List<BlockFace>();
         public const int TrianglesPerFace = 8;
 
-        public void AddFace(BlockConstruction model, Vector3Int cell, int side, Func<Vector3Int,Vector3> corner=null)
+        public void AddFace(BlockConstruction model, Vector3Int cell, int side)
         {
             int start = vertices.Count;
-            if(corner==null)corner=model.Corner;
-            Vector3 a=corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,0]));
-            Vector3 b=corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,1]));
-            Vector3 c=corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,2]));
-            Vector3 d=corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,3]));
+            Vector3 a=model.Corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,0]));
+            Vector3 b=model.Corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,1]));
+            Vector3 c=model.Corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,2]));
+            Vector3 d=model.Corner(cell+BlockConstruction.CornerOffset(BlockConstruction.FaceCorners[side,3]));
             uint hash = BuildPlanetPlan.Hash(unchecked((uint)(cell.x * 73856093 ^ cell.y * 19349663 ^ cell.z * 83492791 ^ side * 71)));
             var color = new Color(0.42f + (hash & 255) / 255f * 0.25f, ((hash >> 8) & 255) / 255f, ((hash >> 16) & 255) / 255f, 1);
             for (int y = 0; y <= 2; y++) for (int x = 0; x <= 2; x++)
@@ -55,12 +53,12 @@ namespace DeathStar
             mesh.SetTriangles(triangles,0); mesh.RecalculateBounds();
         }
 
-        public static BlockMeshData Build(BlockConstruction model, IEnumerable<Vector3Int> cells, Func<Vector3Int,Vector3> corner=null)
+        public static BlockMeshData Build(BlockConstruction model, IEnumerable<Vector3Int> cells)
         {
             var data = new BlockMeshData();
             foreach (var cell in cells)
                 for (int side = 0; side < 6; side++)
-                    if (!model.Solid(cell + BlockConstruction.Steps[side])) data.AddFace(model,cell,side,corner);
+                    if (!model.Solid(cell + BlockConstruction.Steps[side])) data.AddFace(model,cell,side);
             return data;
         }
     }

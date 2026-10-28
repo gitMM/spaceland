@@ -105,13 +105,91 @@ namespace DeathStar
             jobs.Add(new Job{f=f,A=A,B=B,C=C,D=D,N=matrix.MultiplyVector(n).normalized,frame=surfaceFrame,anchor=metricAnchor});
             return true;
         }
+        // Most triangles the near mesh may have (0: no limit). Over it, faces switch to calm plates (fewer, longer), those
+        // that save the most first, until the tile fits; if even all calm is too much, faces are carved largest first and
+        // the rest left plain.
+        public int nearBudget;
+        // What the last Flush did to stay within it: 0 nothing, 1 some faces calm, 2 some faces also left plain.
+        public int NearCap {get;private set;}
+        // Faces of the last Flush switched to calm plates, of all it carved.
+        public (int calm,int faces) CalmFaces {get;private set;}
+        bool allCalm;
         void Flush()
         {
             if(jobs.Count==0)return;
             var saved=matrix;matrix=Matrix4x4.identity;
             var list=jobs.ToArray();jobs.Clear();
-            foreach(var j in list){surfaceFrame=j.frame;metricAnchor=j.anchor;CarveFace(j);}
+            int v0=positions.Count;var i0=IndexCounts();int plain=TriangleCount;
+            void CarveJob(in Job j,bool calm){allCalm=calm;surfaceFrame=j.frame;metricAnchor=j.anchor;CarveFace(j);allCalm=false;}
+            foreach(var j in list)CarveJob(j,false);
+            NearCap=0;CalmFaces=(0,list.Length);
+            if(nearBudget>0&&TriangleCount>nearBudget)
+            {
+                // Each face's carving stands alone, so its cost both ways adds up.
+                var busy=new int[list.Length];var calmCost=new int[list.Length];
+                Truncate(v0,i0);
+                for(int k=0;k<list.Length;k++)
+                    foreach(bool calm in new[]{false,true})
+                    {
+                        CarveJob(list[k],calm);int n=TriangleCount-plain;Truncate(v0,i0);
+                        if(calm)calmCost[k]=n;else busy[k]=n;
+                    }
+                var order=new List<int>();for(int k=0;k<list.Length;k++)order.Add(k);
+                order.Sort((a,b)=>(busy[b]-calmCost[b]).CompareTo(busy[a]-calmCost[a]));
+                long total=plain;foreach(int n in busy)total+=n;
+                var calmed=new bool[list.Length];int count=0;
+                foreach(int k in order){if(total<=nearBudget)break;total-=busy[k]-calmCost[k];calmed[k]=true;count++;}
+                NearCap=1;CalmFaces=(count,list.Length);
+                if(total<=nearBudget)for(int k=0;k<list.Length;k++)CarveJob(list[k],calmed[k]);
+                else
+                {
+                    NearCap=2;
+                    var largest=new List<Job>(list);largest.Sort((a,b)=>Area(b).CompareTo(Area(a)));
+                    // each face still to come takes at least its plain quad
+                    int left=largest.Count;
+                    foreach(var j in largest)
+                    {
+                        left--;int v=positions.Count;var marks=IndexCounts();
+                        CarveJob(j,true);
+                        if(TriangleCount+left*2<=nearBudget)continue;
+                        Truncate(v,marks);surfaceFrame=j.frame;metricAnchor=j.anchor;
+                        Quad(j.f.With(TilePattern.Plain),j.A,j.B,j.C,j.D,j.N,(j.B-j.A).normalized);
+                    }
+                }
+            }
             matrix=saved;
+        }
+        static float Area(in Job j)=>Vector3.Cross(j.C-j.A,j.D-j.B).magnitude*0.5f;
+
+        // A face looking at another solid across a gap under a metre over most of its area (a radiator fin's side, the
+        // inside of a narrow slot) is only ever seen edge-on, so it stays plain.
+        bool Facing(Vector3 A,Vector3 B,Vector3 C,Vector3 D,Vector3 N)
+        {
+            int blocked=0;
+            for(int i=0;i<5;i++)
+            {
+                float s=i==0?0.5f:(i&1)!=0?0.25f:0.75f,t=i==0?0.5f:i<3?0.25f:0.75f;
+                if(Blocked(Vector3.Lerp(Vector3.Lerp(A,B,s),Vector3.Lerp(D,C,s),t),N,1f))blocked++;
+                if(blocked+4-i<4)return false;
+            }
+            return blocked>=4;
+        }
+        // Whether the ray from p along dir meets a solid within reach (clipped against each solid's planes).
+        bool Blocked(Vector3 p,Vector3 dir,float reach)
+        {
+            foreach(var s in solids)
+            {
+                float t0=0.02f,t1=reach;
+                foreach(var q in s)
+                {
+                    float d=q.x*dir.x+q.y*dir.y+q.z*dir.z,h=q.x*p.x+q.y*p.y+q.z*p.z-q.w;
+                    if(Mathf.Abs(d)<1e-6f){if(h>0){t0=t1+1;break;}continue;}
+                    float t=-h/d;if(d<0)t0=Mathf.Max(t0,t);else t1=Mathf.Min(t1,t);
+                    if(t0>t1)break;
+                }
+                if(t0<=t1)return true;
+            }
+            return false;
         }
 
         // A half-plane: the side to the left of e through o.
@@ -126,6 +204,7 @@ namespace DeathStar
             bool Under(Vector3 p)=>InSolid(Vector3.MoveTowards(p,mid,0.01f)+N*0.01f);
             if(Under(mid)&&Under(A)&&Under(B)&&Under(C)&&Under(D))return;
             Quad(plain,A,B,C,D,N,(B-A).normalized);   // the floor the seams show
+            if(Facing(A,B,C,D,N))return;
             int ax=0;for(int i=1;i<3;i++)if(Mathf.Abs(N[i])>Mathf.Abs(N[ax]))ax=i;
             int va=courseAxis<0?(ax+2)%3:courseAxis!=ax?courseAxis:courseSide,ua=3-ax-va;
             Vector3 so=stationOffset;
@@ -162,7 +241,7 @@ namespace DeathStar
             for(int iv=Mathf.FloorToInt((vMin+ZoneOffset[va])/Zone);iv<=Mathf.FloorToInt((vMax+ZoneOffset[va])/Zone);iv++)
             {
                 var idx=Vector3Int.zero;idx[ax]=iw;idx[ua]=iu;idx[va]=iv;
-                bool calm=H01(idx.x,idx.y,idx.z,77)<CalmShare;
+                bool calm=allCalm||H01(idx.x,idx.y,idx.z,77)<CalmShare;
                 float s=calm?2:1,rowH=0.62f*s,cellW=0.31f*s;
                 float x0=iu*Zone-ZoneOffset[ua],x1=x0+Zone,y0=iv*Zone-ZoneOffset[va],y1=y0+Zone;
                 zone.Clear();

@@ -14,6 +14,8 @@ namespace DeathStar
         // Consecutive vertices nearly always share a cell and frame: check the last key before hashing.
         Vector3Int lastCube=new Vector3Int(int.MinValue,0,0);Vector3[] lastCorners;
         (Vector3Int,Vector4) lastFace=(new Vector3Int(int.MinValue,0,0),default);Vector3[] lastNormals;
+        // A part's vertices share its anchor and frame (compared by Equals, as the dictionaries compare keys).
+        (Vector4,Vector4) lastMetricKey,lastRigidKey;Matrix4x4 lastMetric,lastRigid;
         public CurvedTileMesh(BlockConstruction model){this.model=model;}
 
         public Vector3 Map(Vector3 station)
@@ -83,6 +85,12 @@ namespace DeathStar
         public Matrix4x4 Metric(Vector4 anchor,Vector4 frame)
         {
             if(anchor.w<0.5f||((Vector3)frame).sqrMagnitude<0.5f)return Matrix4x4.identity;
+            if(metricFrames.Count==0||!anchor.Equals(lastMetricKey.Item1)||!frame.Equals(lastMetricKey.Item2))
+            {lastMetric=MetricFrame(anchor,frame);lastMetricKey=(anchor,frame);}
+            return lastMetric;
+        }
+        Matrix4x4 MetricFrame(Vector4 anchor,Vector4 frame)
+        {
             if(metricFrames.TryGetValue((anchor,frame),out var m))return m;
             int axis=frame.x!=0?0:frame.y!=0?1:2,u=(axis+1)%3,v=(axis+2)%3;
             Transform(anchor,frame,out _,out var dx,out var dy,out var dz);
@@ -96,6 +104,12 @@ namespace DeathStar
         public const float Foot=0.3f;
         readonly Dictionary<(Vector4,Vector4),Matrix4x4> rigidFrames=new Dictionary<(Vector4,Vector4),Matrix4x4>();
         public Matrix4x4 Rigid(Vector4 anchor,Vector4 frame)
+        {
+            if(rigidFrames.Count==0||!anchor.Equals(lastRigidKey.Item1)||!frame.Equals(lastRigidKey.Item2))
+            {lastRigid=RigidFrame(anchor,frame);lastRigidKey=(anchor,frame);}
+            return lastRigid;
+        }
+        Matrix4x4 RigidFrame(Vector4 anchor,Vector4 frame)
         {
             if(rigidFrames.TryGetValue((anchor,frame),out var r))return r;
             var m=Metric(anchor,frame);
@@ -156,22 +170,18 @@ namespace DeathStar
             Vector3 Derivative(int a,Vector3 d)=>a==axis?normal*n[axis]:d+height*(a==ua?ns:nt);
             dx=Derivative(0,dx);dy=Derivative(1,dy);dz=Derivative(2,dz);
         }
-        // A far mesh starts with the same vertices as its near mesh (TileMesh.SharedVertices): copy those already bent.
-        public void Bend(Mesh mesh,Vector3Int cell,Mesh bentNear=null,int shared=0)
+        // A far mesh shares most vertices with its near mesh (TileMesh.FarFromNear): copy those already bent.
+        public void Bend(Mesh mesh,Vector3Int cell,Mesh bentNear=null,int[] fromNear=null)
         {
             var vertices=mesh.vertices;var normals=mesh.normals;var tangents=mesh.tangents;
             var frames=new List<Vector4>();mesh.GetUVs(4,frames);
             var anchors=new List<Vector4>();mesh.GetUVs(5,anchors);
             var origin=TileStructure.Center(cell);
-            int start=0;
-            if(bentNear!=null&&shared>0)
+            Vector3[] nv=null,nn=null;Vector4[] nt=null;
+            if(bentNear!=null&&fromNear!=null){nv=bentNear.vertices;nn=bentNear.normals;nt=bentNear.tangents;}
+            for(int i=0;i<vertices.Length;i++)
             {
-                start=Mathf.Min(shared,vertices.Length);
-                System.Array.Copy(bentNear.vertices,vertices,start);System.Array.Copy(bentNear.normals,normals,start);
-                System.Array.Copy(bentNear.tangents,tangents,start);
-            }
-            for(int i=start;i<vertices.Length;i++)
-            {
+                if(nv!=null&&i<fromNear.Length&&fromNear[i]>=0){int k=fromNear[i];vertices[i]=nv[k];normals[i]=nn[k];tangents[i]=nt[k];continue;}
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;
                 if(anchor.w>2.5f){vertices[i]=p;continue;}   // kit part, already in curved space (TileMesh.BeginWorld)
@@ -187,16 +197,15 @@ namespace DeathStar
                     var tg=tangents[i];var rt=R(tg);tangents[i]=new Vector4(rt.x,rt.y,rt.z,tg.w);
                     continue;
                 }
-                var metric=Metric(anchor,f);var pivot=(Vector3)anchor;
                 if(anchor.w>=0.5f&&((Vector3)f).sqrMagnitude>=0.5f)
                 {
                     // Fixed-size part: placed rigidly, so it is true size throughout. Its foot (the lowest Foot metres)
                     // drops along the normal onto the curved surface, which falls away from the anchor's tangent plane.
-                    var rigid=Rigid(anchor,f);var placed=rigid.MultiplyPoint3x4(p);
+                    var rigid=Rigid(anchor,f);var placed=rigid.MultiplyPoint3x4(p);var pivot=(Vector3)anchor;
                     float h=Vector3.Dot(p-pivot,(Vector3)f);
                     if(h<Foot)
                     {
-                        Transform(pivot+metric.MultiplyVector(p-pivot),f,out var surface,out _,out _,out _);
+                        Transform(pivot+Metric(anchor,f).MultiplyVector(p-pivot),f,out var surface,out _,out _,out _);
                         var up=rigid.MultiplyVector((Vector3)f);
                         placed+=up*(Vector3.Dot(surface-placed,up)*(1-Mathf.Max(0,h)/Foot));
                     }
@@ -204,12 +213,9 @@ namespace DeathStar
                     var rt=tangents[i];var rw=rigid.MultiplyVector(rt);tangents[i]=new Vector4(rw.x,rw.y,rw.z,rt.w);
                     continue;
                 }
-                p=pivot+metric.MultiplyVector(p-pivot);
+                // Anything else has no metric (Metric is the identity) and follows the cells.
                 // Transform normals with the cofactor (inverse transpose); preserve authored hard edges and glass UVs.
                 Transform(p,f,out var bent,out var dx,out var dy,out var dz);
-                var x=dx*metric.m00+dy*metric.m10+dz*metric.m20;
-                var y=dx*metric.m01+dy*metric.m11+dz*metric.m21;
-                var z=dx*metric.m02+dy*metric.m12+dz*metric.m22;dx=x;dy=y;dz=z;
                 var n=normals[i];normals[i]=(Vector3.Cross(dy,dz)*n.x+Vector3.Cross(dz,dx)*n.y+Vector3.Cross(dx,dy)*n.z).normalized;
                 var t=tangents[i];var wt=(dx*t.x+dy*t.y+dz*t.z).normalized;
                 tangents[i]=new Vector4(wt.x,wt.y,wt.z,t.w);

@@ -44,24 +44,10 @@ namespace DeathStar
             return sec;
         }
 
-        // How a special cell meets open space (as BlockConstruction.Exposure, from this structure's solids), and which
-        // ends along its spine are open.
-        CellExposure Exposure(Vector3Int cell,in ShapeInfo sh,out bool open0,out bool open1)
-        {
-            open0=open1=false;int roofs=0,roofOpen=0,slopeOpen=0;
-            for(int f=0;f<6;f++)
-            {
-                bool open=!s.Covered(cell+TileStructure.Directions[f]);
-                if((sh.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
-                else if(f>>1==sh.spine){if(open){if((f&1)==0)open1=true;else open0=true;}}
-                else if(open)slopeOpen++;
-            }
-            bool wedge=sh.kind==CellShape.Wedge;
-            if(roofOpen==roofs)return wedge?CellExposure.Ridge:CellExposure.Crown;
-            if(roofOpen>0)return CellExposure.Half;
-            if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
-            return CellExposure.Buried;
-        }
+        // How a special cell meets open space (BlockConstruction.Exposure over this structure's cells), and which ends
+        // along its spine are open.
+        CellExposure Exposure(Vector3Int cell,in ShapeInfo sh,out bool open0,out bool open1)=>
+            BlockConstruction.Exposure(cell,sh,s.Covered,out open0,out open1);
         // Whether a crest carries on into the cell across the spine face at e: a ridge wedge of the same family along the
         // same spine, or a crown of the same family whose arm arrives there.
         bool CrestJoins(Vector3Int cell,int spine,int e)
@@ -74,30 +60,20 @@ namespace DeathStar
 
         void Special(TileMesh m,Vector3Int cell,in TilePlacement p,in ShapeInfo sh)
         {
-            var c=TileStructure.Center(cell);
-            for(int i=0;i<6;i++)
+            var place=p;var shape=sh;
+            Faces(m,cell,(i,n)=>
             {
-                var n=TileStructure.Directions[i];
-                if(s.Solid(cell+n))continue;
-                m.surfaceFrame=new Vector4(n.x,n.y,n.z,Vector3.Dot(n,c)+Half);
-                var y=n==p.axis||n==-p.axis?p.side:p.axis;
-                var f=new Face{m=m,s=s,cell=cell,p=p,n=n,y=y,curved=curved};f.x=TileStructure.Cross(f.y,-n);
+                var y=n==place.axis||n==-place.axis?place.side:place.axis;
+                var f=new Face{m=m,s=s,cell=cell,p=place,n=n,y=y,curved=curved};f.x=TileStructure.Cross(f.y,-n);
                 m.Push((Vector3)n*Half,Quaternion.LookRotation(-(Vector3)n,(Vector3)y));
-                bool slope=(sh.roof>>i&1)==0&&(sh.kind==CellShape.Apex||i>>1!=sh.spine);
+                bool slope=(shape.roof>>i&1)==0&&(shape.kind==CellShape.Apex||i>>1!=shape.spine);
                 if(IsTruss(cell+n))Bearing(f);
-                else if(slope)SlopeFor(f,p.family);
-                m.Wall(Smooth,new Rect(-Half,-Half,Cell,Cell),f.recess);
-                m.Pop();
-                int a=AxisOf(n),ua=(a+1)%3,va=(a+2)%3;
-                var holes=SpecialHoles(cell,n,sh);fieldHoles[(cell,n)]=holes;
-                var nn=n;
-                var gf=new GreebleField.Face{axis=a,sign=n[a],plane=c[a]+n[a]*Half,window=new Rect(c[ua]-Half,c[va]-Half,Cell,Cell),
-                    holes=holes,origin=c,continues=(u,v)=>ReliefContinues(cell,nn,c,ua,va,u,v)};
-                GreebleField.Build(m,gf,Relief);
-            }
+                else if(slope)SlopeFor(f,place.family);
+                return f;
+            });
             m.surfaceFrame=Vector4.zero;
-            m.PushMatrix(Matrix4x4.Translate(-c));
-            var place=p;var shape=sh;m.Detail(t=>ShapeKit(t,cell,place,shape));
+            m.PushMatrix(Matrix4x4.Translate(-TileStructure.Center(cell)));
+            m.Detail(t=>ShapeKit(t,cell,place,shape));
             m.Pop();
         }
         // The shape's kit from the cell's real corners, in world space less the cell's centre: a crest on a ridge, a keel

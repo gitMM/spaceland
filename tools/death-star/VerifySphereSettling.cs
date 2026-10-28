@@ -26,13 +26,13 @@ public static class SphereSettlingPlayCheck
             if(!added)throw new Exception("Placement failed: "+cell);
             BlockFoundryValidation.Unchanged(before,f.Model);
         }
-        await Task.Delay(160);if(f.IsSettling||f.IsMorphing)throw new Exception("Animation did not finish.");
+        await Task.Yield();
         float error=0;
         foreach(var key in f.Model.CornerKeys)
             if(key.x==-2||key.y==-2||key.z==-2||key.x==3||key.y==3||key.z==3)
                 error=Mathf.Max(error,Mathf.Abs((f.Model.Corner(key)-Vector3.one*0.5f).magnitude-2.5f));
         if(error>0.0001f||!f.Model.GeometryIsValid())throw new Exception("Live sphere invalid: "+error);
         f.FrameBuild(true);
-        return new {status="PASS",blocks=f.Model.Count,maxRadialError=error,existingCornerMovement=0,animationMs=BlockFoundry.MorphDuration*1000};
+        return new {status="PASS",blocks=f.Model.Count,maxRadialError=error,existingCornerMovement=0};
     }
 }

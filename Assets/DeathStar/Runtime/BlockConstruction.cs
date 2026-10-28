@@ -66,8 +66,6 @@ namespace DeathStar
     public sealed class BlockConstruction
     {
         public const int MaxBlocks=32768,CoordinateLimit=64;
-        public const float MaxEditMovement=0.08f;
-        public const int InfluenceSteps=6;
         public static readonly Vector3Int[] Steps={Vector3Int.right,Vector3Int.left,Vector3Int.up,Vector3Int.down,Vector3Int.forward,Vector3Int.back};
         public static readonly int[,] FaceCorners={{1,3,7,5},{4,6,2,0},{2,6,7,3},{4,0,1,5},{5,7,6,4},{0,2,3,1}};
         HashSet<Vector3Int> cells=new HashSet<Vector3Int>();
@@ -78,12 +76,9 @@ namespace DeathStar
         public static BlockGuide SeedGuide=>new BlockGuide{shape=BlockShape.Rounded,strength=1,center=Vector3.one*0.5f,extents=Vector3.one*0.5f};
         BlockGuide guide=SeedGuide;
         public BlockGuide Guide=>guide;
-        public bool RelaxationPending=>false;
         public IEnumerable<Vector3Int> Cells=>cells;
         public IEnumerable<Vector3Int> CornerKeys=>corners.Keys;
         public int Count=>cells.Count;
-        public float LastMaxMovement {get;private set;}
-        public float LastSafetyScale {get;private set;}=1;
         public string LastError {get;private set;}
         public HashSet<Vector3Int> ChangedCells {get;private set;}=new HashSet<Vector3Int>();
         public BlockConstruction()
@@ -121,8 +116,7 @@ namespace DeathStar
         }
         void Adopt(BlockConstruction next)
         {
-            cells=next.cells;families=next.families;corners=next.corners;ChangedCells=next.ChangedCells;
-            LastMaxMovement=next.LastMaxMovement;LastSafetyScale=next.LastSafetyScale;LastError=null;
+            cells=next.cells;families=next.families;corners=next.corners;ChangedCells=next.ChangedCells;LastError=null;
             guide=next.guide;shapes=next.shapes;
         }
         // Corners never move while their cell exists, so a cell's shape is fixed until it is removed.
@@ -158,17 +152,25 @@ namespace DeathStar
         }
         public CellExposure Exposure(Vector3Int cell,out bool gable)
         {
-            gable=false;var s=Shape(cell);
-            if(!cells.Contains(cell)||s.kind==CellShape.Box)return CellExposure.Box;
+            var e=Exposure(cell,Shape(cell),Covered,out bool open0,out bool open1);
+            gable=open0||open1;return e;
+        }
+        // How a cell of this shape meets open space, given which cells are covered (solid or a truss); Box for a box.
+        // open0, open1: the faces at the -/+ end of a wedge's spine are open (a gable). TileBuilder classifies its
+        // structure's cells with it too.
+        public static CellExposure Exposure(Vector3Int cell,in ShapeInfo shape,Func<Vector3Int,bool> covered,out bool open0,out bool open1)
+        {
+            open0=open1=false;
+            if(shape.kind==CellShape.Box)return CellExposure.Box;
             int roofs=0,roofOpen=0,slopeOpen=0;
             for(int f=0;f<6;f++)
             {
-                bool open=!Covered(cell+Steps[f]);
-                if((s.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
-                else if(f>>1==s.spine)gable|=open;
+                bool open=!covered(cell+Steps[f]);
+                if((shape.roof>>f&1)!=0){roofs++;if(open)roofOpen++;}
+                else if(f>>1==shape.spine){if(open){if((f&1)==0)open1=true;else open0=true;}}
                 else if(open)slopeOpen++;
             }
-            bool wedge=s.kind==CellShape.Wedge;
+            bool wedge=shape.kind==CellShape.Wedge;
             if(roofOpen==roofs)return wedge?CellExposure.Ridge:CellExposure.Crown;
             if(roofOpen>0)return CellExposure.Half;
             if(slopeOpen>0)return wedge?CellExposure.Keel:CellExposure.Spike;
@@ -213,9 +215,6 @@ namespace DeathStar
             string kind=s.kind==CellShape.Box?(s.Small?"Small box":"Box"):$"{s.kind} {e.ToString().ToLowerInvariant()}";
             return $"{kind} {size.x:0.0} × {size.y:0.0} m";
         }
-        // Compatibility for the previous solver's callers. There is no body refit.
-        public bool TryRelax(out BlockConstruction next){next=null;return false;}
-        public BlockConstruction SettleForEdit()=>this;
         void PruneCorners(Vector3Int removed)
         {
             for(int i=0;i<8;i++)

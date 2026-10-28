@@ -10,19 +10,20 @@ been removed.
 - Click a face to add; Shift + click removes. The last seed cannot be removed.
 - New corners use `BlockGuide.Map` directly. The guide does not recenter or resize
   during construction; existing shared corners remain fixed.
-- New blocks grow into place over **100 ms**. No shape recognition, global refit,
-  delayed settling or surrounding preview mesh is used.
+- New blocks appear at once and the view glides onto them. No shape recognition,
+  global refit, delayed settling or surrounding preview mesh is used.
 - Right drag orbits, middle drag pans, scroll zooms, Home frames and Tab hides controls.
   The requested 50× scroll sensitivity remains in place.
 - Slab, Wedge, Orbital shell and Sphere examples all use sphere mapping.
-- Ctrl+Z / Ctrl+Y restore exact geometry and the guide; New build is undoable.
+- Ctrl+Z / Ctrl+Y restore exact geometry and the guide, rebuilding only around the
+  edited cell as the edit did; New build is undoable.
 - Ctrl+S saves `DeathStarRuns/BlockFoundry.json`. Save before stopping Play: there
   is no autosave. Version 5 stores cells, corners and the guide. Versions 1–4 remain
   readable with their stored geometry preserved. Old type metadata is accepted only
   for compatibility; all new placements follow the sphere grid.
 
 `BlockMesh` emits exposed bilinear faces into 8³ chunks. Shared vertices keep joins
-closed. Picking colliders follow the 100 ms growth animation. Local Jacobian checks
+closed. Local Jacobian checks
 reject folded/collapsed cells; they are not a nonlocal collision solver. The prototype
 supports 32,768 blocks, with logical coordinates -64 through 63.
 
@@ -145,18 +146,24 @@ carry chevron armour courses and a hatch, and keel strips a hatch on every secon
 family. Corridors and conduits keep their tubes. Parts crossing into the next cell end on a section taken from the shared face's four corners, so ridges run
 on without seams.
 
-**Truss** (`TileBuilder.Truss.cs`) is an open family, like Corridor and Conduit: a heavy space frame of 0.8 m box
-chords with splice bands, 1.3 m cast nodes and flat diagonal braces with gusset plates, brutalist rather than
-aerospace. Trusses side by side make one frame: each chord and node is built once, by the first truss round it, and
-pushed in from its lattice line until it is flush with the trusses' outer surface, so nothing reaches into a
-neighbour. Faces onto open space are braced, the diagonal alternating with the cell's parity so runs zigzag; faces
-between trusses stay open, so a run is a hollow girder; a solid face beside a truss becomes a bearing plate of carved
-armour with no relief or family form (`TileStructure.Covered`: a truss covers what it stands on, for main faces,
-joined rows and a wedge's exposure). The frame is built from the cells' real corners at true size (members thin in
-cells under 4.2 m), so a wedge becomes a triangular girder with a king post and an apex an inverted pyramid. Its kit:
-a triangular lattice girder with cast nodes, a walkway and saddles along the crest; a heavy end flange on a gable,
-and a tapered 7.5 m jib where the next two cells along the ridge are clear; a heavy keel chord with lights; on a crown
-a 13 m lattice tower (three legs from the girders, X-braced, a platform with a blockhouse, a mast and a beacon).
+**Truss** (`TileBuilder.Truss.cs`) is an open family, like Corridor and Conduit: a space frame of slender members in
+a clear hierarchy, after the station-truss reference: box chords 0.46 m on the trusses' outline (with splice bands),
+0.22 m on seams across a face and 0.2 m inside, cast nodes half as big again as the chords they join, and flat X
+braces with gusset plates. Trusses side by side make one frame: each chord and node is built once, by the first truss
+round it, and pushed in from its lattice line until it is flush with the trusses' outer surface, so nothing reaches
+into a neighbour. Faces onto open space are braced; faces between trusses stay open, so a run is a hollow girder; a
+solid face beside a truss becomes a bearing plate of carved armour with no relief or family form
+(`TileStructure.Covered`: a truss covers what it stands on, for main faces, joined rows and a wedge's exposure).
+**Formations:** a lone braced face carries an X with a cross plate; braced faces filling an aligned 2 × 2 block (on
+even station cells, like the 2 × 2 landmarks) carry one big 0.42 m X across the 10 m panel; an aligned 4 × 4 block
+(station cells in multiples of four) a 0.55 m X across 20 m with a lighter diamond inscribed in it, each cell carrying
+one diagonal of the pattern (`TileBuilder.FaceBlock`). Edits near a truss rebuild four cells round them
+(`SettlementSolver.Dirty`) so a block's pattern stays whole. The frame is built from the cells' real corners at true
+size (members thin in cells under 4.2 m), so a wedge becomes a triangular girder with a king post and an apex an
+inverted pyramid. Its kit: an X-laced triangular lattice girder with cast nodes, a walkway and saddles along the
+crest; an end flange on a gable, and a tapered 7.5 m X-laced jib where the next two cells along the ridge are clear; a
+keel chord with lights; on a crown a 13 m lattice tower (three legs from the girders, X-braced, a platform with a
+blockhouse, a mast and a beacon). Gussets, bands and cross plates are left out of the coarse far level.
 Corridors don't link into trusses. The **Truss** example button loads `SettlementExamples.Truss`.
 `Runtime/Tiles/SettlementSolver.cs` chooses orientations; `FoundrySettlement.cs` rebuilds dependent tiles;
 `CurvedTileMesh.cs` maps their meshes into the eight-corner cells and preserves relief depth and local feature scale.
@@ -207,8 +214,8 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
   even station cells make one 9 m pad); Conduit an open cell carrying a bundle of big pipes on saddles that links to
   its neighbours, turns on elbows and plugs into the tiles it reaches. A conduit group that would plug in nowhere (a
   closed loop, or runs ending in space) is tethered: its run ends turn into the solid tiles beside them and its elbows
-  branch into them, while straight runs stay clean; Truss an open space frame of heavy box chords, cast nodes and
-  braced faces, standing on bearing plates (see above). Corridor, Conduit and Truss are not solid.
+  branch into them, while straight runs stay clean; Truss an open space frame of slender box chords, cast nodes and
+  X-braced faces, big X patterns on 2 × 2 and 4 × 4 blocks, standing on bearing plates (see above). Corridor, Conduit and Truss are not solid.
 - **2 x 2 landmarks.** Four tiles of one family on even station cells, all showing the same main face, merge into
   one landmark: Command a 9 m dish, Power a reactor dome between radiator wings, Life Support a sphere tank, Storage
   one big hangar mouth, Landing Pad one 9 m pad. On their own, Life Support tiles show grouped upright tanks and tank
@@ -225,11 +232,14 @@ generated on enable, in edit mode too; nothing generated is saved with the scene
   curves are wide arcs with ribs, blocks, drums and buttresses, some running into round wells, set in a low bed where
   the plates under them flatten.
 - **Triangle budget.** Faces lying on a tile's own wall and facing in are not built, and carving waits until the tile
-  is done so plates under other boxes and hexahedra are left out. Each tile with carving gets a LOD group: from about
-  110 m (a 5 m cube under ~45 px at 1080p) it swaps to a far mesh with the armour plain. Wedge and apex kits and
-  truss frames are built twice (`TileMesh.Detail`): as they are for the near mesh, and coarse for the far one (a third
-  of the sides on round parts, no chamfers, armour plain). A wedge or apex tile stays within 8k triangles near and
-  2.5k far. The showcase is ~960k triangles near and ~390k far.
+  is done so plates under other boxes and hexahedra are left out; so are faces that look at another solid within a
+  metre over most of their area (a radiator fin's side), which are only seen edge-on. Each tile gets a LOD group:
+  from about 110 m (a 5 m cube under ~45 px at 1080p) it swaps to a far mesh with the armour plain and its family
+  forms, wedge and apex kits and truss frames built coarse (`TileMesh.Detail`: a third of the sides on round parts,
+  half the steps on domes, no chamfers). Every tile stays within 8k triangles near and 2.5k far
+  (`TileBuilder.NearBudget`, `FarBudget`): a tile the carving would take past 8k switches armour faces to calm plates,
+  those that save most first, until it fits; a far mesh still over 2.5k is built coarser again (a fifth of the sides).
+  The showcase is ~740k triangles near and ~315k far.
 - **Connections and slopes.** A corridor arriving at a face plugs into an octagonal socket on it, and a conduit into
   a manifold block; either takes that face over. Hull walls rising from a surface get a sloped fillet along the foot,
   continued along neighbours, so steps read as battered walls.
@@ -275,8 +285,10 @@ picks, triangles and size per specimen, checks) and pictures:
 The report also includes `foundry.png`, `foundry-coded.png`, `foundry-trench.png`, `foundry-under.png` and
 `foundry-back.png`, plus `foundry-pad-complete.png` / `foundry-pad-incomplete.png`, using automatically solved
 family choices on curved cells. `validate` exercises the real
-Foundry placement/undo/picking path and geometric invariants without entering Play mode; `foundry` renders just
-the new construction views and runs the settlement checks.
+Foundry placement/undo/picking path and geometric invariants without entering Play mode; `foundry` runs the
+settlement checks and renders every curved example (not the gallery stage); `ridges`, `limit`, `station` or `truss`
+renders that example alone. Each example is built once and every check (fixed-part sizes, tube widths and joints,
+kits, the triangle budget) reads that build. `validate` and `budget` skip the shader warmup.
 `foundry-coded.png` and `foundry-coded-far.png` exercise the Foundry's own debug switch, with image checks that
 the colours actually change the render on both detail levels. `foundry-shapes.png`, `ridges.png`,
 `ridges-shapes.png` and `ridges-keel.png` show the cell shapes; `foundry-scale.png` shows Defense and Command on a
@@ -288,9 +300,10 @@ conduit cross-sections must come out within 2% of true size at every tube end, a
 1 mm (`ridges-connectors.png` shows a corridor and a conduit run along a ridge); every open wedge and apex cell must
 build its kit and no box forms (`ridges-crown.png` shows the crown, `ridges-sheet.png` every ridge run close up,
 `crowns-sheet.png` the crown in each family with a kit, `crowns-far.png` the same at the far level, `ridges-lod.png`
-near and far side by side). Every wedge and apex tile of every example, and the crown in every family, must stay
-within 8k triangles near and 2.5k far; the report lists the most of each family and exposure, and the heaviest box
-tile (`tools/tile-lab.sh budget` runs just this). `station.png`, `station-coded.png`, `station-shapes.png`,
+near and far side by side). Every tile of every example and of the gallery, and the crown in every family, must stay
+within 8k triangles near and 2.5k far; the report lists the most of each family and shape, and the tiles that needed
+calm plates or the coarser far level, shown close up in `budget-capped.png` (gallery) and `station-capped.png`
+(`tools/tile-lab.sh budget` runs just the budget). `station.png`, `station-coded.png`, `station-shapes.png`,
 `station-back.png` and `station-inside.png` show the Station example; the validation checks that it holds every
 shape and exposure, every family on a ridge and every solid family on a crown, and that every family can be put
 back into every surface cell of a ball (boxes, small boxes, wedges, apexes) and the corners and ridges stay valid out
@@ -299,7 +312,8 @@ to shell 63. The Limit example is a cap round a cube corner at shell 63, where c
 ridge, single pads and a 2 × 2 pad on small boxes), `limit-narrow.png` down the corridor's 2.4 m slot; its checks
 cover fixed-part sizes, tube widths and joints, kits and the pads' smaller classes. `tools/tile-lab.sh limit` runs just
 that example. The Truss example (`tools/tile-lab.sh truss` runs just it): `truss.png` and `truss-coded.png` over the
-cap, `truss-crown.png` the lattice tower, `truss-ridge.png` the girder and jib, `truss-boom.png` the tower and boom,
-`truss-details.png` the pit, the bridge, a frame against a Habitat wall and the jib; its checks: every wedge and apex
+cap, `truss-crown.png` the lattice tower, `truss-ridge.png` the girder and jib, `truss-boom.png` a tower two cells
+square with 2 × 2 stages and a boom of the same section, `truss-4x4.png` a 4 × 4 frame on the surface (big X round a
+diamond), `truss-details.png` the pit, the bridge, the frame's edge against a Habitat wall and the jib; its checks: every wedge and apex
 builds its kit, every truss tile its frame and no fixed-size parts, at most 12k triangles a truss tile. The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.
