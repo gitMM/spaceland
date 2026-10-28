@@ -8,14 +8,13 @@ namespace DeathStar
     public static class TileLook
     {
         // Space: one hard sun and a planet. Nothing here assumes an up; directions are just station-space vectors.
-        public static readonly Vector3 KeyFrom=new Vector3(-0.62f,0.55f,-0.56f).normalized;
-        public static readonly Color KeyColor=new Color(1f,0.97f,0.92f);
-        public const float KeyIntensity=3.6f;
+        public static Vector3 KeyFrom=>StationLightingSettings.Current.sunFrom.normalized;
+        public static Color KeyColor=>StationLightingSettings.Current.sunColor;
+        public static float KeyIntensity=>StationLightingSettings.Current.sunIntensity;
         // Planetshine: weak, cool, from the planet's side of the sky.
-        public static readonly Vector3 RimFrom=new Vector3(0.55f,-0.38f,0.74f).normalized;
-        public static readonly Color RimColor=new Color(0.45f,0.62f,0.95f);
-        public const float RimIntensity=0.6f;
-        static readonly Color Ambient=new Color(0.07f,0.072f,0.078f);
+        public static Vector3 RimFrom=>StationLightingSettings.Current.planetFrom.normalized;
+        public static Color RimColor=>StationLightingSettings.Current.planetColor;
+        public static float RimIntensity=>StationLightingSettings.Current.planetIntensity;
         static readonly Color EnvDark=new Color(0.03f,0.032f,0.036f);
 
         // Planning-overlay colours (linear). Hull stays plain grey.
@@ -83,34 +82,41 @@ namespace DeathStar
             var rim=new GameObject("Rim Light").AddComponent<Light>();rim.transform.SetParent(parent,false);
             rim.type=LightType.Directional;rim.color=RimColor;rim.intensity=RimIntensity;
             rim.transform.rotation=Quaternion.LookRotation(-RimFrom);rim.shadows=LightShadows.None;
+            var rig=parent.gameObject.AddComponent<StationLightingRig>();rig.sun=key;rig.planet=rim;rig.Apply();
             return key;
         }
 
         public struct Saved
         {
             public AmbientMode mode;public Color sky,equator,ground,flat;public SphericalHarmonicsL2 probe;
-            public DefaultReflectionMode reflectionMode;public Texture reflection;public Material skybox;public bool fog;
+            public DefaultReflectionMode reflectionMode;public Texture reflection;public Material skybox;public bool fog;public float reflectionIntensity;
         }
         public static Saved ApplyEnvironment(TileLibrary library)
         {
             var saved=new Saved{mode=RenderSettings.ambientMode,sky=RenderSettings.ambientSkyColor,equator=RenderSettings.ambientEquatorColor,
                 ground=RenderSettings.ambientGroundColor,flat=RenderSettings.ambientLight,probe=RenderSettings.ambientProbe,reflectionMode=RenderSettings.defaultReflectionMode,
-                reflection=RenderSettings.customReflectionTexture,skybox=RenderSettings.skybox,fog=RenderSettings.fog};
-            RenderSettings.ambientMode=AmbientMode.Flat;
-            RenderSettings.ambientLight=Ambient.gamma;
-            var probe=new SphericalHarmonicsL2();probe.AddAmbientLight(Ambient);
-            RenderSettings.ambientProbe=probe;
-            if(library!=null&&library.reflection!=null)
-            {RenderSettings.defaultReflectionMode=DefaultReflectionMode.Custom;RenderSettings.customReflectionTexture=library.reflection;}
-            if(library!=null)RenderSettings.skybox=library.sky;
+                reflection=RenderSettings.customReflectionTexture,skybox=RenderSettings.skybox,fog=RenderSettings.fog,reflectionIntensity=RenderSettings.reflectionIntensity};
+            if(library!=null){StationLightingSettings.Current.ApplyPost(library.post);RenderSettings.skybox=library.sky;}
+            ApplyLightingEnvironment();
             RenderSettings.fog=false;
             return saved;
+        }
+        public static void ApplyLightingEnvironment()
+        {
+            var settings=StationLightingSettings.Current;settings.ApplyGlobals();
+            RenderSettings.reflectionIntensity=settings.reflections;
+            RenderSettings.ambientMode=AmbientMode.Flat;
+            RenderSettings.ambientLight=settings.ambientColor.gamma;
+            var probe=new SphericalHarmonicsL2();probe.AddAmbientLight(settings.ambientColor);
+            RenderSettings.ambientProbe=probe;
+            RenderSettings.defaultReflectionMode=DefaultReflectionMode.Custom;RenderSettings.customReflectionTexture=settings.Reflection;
+            if(RenderSettings.skybox)ConfigureSky(RenderSettings.skybox);
         }
         public static void Restore(Saved s)
         {
             RenderSettings.ambientMode=s.mode;RenderSettings.ambientSkyColor=s.sky;RenderSettings.ambientEquatorColor=s.equator;
             RenderSettings.ambientGroundColor=s.ground;RenderSettings.ambientLight=s.flat;RenderSettings.ambientProbe=s.probe;RenderSettings.defaultReflectionMode=s.reflectionMode;
-            RenderSettings.customReflectionTexture=s.reflection;RenderSettings.skybox=s.skybox;RenderSettings.fog=s.fog;
+            RenderSettings.customReflectionTexture=s.reflection;RenderSettings.skybox=s.skybox;RenderSettings.fog=s.fog;RenderSettings.reflectionIntensity=s.reflectionIntensity;
         }
 
         // Dark environment for reflections, with a hot spot where the sun is and a glow where the planet is.
@@ -130,8 +136,8 @@ namespace DeathStar
         static Color Environment(Vector3 d)
         {
             Color c=EnvDark;
-            c+=KeyColor*2.2f*Mathf.Pow(Mathf.Max(0f,Vector3.Dot(d,KeyFrom)),40f);
-            c+=RimColor*0.35f*Mathf.Pow(Mathf.Max(0f,Vector3.Dot(d,RimFrom)),6f);
+            c+=KeyColor*(2.2f*KeyIntensity/3.6f)*Mathf.Pow(Mathf.Max(0f,Vector3.Dot(d,KeyFrom)),40f);
+            c+=RimColor*(0.35f*RimIntensity/0.6f)*Mathf.Pow(Mathf.Max(0f,Vector3.Dot(d,RimFrom)),6f);
             c.a=1;return c;
         }
         static Vector3 Direction(CubemapFace f,float u,float v)

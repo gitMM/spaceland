@@ -1,6 +1,8 @@
 # Borrowing Button's lighting for Spaceland
 
-Study and implementation plan — 28 October 2026. No rendering changes have been made.
+Study and implementation plan — 28 October 2026.
+
+Implementation status: unified station settings, corrected Button shadow filtering and SSILVB screen-space bounce/AO are retained. The experimental world-space GI, physical opening spill, test tint and their diagnostics were removed at the user's request. The remaining plan below is design history, not a description of installed world-space lighting.
 
 ## Recommendation
 

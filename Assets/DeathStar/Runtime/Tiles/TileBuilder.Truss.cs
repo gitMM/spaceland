@@ -206,17 +206,18 @@ namespace DeathStar
             if(fl)Diagonal(m,p10,p01,p00,p11,normal,ws);
             if(r&&fl&&m.coarse==0)
             {
-                Vector3 d1=(p11-p00).normalized,d2=(p01-p10).normalized,mid=(p00+p10+p01+p11)*0.25f-normal*(ws*0.4f+0.04f);
-                float L=ws*2.2f;
-                Plate(m,mid+d1*L,mid+d2*L,mid-d1*L,mid-d2*L,normal,ws*0.4f);
+                Vector3 d1=(p11-p00).normalized,d2=(p01-p10).normalized,mid=(p00+p10+p01+p11)*0.25f-normal*(Mathf.Max(0.06f,ws*0.3f)*0.5f+0.04f);
+                float L=ws*2.6f;
+                Plate(m,mid+d1*L,mid+d2*L,mid-d1*L,mid-d2*L,normal,Mathf.Max(0.06f,ws*0.3f)+0.02f);
             }
         }
-        // One diagonal from corner a to corner c of a face, w wide, set just behind it, with a gusset plate at each end
-        // spreading onto the face's edges towards its other corners b and d.
+        // One diagonal from corner a to corner c of a face: a flat bar 1.25 w wide in the face and 0.3 w deep (at least
+        // 6 cm), set just behind it, with a gusset plate at each end spreading onto the face's edges towards its other
+        // corners b and d.
         static void Diagonal(TileMesh m,Vector3 a,Vector3 c,Vector3 b,Vector3 d,Vector3 normal,float w)
         {
-            float depth=w*0.8f,inset=depth*0.5f+0.04f;var dir=(c-a).normalized;
-            Member(m,Web,a+dir*w-normal*inset,c-dir*w-normal*inset,Vector3.Cross(normal,dir),w,depth,0.03f*w/SingleBrace);
+            float width=w*1.25f,depth=Mathf.Max(0.06f,w*0.3f),inset=depth*0.5f+0.04f;var dir=(c-a).normalized;
+            Member(m,Web,a+dir*w-normal*inset,c-dir*w-normal*inset,Vector3.Cross(normal,dir),width,depth,0.015f);
             if(m.coarse>0)return;
             foreach(var (o,g) in new[]{(a,dir),(c,-dir)})
             {
@@ -268,7 +269,7 @@ namespace DeathStar
             return Vector3.Lerp(s0.crest,s1.crest,t)+ac*q.x+up*q.y;
         }
         // Crest: a triangular lattice girder along the ridge in the frame's language: two foot chords and an apex chord,
-        // X-laced bay by bay on both sloping sides, cast nodes at the bay ends, ties and a walkway between the feet, a
+        // X-laced bay by bay on both sloping sides with flat bars, cast nodes at the bay ends, ties and a walkway between the feet, a
         // saddle down to the roof under every bay and a running light over it. Bay ends on a joined section are left to
         // the next cell.
         static void Girder(TileMesh m,in Section s0,in Section s1,bool join0,bool join1)
@@ -292,8 +293,8 @@ namespace DeathStar
                 float t0=i/(float)bays,tm=(i+0.5f)/bays,t1=(i+1f)/bays;
                 foreach(var foot in new[]{GirderFootL,GirderFootR})
                 {
-                    Member(m,Web,OnRun(s0,s1,t0,foot),OnRun(s0,s1,t1,GirderApex),along,0.22f,0.18f,0.02f);
-                    Member(m,Web,OnRun(s0,s1,t0,GirderApex),OnRun(s0,s1,t1,foot),along,0.22f,0.18f,0.02f);
+                    Member(m,Web,OnRun(s0,s1,t0,foot),OnRun(s0,s1,t1,GirderApex),along,0.28f,0.08f,0.01f);
+                    Member(m,Web,OnRun(s0,s1,t0,GirderApex),OnRun(s0,s1,t1,foot),along,0.28f,0.08f,0.01f);
                 }
                 m.PushMatrix(FrameAt(s0,s1,tm));
                 m.Box(Cast,new Vector3(0,0.02f,0),new Vector3(3.3f,0.36f,0.5f),0.04f);
@@ -329,8 +330,8 @@ namespace DeathStar
                 float t0=i/(float)bays,t1=(i+1f)/bays;
                 foreach(float side in new[]{-1f,1f})
                 {
-                    Member(m,Web,P(Foot(t0,side),L*t0),P(Apex(t1),L*t1),z,0.2f,0.16f,0.02f);
-                    Member(m,Web,P(Apex(t0),L*t0),P(Foot(t1,side),L*t1),z,0.2f,0.16f,0.02f);
+                    Member(m,Web,P(Foot(t0,side),L*t0),P(Apex(t1),L*t1),z,0.26f,0.07f,0.01f);
+                    Member(m,Web,P(Apex(t0),L*t0),P(Foot(t1,side),L*t1),z,0.26f,0.07f,0.01f);
                 }
                 Member(m,Web,P(Foot(t1,-1),L*t1),P(Foot(t1,1),L*t1),z,0.22f,0.22f,0.02f);
             }
@@ -377,8 +378,8 @@ namespace DeathStar
                 if(l+1<levels.Length)
                 {
                     float h1=levels[l+1];var across=Vector3.Cross(side,Vector3.up);
-                    Member(m,Web,Leg(i,h),Leg(j,h1),across,0.24f,0.18f,0.02f);
-                    Member(m,Web,Leg(j,h),Leg(i,h1),across,0.24f,0.18f,0.02f);
+                    Member(m,Web,Leg(i,h),Leg(j,h1),across,0.09f,0.3f,0.01f);
+                    Member(m,Web,Leg(j,h),Leg(i,h1),across,0.09f,0.3f,0.01f);
                 }
             }
             var deck=new Vector2[6];for(int i=0;i<6;i++){float a=i*Mathf.PI/3;deck[i]=new Vector2(Mathf.Cos(a),Mathf.Sin(a))*3.0f;}

@@ -148,15 +148,15 @@ on without seams.
 
 **Truss** (`TileBuilder.Truss.cs`) is an open family, like Corridor and Conduit: a space frame of slender members in
 a clear hierarchy, after the station-truss reference: box chords 0.46 m on the trusses' outline (with splice bands),
-0.22 m on seams across a face and 0.2 m inside, cast nodes half as big again as the chords they join, and flat X
-braces with gusset plates. Trusses side by side make one frame: each chord and node is built once, by the first truss
+0.22 m on seams across a face and 0.2 m inside, cast nodes half as big again as the chords they join, and X braces
+of flat bars (0.25 m wide in the face on a lone cell, about a quarter as deep) with gusset plates. Trusses side by side make one frame: each chord and node is built once, by the first truss
 round it, and pushed in from its lattice line until it is flush with the trusses' outer surface, so nothing reaches
 into a neighbour. Faces onto open space are braced; faces between trusses stay open, so a run is a hollow girder; a
 solid face beside a truss becomes a bearing plate of carved armour with no relief or family form
 (`TileStructure.Covered`: a truss covers what it stands on, for main faces, joined rows and a wedge's exposure).
 **Formations:** a lone braced face carries an X with a cross plate; braced faces filling an aligned 2 × 2 block (on
-even station cells, like the 2 × 2 landmarks) carry one big 0.42 m X across the 10 m panel; an aligned 4 × 4 block
-(station cells in multiples of four) a 0.55 m X across 20 m with a lighter diamond inscribed in it, each cell carrying
+even station cells, like the 2 × 2 landmarks) carry one big X of 0.5 m bars across the 10 m panel; an aligned 4 × 4 block
+(station cells in multiples of four) an X of 0.7 m bars across 20 m with a lighter diamond inscribed in it, each cell carrying
 one diagonal of the pattern (`TileBuilder.FaceBlock`). Edits near a truss rebuild four cells round them
 (`SettlementSolver.Dirty`) so a block's pattern stays whole. The frame is built from the cells' real corners at true
 size (members thin in cells under 4.2 m), so a wedge becomes a triangular girder with a king post and an apex an
@@ -317,3 +317,42 @@ square with 2 × 2 stages and a boom of the same section, `truss-4x4.png` a 4 ×
 diamond), `truss-details.png` the pit, the bridge, the frame's edge against a Habitat wall and the jib; its checks: every wedge and apex
 builds its kit, every truss tile its frame and no fixed-size parts, at most 12k triangles a truss tile. The script submits the lab as a
 detached editor job (`unity job wait`), because a direct call is aborted after 30 s on the editor's main thread.
+
+### Unified station lighting
+
+**Death Star → Lighting settings** selects `Resources/StationLighting/MainLighting.asset`.
+Foundry, Tile Gallery and Tile Lab share its sun, planetshine, ambient, reflection,
+emission, shadow softness, screen-space bounce/AO and image controls. Changes apply
+in Edit/Play mode; they do not regenerate construction. The sky directions and
+synthetic reflection environment follow the same light settings.
+
+`StationPipeline` and `StationRenderer` are DeathStar-owned copies of the PC setup.
+The sun uses a 4096 shadow atlas with four cascades at 2.5%, 10% and 30% of
+the 600 m range, concentrating detail near construction. The wider shadow filter
+corrects each tap for the receiving plane and the hardware PCF footprint, avoiding
+texel-grid self-shadowing on sloping panels. Blocker depth is compared at actual
+texel centres so the softness transition stays stable within a texel.
+The renderer uses Button-derived SSILVB in place of Unity SSAO, with a separate
+AO-only path when bounce is disabled. Tile surface source shading excludes debug
+overlays, specular and emission; opaque window surfaces block source visibility.
+A dedicated source depth target handles Forward+ independently of its partial
+prepass. The older indirect-drawn planet shader is outside the settlement-material
+lighting path.
+
+Unity's SSAO feature and its subassets are removed from both the station renderer
+and the PC template renderer. Reinstalling unified lighting also removes any
+copied SSAO feature. The shared rig applies lights, ambient, sky, reflections and
+post-processing together, including volumes added after the rig. The Inspector's
+Occlusion controls belong to the station's SSILVB feature.
+`tools/death-star/VerifyUnifiedLighting.cs` checks this shared control path and
+renderer setup without rendering a large scene.
+
+The experimental world-space GI, physical window/hangar spill, test paint and
+associated diagnostics have been removed. The installed lighting is the shared
+sun/planet rig, ambient and reflections, corrected shadows, screen-space bounce/AO,
+and the original emissive windows with bloom.
+
+Use the profile's screen-bounce-only, AO-only and diffuse-source diagnostic views
+to inspect the contributions. Post-processing still applies in these views.
+`tools/death-star/VerifyLighting.cs` (entry `LightingCompare.Run`) writes the
+existing lighting comparisons to `DeathStarRuns/Lighting`.

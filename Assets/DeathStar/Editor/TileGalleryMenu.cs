@@ -66,6 +66,7 @@ namespace DeathStar.EditorTools
             var grade=Get<ColorAdjustments>();grade.postExposure.Override(0.2f);grade.contrast.Override(14f);grade.saturation.Override(-4f);
             var bloom=Get<Bloom>();bloom.threshold.Override(1.0f);bloom.intensity.Override(0.35f);bloom.scatter.Override(0.65f);
             var vignette=Get<Vignette>();vignette.intensity.Override(0.24f);vignette.smoothness.Override(0.45f);
+            StationLightingSettings.Current.ApplyPost(p);
             foreach(var c in p.components)EditorUtility.SetDirty(c);
             EditorUtility.SetDirty(p);
         }

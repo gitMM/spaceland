@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fc2373163f7f68b4eac1c4adc49506a9, type: 3}
+  m_Name: MainLighting
+  m_EditorClassIdentifier: DeathStar.Runtime::DeathStar.StationLightingSettings
+  sunFrom: {x: -0.62, y: 0.55, z: -0.56}
+  sunColor: {r: 1, g: 0.97, b: 0.92, a: 1}
+  sunIntensity: 7.2
+  receivedShadowStrength: 1
+  shadowSoftness: 2.42
+  planetFrom: {x: 0.55, y: -0.38, z: 0.74}
+  planetColor: {r: 0.45, g: 0.62, b: 0.95, a: 1}
+  planetIntensity: 0.6
+  ambientLight: 1
+  ambientColor: {r: 0.07, g: 0.072, b: 0.078, a: 1}
+  screenSpaceGi: 1
+  screenGiStrength: 0.5
+  screenGiRadius: 0.8
+  screenGiSlices: 4
+  screenGiSliceSteps: 14
+  screenGiSurfaceThickness: 0.261
+  screenSpaceAmbientOcclusion: 1
+  ssaoStrength: 1
+  ssaoDirectStrength: 1
+  screenGiAoRadius: 0.858
+  screenGiAoIntensity: 0.51
+  emission: 1
+  reflections: 1
+  exposure: 0.2
+  contrast: 14
+  saturation: -4
+  bloom: 0.35
+  bloomThreshold: 1
+  bloomScatter: 0.65
+  giDebugView: 0

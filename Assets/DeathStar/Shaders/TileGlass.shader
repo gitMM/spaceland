@@ -18,6 +18,7 @@ Shader "DeathStar/Tile Glass"
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
 
         HLSLINCLUDE
+        float _StationEmission;
         #include "TileCommon.hlsl"
         CBUFFER_START(UnityPerMaterial)
             half4 _GlassTint;
@@ -28,6 +29,19 @@ Shader "DeathStar/Tile Glass"
         CBUFFER_END
         ENDHLSL
 
+        Pass {
+            Name "StationGiSource"
+            Tags { "LightMode"="StationGiSource" }
+            ZWrite On ZTest LEqual Cull Back
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex TileDepthVert
+            #pragma fragment GlassSource
+            #pragma multi_compile_instancing
+            struct GlassSourceOutput {float4 source:SV_Target0;float4 receiver:SV_Target1;};
+            GlassSourceOutput GlassSource() {GlassSourceOutput o;o.source=0;o.receiver=0;return o;}
+            ENDHLSL
+        }
         Pass
         {
             Name "ForwardLit"
@@ -138,6 +152,7 @@ Shader "DeathStar/Tile Glass"
                     c = lerp(c, cloth, step(size.y * (1 - cover), i.local.y));
                 }
 
+                c *= _StationEmission;
                 float nv = saturate(dot(N, -V));
                 float fres = 0.04 + 0.96 * pow(1 - nv, 5);
                 float3 R = reflect(V, N);

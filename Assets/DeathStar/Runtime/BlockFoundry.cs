@@ -57,8 +57,8 @@ namespace DeathStar
         int previewRevision=-1;
         Vector3 focus, targetFocus, focusVelocity;
         float distance=6,targetDistance=6,yaw=35,pitch=25;
-        // After an attach the view glides onto the new cell on a critically damped spring: eases in and out, settles in ~0.5 s.
-        const float PanTime=0.18f;
+        // After an attach the view glides onto the new cell on a critically damped spring: eases in and out, settles in ~2 s.
+        const float PanTime=0.72f;
         // Only cells placed more than halfway from the view centre to the screen edge pull the camera.
         const float PanTolerance=0.5f;
         bool autoPan;
