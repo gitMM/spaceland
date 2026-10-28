@@ -39,11 +39,8 @@ float3 SsilGeometricNormal(float2 uv,float3 p,float3 fallback)
     normal*=rsqrt(lengthSq);
     return dot(normal,fallback)<0?-normal:normal;
 }
-float4 TraceSsilvb(Varyings input):SV_Target
+float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
 {
-    float2 uv=(floor(input.texcoord*_ScaledScreenParams.xy)+.5)/_ScaledScreenParams.xy;
-    float3 p,n;float eye;
-    if(!Surface(uv,p,n,eye))return float4(0,0,0,-1);
     float3 geometricNormal=SsilGeometricNormal(uv,p,n);
     float3 view=GetWorldSpaceNormalizeViewDir(p);
     float centerDepth=SampleSceneDepth(uv);
@@ -129,5 +126,12 @@ float4 TraceSsilvb(Varyings input):SV_Target
     }
     float weight=rcp(max(normalization,1e-5)*32);
     return float4(max(0,lighting*(PI*_GiParameters.x*weight)),saturate(occlusion*weight*_GiAoParameters.y));
+}
+float4 TraceSsilvb(Varyings input):SV_Target
+{
+    float2 uv=(floor(input.texcoord*_ScaledScreenParams.xy)+.5)/_ScaledScreenParams.xy;
+    float3 p,n;float eye;
+    if(!Surface(uv,p,n,eye))return float4(0,0,0,-1);
+    return TraceSsilvb(uv,p,n,eye);
 }
 #endif

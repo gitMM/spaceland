@@ -1,6 +1,7 @@
 // Adapted from C:/Transhuman/Button, 2026-10-28.
 Shader "Hidden/DeathStar/Screen GI"
 {
+    Properties { [HideInInspector] _StationVoxelRadiance ("Voxel radiance",3D) = "" {} }
     SubShader {
         Tags { "RenderPipeline"="UniversalPipeline" }
         ZWrite Off ZTest Always Cull Off
@@ -12,7 +13,7 @@ Shader "Hidden/DeathStar/Screen GI"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
         TEXTURE2D_X(_GiSource); TEXTURE2D_X(_GiReceiver); TEXTURE2D_X(_GiDelta);
         TEXTURE2D_X(_GiFiltered);
-        float4 _GiParameters; // strength, reach, unused, unused
+        float4 _GiParameters; // screen strength, screen reach, voxel enabled, voxel-only debug
         float4 _GiAoParameters; // AO radius, intensity
         float4 _GiSize;
         int _GiOnly;
@@ -30,6 +31,18 @@ Shader "Hidden/DeathStar/Screen GI"
             n=normalize(LoadSceneNormals((uint2)(uv*_ScaledScreenParams.xy)));return true;
         }
         #include "StationSsilvb.hlsl"
+        #include "StationVoxelTrace.hlsl"
+        float4 TraceCombined(Varyings input):SV_Target {
+            float2 uv=(floor(input.texcoord*_ScaledScreenParams.xy)+.5)/_ScaledScreenParams.xy;
+            float3 p,n;float eye;
+            if(!Surface(uv,p,n,eye))return float4(0,0,0,-1);
+            float4 result=TraceSsilvb(uv,p,n,eye);
+            if(_GiParameters.z>=.5) {
+                float handoff=(_GiParameters.x>0&&_GiParameters.w<.5)?_StationVoxelParams.w:0;
+                result.rgb+=StationVoxelDiffuse(p,n,handoff)*_StationVoxelParams.z;
+            }
+            return result;
+        }
         float4 Gather(float2 uv,float3 p,float3 n,bool aoOnly) {
             float2 center=floor(uv*_GiSize.xy)+.5;
             float4 sum=0;float weights=0;
@@ -117,7 +130,7 @@ Shader "Hidden/DeathStar/Screen GI"
             Name "SSILVB GI AO trace"
             HLSLPROGRAM
             #pragma vertex Vert
-            #pragma fragment TraceSsilvb
+            #pragma fragment TraceCombined
             #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
             ENDHLSL
         }

@@ -15,6 +15,7 @@ namespace DeathStar
         GiPass pass;
         CompositePass compositePass;
         bool customAoActive;
+        StationVoxelGi voxels;
         // Keep these indices in the same order as StationScreenGi.shader.
         const int FilterGiAo=0, CompositeGi=1, ShowAo=2, FilterAo=3, Trace=4, TraceAo=5;
         static readonly int AoTextureId=Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
@@ -33,6 +34,7 @@ namespace DeathStar
         static readonly int AmbientOcclusionId=Shader.PropertyToID("_AmbientOcclusionParam");
         public override void Create()
         {
+            voxels?.Dispose();voxels=new StationVoxelGi();
             ResetAo();
             CoreUtils.Destroy(material);
             var shader=Resources.Load<Shader>("StationLighting/StationScreenGi");
@@ -62,13 +64,16 @@ namespace DeathStar
                 data.cameraData.renderType==CameraRenderType.Base && data.cameraData.cameraTargetDescriptor.msaaSamples<=1;
             if(!supported) return;
             bool aoDebug=settings.giDebugView==GiDebugView.ScreenSpaceAoOnly;
-            bool giAvailable=settings.screenSpaceGi && settings.screenGiStrength>0 && !aoDebug;
-            if(settings.giDebugView==GiDebugView.Normal && !giAvailable &&
+            bool voxelAvailable=!aoDebug && settings.giDebugView!=GiDebugView.ScreenSpaceGiOnly &&
+                settings.giDebugView!=GiDebugView.DiffuseSources && voxels.Prepare(data.cameraData.camera,settings,material);
+            if(!voxelAvailable)material.SetVector("_StationVoxelParams",Vector4.zero);
+            bool giAvailable=settings.screenSpaceGi && settings.screenGiStrength>0 && !aoDebug && settings.giDebugView!=GiDebugView.VoxelGiOnly;
+            if(settings.giDebugView==GiDebugView.Normal && !giAvailable && !voxelAvailable &&
                 !(settings.screenSpaceAmbientOcclusion && settings.ssaoStrength>0 && settings.screenGiAoIntensity>0)) return;
             pass.Material=material;
             pass.DebugView=settings.giDebugView;
             pass.Parameters=new Vector4(giAvailable?Mathf.Clamp01(settings.screenGiStrength):0,
-                Mathf.Clamp(settings.screenGiRadius,.1f,30),0,0);
+                Mathf.Clamp(settings.screenGiRadius,.1f,30),voxelAvailable?1:0,settings.giDebugView==GiDebugView.VoxelGiOnly?1:0);
             pass.SliceParameters=new Vector4(Mathf.Clamp(settings.screenGiSlices,2,12),
                 Mathf.Clamp(settings.screenGiSliceSteps,4,32),Mathf.Clamp(settings.screenGiSurfaceThickness,.01f,3),0);
             pass.AoParameters=new Vector4(Mathf.Clamp(settings.screenGiAoRadius,.05f,5),Mathf.Clamp(settings.screenGiAoIntensity,0,3),0,0);
@@ -82,13 +87,14 @@ namespace DeathStar
             customAoActive=true;
             compositePass.Material=material;
             compositePass.AoOnly=aoDebug;
-            compositePass.GiOnly=settings.giDebugView==GiDebugView.DiffuseSources?2:(settings.giDebugView==GiDebugView.ScreenSpaceGiOnly?1:0);
+            compositePass.GiOnly=settings.giDebugView==GiDebugView.DiffuseSources?2:((settings.giDebugView==GiDebugView.ScreenSpaceGiOnly||settings.giDebugView==GiDebugView.VoxelGiOnly)?1:0);
             renderer.EnqueuePass(pass);
             // Ordinary AO is consumed during opaque shading; it needs no color copy.
-            if(giAvailable || aoDebug || compositePass.GiOnly>0) renderer.EnqueuePass(compositePass);
+            if(giAvailable || voxelAvailable || aoDebug || compositePass.GiOnly>0) renderer.EnqueuePass(compositePass);
         }
 
         protected override void Dispose(bool disposing) {
+            voxels?.Dispose();voxels=null;
             ResetAo();RenderPipelineManager.endCameraRendering-=EndCamera;
             CoreUtils.Destroy(material);
         }
@@ -166,7 +172,7 @@ namespace DeathStar
                 var desc=camera.cameraTargetDescriptor;
                 desc.msaaSamples=1; desc.depthBufferBits=0; desc.depthStencilFormat=GraphicsFormat.None;
                 desc.graphicsFormat=GraphicsFormat.R16G16B16A16_SFloat;
-                bool hasGi=Parameters.x>0;
+                bool hasGi=Parameters.x>0||Parameters.z>0;
                 TextureHandle source=graph.defaultResources.blackTexture,receiver=graph.defaultResources.blackTexture;
                 if(hasGi) {
                     source=UniversalRenderer.CreateRenderGraphTexture(graph,desc,"Station GI diffuse source",true,FilterMode.Point);

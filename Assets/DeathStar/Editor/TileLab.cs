@@ -20,7 +20,7 @@ namespace DeathStar.EditorTools
     //   snap view=<Station|Fragment|Trench|Under|Surface|EndFace|Seams>
     //   snap family=<Name> [back=1]
     //   snap x= y= z= tx= ty= tz= [ux= uy= uz=] [fov=]
-    public static class TileLab
+    public static partial class TileLab
     {
         const int W=1600,H=900;
         static string Dir=>Path.GetFullPath(Path.Combine(Application.dataPath,"../DeathStarRuns/Tiles"));
@@ -72,6 +72,8 @@ namespace DeathStar.EditorTools
             using var rig=new Rig(lib);
             if(mode=="warmup")return Warmup(rig);
             if(mode=="snap")return Snap(rig,opts);
+            if(mode=="voxelgi")return VoxelGiCheck(rig);
+            if(mode=="voxelbench")return VoxelPerformance(rig);
             int only=Array.FindIndex(Examples,e=>e.name.ToLowerInvariant()==mode);
             if(only>=0)
             {
@@ -838,6 +840,8 @@ namespace DeathStar.EditorTools
             // Shows or hides the stage if it has been built; returns whether it was showing.
             public bool ShowStage(bool show){if(stage==null)return false;bool was=stage.root.activeSelf;stage.root.SetActive(show);return was;}
             public Scene PreviewScene=>scene;
+            public Camera Camera=>cam;
+            public int CullingMask {get=>cam.cullingMask;set=>cam.cullingMask=value;}
             public readonly TileLibrary Library;
 
             public Rig(TileLibrary lib)

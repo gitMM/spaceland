@@ -41,6 +41,7 @@ namespace DeathStar
             public double buildMs;
             public void Destroy()
             {
+                StationVoxelGi.Invalidate();
                 foreach(var mesh in meshes)Release(mesh);
                 meshes.Clear();
                 if(root!=null)Release(root);
@@ -108,6 +109,7 @@ namespace DeathStar
                 grading.isGlobal=true;grading.sharedProfile=lib.post;
             }
             stage.buildMs=sw.Elapsed.TotalMilliseconds;
+            StationVoxelGi.Invalidate();
             return stage;
         }
         static GameObject Node(string name,Transform parent,bool dontSave)

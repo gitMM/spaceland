@@ -99,6 +99,7 @@ namespace DeathStar
                 ApplyDebug(tile);timings.tiles++;timings.objects+=Lap();
             }
             LastTimings=timings;
+            StationVoxelGi.Invalidate();
         }
         // One tile's near and far meshes, bent onto the grid when there is a warp (null if it builds nothing), its time
         // added to timings from clock. observe (the lab) sees it untimed.
@@ -132,6 +133,6 @@ namespace DeathStar
                 return b;
             }
         }
-        public void Dispose(){foreach(var c in new List<Vector3Int>(tiles.Keys))Remove(c);Structure=null;}
+        public void Dispose(){foreach(var c in new List<Vector3Int>(tiles.Keys))Remove(c);Structure=null;StationVoxelGi.Invalidate();}
     }
 }

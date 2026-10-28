@@ -1,0 +1,71 @@
+#pragma kernel Reference
+#pragma kernel Optimized
+#pragma target 5.0
+// Frozen pre-optimization gather used only by the Editor's paired regression benchmark.
+#include "../Resources/StationLighting/StationVoxelTrace.hlsl"
+#ifndef STATION_VOXEL_REFERENCE_INCLUDED
+#define STATION_VOXEL_REFERENCE_INCLUDED
+// Premultiplied outgoing diffuse radiance and coverage; world units are metres.
+float4 ReferenceSample(float3 uv,float3 direction,float diameter)
+{
+    float lod=clamp(log2(diameter/_StationVoxelParams.x)-1,0,_StationVoxelGrid.y);
+    // Six independent mip chains packed along X. Keep trilinear footprints
+    // within their own lobe, including at the last mip (one voxel per lobe).
+    float margin=.5*exp2(ceil(lod))*_StationVoxelGrid.x;
+    uv=clamp(uv,margin,1-margin);
+    float3 outgoing=-direction;
+    float3 weights=direction*direction;
+    float3 lobes=float3(outgoing.x>=0?0:1,outgoing.y>=0?2:3,outgoing.z>=0?4:5);
+    float4 value=0;
+    [unroll] for(int axis=0;axis<3;axis++) {
+        float3 at=uv;at.x=(at.x+lobes[axis])/6;
+        value+=_StationVoxelRadiance.SampleLevel(sampler_voxel_linear_clamp,at,lod)*weights[axis];
+    }
+    return value;
+}
+
+float3 ReferenceCone(float3 origin,float3 direction,float nearHandoff)
+{
+    float voxel=_StationVoxelParams.x;
+    float distance=voxel*1.5,visibility=1;
+    float3 radiance=0;
+    [loop] for(int step=0;step<32 && distance<_StationVoxelParams.y && visibility>.025;step++) {
+        float diameter=max(voxel*2,distance*.5);
+        float3 uv=(origin+direction*distance-_StationVoxelMin.xyz)*_StationVoxelMin.w;
+        if(any(uv<=0)||any(uv>=1))break;
+        float4 sampleValue=ReferenceSample(uv,direction,diameter);
+        // Correct opacity for a half-footprint step (Crassin et al., section 5).
+        float alpha=1-sqrt(saturate(1-sampleValue.a));
+        float handoff=nearHandoff>0?smoothstep(nearHandoff*.75,max(nearHandoff,.0001),distance):1;
+        radiance+=visibility*sampleValue.rgb*(alpha/max(sampleValue.a,1e-5))*handoff;
+        visibility*=1-alpha;
+        distance+=diameter*.5;
+    }
+    return radiance;
+}
+float3 ReferenceDiffuse(float3 p,float3 n,float handoff)
+{
+    float3 t=normalize(cross(abs(n.y)<.95?float3(0,1,0):float3(1,0,0),n));
+    float3 b=cross(n,t);
+    float3 origin=p+n*_StationVoxelParams.x*1.25;
+    // Six fixed, cosine-weighted hemisphere lobes. No temporal history/noise.
+    float3 light=ReferenceCone(origin,n,handoff)*.25;
+    [unroll] for(int i=0;i<5;i++) {
+        float a=i*1.2566370614;
+        float3 d=(n+t*cos(a)+b*sin(a))*.70710678;
+        light+=ReferenceCone(origin,d,handoff)*.15;
+    }
+    return light*3.14159265;
+}
+#endif
+StructuredBuffer<float4> _Queries;
+RWStructuredBuffer<float4> _Results;
+int _Count;
+[numthreads(64,1,1)] void Reference(uint id:SV_DispatchThreadID) {
+    if(id>=(uint)_Count)return;
+    _Results[id]=float4(ReferenceDiffuse(_Queries[id*2].xyz,_Queries[id*2+1].xyz,_StationVoxelParams.w),1);
+}
+[numthreads(64,1,1)] void Optimized(uint id:SV_DispatchThreadID) {
+    if(id>=(uint)_Count)return;
+    _Results[id]=float4(StationVoxelDiffuse(_Queries[id*2].xyz,_Queries[id*2+1].xyz,_StationVoxelParams.w),1);
+}

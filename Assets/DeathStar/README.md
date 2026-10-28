@@ -1,5 +1,10 @@
 # Death Star / Orbital Foundry
 
+Station lighting combines short-range screen-space GI with cached world-space
+voxel cone tracing (40 m reach, two diffuse bounces). Controls are under
+**Death Star → Lighting settings**. See [voxel GI](doc/voxel-gi.md) for the scale,
+update model, limits and red-habitat checks (`tools/tile-lab.sh voxelgi`).
+
 ## Block Foundry — original sphere mapping
 
 Open **Death Star → Open Block Foundry**, then press Play. There is one block type,

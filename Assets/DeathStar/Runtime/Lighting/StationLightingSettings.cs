@@ -4,7 +4,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace DeathStar
 {
-    public enum GiDebugView { Normal, ScreenSpaceGiOnly, ScreenSpaceAoOnly, DiffuseSources }
+    public enum GiDebugView { Normal, ScreenSpaceGiOnly, ScreenSpaceAoOnly, DiffuseSources, VoxelGiOnly=5 }
 
     [CreateAssetMenu(menuName="Death Star/Lighting settings")]
     public sealed class StationLightingSettings : ScriptableObject
@@ -35,6 +35,14 @@ namespace DeathStar
         public bool habitatTintEnabled=true;
         [Tooltip("Physical diffuse tint, also used by screen-space bounce sources.")]
         public Color habitatTint=new Color(1f,.045f,.16f);
+        [Header("World-space voxel bounce")]
+        public bool voxelGi=true;
+        [Range(0,2)] public float voxelGiStrength=1;
+        [Range(5,80),Tooltip("World-space reach in metres, including off-screen geometry.")]
+        public float voxelGiDistance=40;
+        [Tooltip("64 or 128. Bounds fit the station; the full gallery uses about 1.5 m voxels at 128. Cached between construction/light changes.")]
+        public int voxelGiResolution=128;
+        public bool voxelGiSecondBounce=true;
         [Header("Screen-space bounce")]
         public bool screenSpaceGi=true;
         [InspectorName("Bounce Strength"),Range(0,1)] public float screenGiStrength=.5f;

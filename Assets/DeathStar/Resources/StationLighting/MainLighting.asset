@@ -24,6 +24,11 @@ MonoBehaviour:
   ambientColor: {r: 0.07, g: 0.072, b: 0.078, a: 1}
   habitatTintEnabled: 1
   habitatTint: {r: 1, g: 0.045, b: 0.16, a: 1}
+  voxelGi: 1
+  voxelGiStrength: 2
+  voxelGiDistance: 80
+  voxelGiResolution: 128
+  voxelGiSecondBounce: 1
   screenSpaceGi: 1
   screenGiStrength: 0.5
   screenGiRadius: 0.8

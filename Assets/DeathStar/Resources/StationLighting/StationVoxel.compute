@@ -1,0 +1,160 @@
+#pragma kernel Clear
+#pragma kernel Voxelize
+#pragma kernel Resolve
+#pragma kernel Inject
+#pragma kernel Bounce
+#pragma kernel Filter
+#pragma kernel Probe
+#pragma kernel CopyMip
+#pragma kernel DirectionalBase
+#pragma kernel DirectionalFilter
+#pragma target 5.0
+#include "StationVoxelTrace.hlsl"
+struct Triangle {float3 a,b,c,normal,albedo,emission;float area;};
+StructuredBuffer<Triangle> _Triangles;
+RWStructuredBuffer<uint> _Owners;
+RWTexture3D<float4> _Output;
+Texture3D<float4> _Input;
+Texture3D<float4> _Occupancy;
+Texture3D<float4> _Direct;
+int _Resolution,_TriangleCount,_MipSize,_SourceMip,_CopyWidth;
+float4 _SunDirection,_SunColor,_PlanetDirection,_PlanetColor;
+float _ShadowStrength;
+[numthreads(4,4,4)] void CopyMip(uint3 p:SV_DispatchThreadID) {
+    if(p.x>=(uint)_CopyWidth||p.y>=(uint)_MipSize||p.z>=(uint)_MipSize)return;
+    _Output[p]=_Input.Load(int4(p,_SourceMip));
+}
+StructuredBuffer<float4> _Queries;
+RWStructuredBuffer<float4> _ProbeResults;
+int _QueryCount;
+[numthreads(64,1,1)] void Probe(uint3 id:SV_DispatchThreadID) {
+    if(id.x>=(uint)_QueryCount)return;
+    _ProbeResults[id.x]=float4(StationVoxelDiffuse(_Queries[id.x*2].xyz,normalize(_Queries[id.x*2+1].xyz),0),1);
+}
+uint Index(uint3 p) {return p.x+_Resolution*(p.y+_Resolution*p.z);}
+[numthreads(4,4,4)] void Clear(uint3 p:SV_DispatchThreadID) {_Owners[Index(p)]=0;}
+float2 Plane(float3 p,int axis) {return axis==0?p.yz:axis==1?p.xz:p.xy;}
+[numthreads(64,1,1)] void Voxelize(uint3 id:SV_DispatchThreadID)
+{
+    if(id.x>=(uint)_TriangleCount)return;
+    Triangle tri=_Triangles[id.x];
+    float3 a=(tri.a-_StationVoxelMin.xyz)/_StationVoxelParams.x;
+    float3 b=(tri.b-_StationVoxelMin.xyz)/_StationVoxelParams.x;
+    float3 c=(tri.c-_StationVoxelMin.xyz)/_StationVoxelParams.x;
+    float3 normal=cross(b-a,c-a),an=abs(normal);
+    int axis=an.x>an.y&&an.x>an.z?0:an.y>an.z?1:2;
+    float2 ap=Plane(a,axis),bp=Plane(b,axis),cp=Plane(c,axis);
+    float2 e=bp-ap,f=cp-ap;
+    float det=e.x*f.y-e.y*f.x;if(abs(det)<1e-8)return;
+    int2 lo=max(0,(int2)floor(min(ap,min(bp,cp))));
+    int2 hi=min(_Resolution-1,(int2)floor(max(ap,max(bp,cp))));
+    // Half-voxel sampling closes cracks in small/thin triangles. Edge expansion
+    // is bounded by the projected voxel footprint, not triangle size.
+    float2 tolerance=float2(abs(f.x)+abs(f.y),abs(e.x)+abs(e.y))*.5/abs(det);
+    // Prefer broad walls over tiny trim; compute the owner key once per triangle.
+    uint priority=(uint)clamp(log2(max(tri.area,1e-20))*16+512,1,1023);
+    uint key=(priority<<22)|(id.x+1);
+    for(int y=lo.y;y<=hi.y;y++)for(int x=lo.x;x<=hi.x;x++) {
+        float2 q=float2(x,y)+.5-ap;
+        float u=(q.x*f.y-q.y*f.x)/det,v=(e.x*q.y-e.y*q.x)/det;
+        if(u < -tolerance.x || v < -tolerance.y || u+v>1+tolerance.x+tolerance.y)continue;
+        float3 location=a+u*(b-a)+v*(c-a);
+        int depth=(int)floor(location[axis]);
+        int3 cell=axis==0?int3(depth,x,y):axis==1?int3(x,depth,y):int3(x,y,depth);
+        if(all(cell>=0)&&all(cell<_Resolution)) {
+            uint ignored;InterlockedMax(_Owners[Index(cell)],key,ignored);
+        }
+    }
+}
+[numthreads(4,4,4)] void Resolve(uint3 p:SV_DispatchThreadID)
+{
+    _Output[p]=float4(0,0,0,_Owners[Index(p)]!=0?1:0);
+}
+float Visibility(float3 p,float3 n,float3 d)
+{
+    float visibility=1;
+    // A narrow cone through the opacity hierarchy also sees off-screen blockers.
+    float t=_StationVoxelParams.x*2;
+    p+=n*_StationVoxelParams.x*1.25;
+    [loop] for(int i=0;i<64&&visibility>.02;i++) {
+        float3 uv=(p+d*t-_StationVoxelMin.xyz)*_StationVoxelMin.w;
+        if(any(uv<=0)||any(uv>=1))break;
+        float diameter=max(_StationVoxelParams.x,t*.06);
+        visibility*=1-_Occupancy.SampleLevel(sampler_voxel_linear_clamp,uv,log2(diameter/_StationVoxelParams.x)).a;
+        t+=diameter;
+    }
+    return lerp(1,visibility,_ShadowStrength);
+}
+[numthreads(4,4,4)] void Inject(uint3 p:SV_DispatchThreadID)
+{
+    uint owner=_Owners[Index(p)]&0x3fffff;if(owner==0){_Output[p]=0;return;}
+    Triangle surface=_Triangles[owner-1];float3 n=surface.normal;
+    float3 pos=_StationVoxelMin.xyz+(p+.5)*_StationVoxelParams.x;
+    float sun=saturate(dot(n.xyz,_SunDirection.xyz));
+    if(sun>0)sun*=Visibility(pos,n.xyz,_SunDirection.xyz);
+    float planet=saturate(dot(n.xyz,_PlanetDirection.xyz));
+    float3 irradiance=_SunColor.rgb*sun+_PlanetColor.rgb*planet;
+    _Output[p]=float4(surface.albedo*irradiance/3.14159265+surface.emission,1);
+}
+[numthreads(4,4,4)] void Bounce(uint3 p:SV_DispatchThreadID)
+{
+    uint owner=_Owners[Index(p)]&0x3fffff;if(owner==0){_Output[p]=0;return;}
+    Triangle surface=_Triangles[owner-1];float3 n=surface.normal;
+    float3 pos=_StationVoxelMin.xyz+(p+.5)*_StationVoxelParams.x;
+    float3 bounce=StationVoxelDiffuse(pos,n,0)*surface.albedo/3.14159265;
+    _Output[p]=float4(_Direct.Load(int4(p,0)).rgb+bounce,1);
+}
+[numthreads(4,4,4)] void Filter(uint3 p:SV_DispatchThreadID)
+{
+    if(any(p>=(uint)_MipSize))return;
+    float4 v[8];
+    [unroll] for(int z=0;z<2;z++)[unroll] for(int y=0;y<2;y++)[unroll] for(int x=0;x<2;x++)
+        v[x+2*y+4*z]=_Input.Load(int4(p*2+uint3(x,y,z),_SourceMip));
+    // Integrate front-to-back pairs, then average their six viewing directions.
+    // Unlike a box average this retains the coverage of a thin wall at coarse mips.
+    float4 sum=0;
+    [unroll] for(int axis=0;axis<3;axis++)[unroll] for(int i=0;i<8;i++) {
+        int j=i^(1<<axis);
+        sum+=v[i]+(1-v[i].a)*v[j];
+    }
+    _Output[p]=sum/24;
+}
+// Directional radiance starts at half resolution: six lobes cost 6/8 of a
+// single full-resolution chain. Alpha follows front-to-back area coverage.
+float4 IntegrateDirectional(float4 v[8],uint lobe)
+{
+    int bit=1<<(lobe>>1);bool positive=(lobe&1)==0;float4 sum=0;
+    [unroll] for(int i=0;i<8;i++)if((i&bit)==0) {
+        int nearIndex=positive?(i|bit):i,farIndex=positive?i:(i|bit);
+        sum+=v[nearIndex]+(1-v[nearIndex].a)*v[farIndex];
+    }
+    return sum*.25;
+}
+[numthreads(4,4,4)] void DirectionalBase(uint3 p:SV_DispatchThreadID)
+{
+    if(p.x>=(uint)(_MipSize*6)||p.y>=(uint)_MipSize||p.z>=(uint)_MipSize)return;
+    uint lobe=p.x/(uint)_MipSize;uint3 local=p;local.x%=(uint)_MipSize;
+    float3 direction=(lobe<2?float3(1,0,0):lobe<4?float3(0,1,0):float3(0,0,1))*((lobe&1)==0?1:-1);
+    float4 v[8];
+    [unroll] for(int z=0;z<2;z++)[unroll] for(int y=0;y<2;y++)[unroll] for(int x=0;x<2;x++) {
+        uint3 at=local*2+uint3(x,y,z);float4 value=_Input.Load(int4(at,0));
+        // Diffuse outgoing radiance is constant over the outward hemisphere;
+        // do not illuminate the back of an opaque surface.
+        uint owner=_Owners[Index(at)]&0x3fffff;
+        float3 normal=owner!=0?_Triangles[owner-1].normal:0;
+        value.rgb*=saturate(dot(normal,direction)*1000);
+        v[x+2*y+4*z]=value;
+    }
+    _Output[p]=IntegrateDirectional(v,lobe);
+}
+[numthreads(4,4,4)] void DirectionalFilter(uint3 p:SV_DispatchThreadID)
+{
+    if(p.x>=(uint)(_MipSize*6)||p.y>=(uint)_MipSize||p.z>=(uint)_MipSize)return;
+    uint lobe=p.x/(uint)_MipSize;uint3 local=p;local.x%=(uint)_MipSize;
+    float4 v[8];
+    [unroll] for(int z=0;z<2;z++)[unroll] for(int y=0;y<2;y++)[unroll] for(int x=0;x<2;x++) {
+        uint3 at=local*2+uint3(x,y,z);at.x+=lobe*_MipSize*2;
+        v[x+2*y+4*z]=_Input.Load(int4(at,_SourceMip));
+    }
+    _Output[p]=IntegrateDirectional(v,lobe);
+}
