@@ -20,10 +20,15 @@ namespace DeathStar.EditorTools
     //                           (plain armour), and the triangles each view draws with the mid level against without
     //   closeup part=fold       measure the carving's average effect once its plates have sunk (TileReliefFold.hlsl)
     //   closeup part=wear       Edge Wear Width at 1, 4 and 10, close up
+    //   closeup part=bevel      Bevel Width 0.5, 1 and 3 rounded, and 3 chopped (Bevel Roundness 0), close up
     //   closeup part=reliefview the relief view (carving orange, traced plates cyan) over gallery views and two close spots
-    //   closeup part=nan        Foundry (bent) tiles at 12, 30 and 60 m: no NaN or infinite pixels, each feature off in turn
+    //   closeup part=nan        Foundry (bent) tiles at 12, 30, 60 and 150 m (far level): no NaN or infinite pixels, each feature off in turn
     //   closeup part=orbit      the station from 200 m to orbit: tiles against chunks, each against tiles rendered at
     //                           16 samples a pixel
+    //   closeup part=greeble    the station relief in the far level, traced in its shells, against the mid level's
+    //                           mesh relief and the plain face, 110-400 m; no NaN; triangles and a rough frame cost
+    //   closeup part=precision  close spots with the stage at the origin and moved 4 km away: the same picture (fine
+    //                           detail used to turn to speckle far from the origin)
     public static partial class TileLab
     {
         static string CloseDir=>Path.Combine(Dir,"closeup");
@@ -53,7 +58,7 @@ namespace DeathStar.EditorTools
             Directory.CreateDirectory(CloseDir);
             var md=new StringBuilder();var checks=new List<(bool ok,string text)>();
             var settings=StationLightingSettings.Current;
-            var saved=(settings.sunFrom,settings.contactShadows,settings.giDebugView,settings.closeUpSurface,settings.fineDetail,settings.kitProps,settings.kitInnerRadius,settings.kitOuterRadius,settings.reliefTrace);
+            var snapshot=JsonUtility.ToJson(settings);   // every part may change any setting; all come back after
             try
             {
                 switch(part)
@@ -64,43 +69,31 @@ namespace DeathStar.EditorTools
                     case "kit":KitCheck(rig,md,checks);break;
                     case "relief":ReliefCheck(rig,md,checks);break;
                     case "orbit":OrbitCheck(rig,md,checks);break;
+                    case "precision":PrecisionCheck(rig,md,checks);break;
+                    case "greeble":GreebleCheck(rig,md,checks);break;
                     case "wear":
-                    {
-                        // Edge Wear Width at 1, 4 and 10 on two close spots.
-                        var savedWidth=settings.edgeWearWidth;settings.kitProps=false;
-                        var sheet=new List<Texture2D>();
-                        try
-                        {
-                            foreach(var spot in Spots(rig,"command","hull"))
-                            {
-                                if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
-                                settings.sunFrom=SideSun(normal,dir,25);ApplyLights(rig);
-                                foreach(float width in new[]{1f,4f,10f}){settings.edgeWearWidth=width;sheet.Add(rig.Shoot(Stand(hit,normal,dir,2,spot.elevation),W,H));}
-                            }
-                        }
-                        finally{settings.edgeWearWidth=savedWidth;}
-                        SaveSheet(sheet,3,Path.Combine(CloseDir,"wear-width.png"));foreach(var t in sheet)UnityEngine.Object.DestroyImmediate(t);
+                        SettingSheet(rig,"wear-width.png",()=>settings.edgeWearWidth=1,()=>settings.edgeWearWidth=4,()=>settings.edgeWearWidth=10);
                         md.AppendLine("# Edge wear width");md.AppendLine();md.AppendLine("Columns: Edge Wear Width 1, 4, 10. Rows: command and hull at 2 m.");
                         break;
-                    }
+                    case "bevel":
+                        SettingSheet(rig,"bevel-width.png",()=>settings.bevelWidth=.5f,()=>settings.bevelWidth=1,()=>settings.bevelWidth=3,
+                            ()=>{settings.bevelWidth=3;settings.bevelRoundness=0;});
+                        md.AppendLine("# Bevel width");md.AppendLine();md.AppendLine("Columns: Bevel Width 0.5, 1, 3 rounded, 3 chopped (Bevel Roundness 0). Rows: command and hull at 2 m.");
+                        break;
                     case "reliefview":
                     {
                         // The relief view over a few gallery views and two close spots: carving orange, traced plates cyan.
-                        var saved2=settings.reliefDebug;settings.reliefDebug=true;settings.kitProps=false;ApplyLights(rig);   // (builds the stage)
-                        try
+                        settings.reliefDebug=true;settings.kitProps=false;ApplyLights(rig);   // (builds the stage)
+                        foreach(var (name,view,_) in Views)
                         {
-                            foreach(var (name,view,_) in Views)
-                            {
-                                if(name!="fragment"&&name!="surface"&&name!="trench"&&name!="station")continue;
-                                var t=rig.Shoot(view(),W,H);Save(t,Path.Combine(CloseDir,"reliefview-"+name+".png"));UnityEngine.Object.DestroyImmediate(t);
-                            }
-                            foreach(var spot in Spots(rig,"defense","command"))
-                            {
-                                if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
-                                var t=rig.Shoot(Stand(hit,normal,dir,25,spot.elevation),W,H);Save(t,Path.Combine(CloseDir,$"reliefview-{spot.name}-25m.png"));UnityEngine.Object.DestroyImmediate(t);
-                            }
+                            if(name!="fragment"&&name!="surface"&&name!="trench"&&name!="station")continue;
+                            var t=rig.Shoot(view(),W,H);Save(t,Path.Combine(CloseDir,"reliefview-"+name+".png"));UnityEngine.Object.DestroyImmediate(t);
                         }
-                        finally{settings.reliefDebug=saved2;}
+                        foreach(var spot in Spots(rig,"defense","command"))
+                        {
+                            if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
+                            var t=rig.Shoot(Stand(hit,normal,dir,25,spot.elevation),W,H);Save(t,Path.Combine(CloseDir,$"reliefview-{spot.name}-25m.png"));UnityEngine.Object.DestroyImmediate(t);
+                        }
                         md.AppendLine("# Relief view");md.AppendLine();md.AppendLine("Carving built as geometry orange, plates traced by the shader cyan (dimmer as they sink), the face between traced plates blue, everything else grey.");
                         break;
                     }
@@ -114,7 +107,7 @@ namespace DeathStar.EditorTools
                         {
                             view.Rebuild(BlockConstruction.FromFamilies(row));TileLook.AddLights(root.transform);
                             var b=view.Bounds;
-                            foreach(float d in new[]{12f,30f,60f})
+                            foreach(float d in new[]{12f,30f,60f,150f})
                             {
                                 var v=new TileGallery.View(b.center+new Vector3(-0.4f,0.5f,-1).normalized*d,b.center,Vector3.up,40);
                                 var groups=root.GetComponentsInChildren<LODGroup>();
@@ -147,8 +140,8 @@ namespace DeathStar.EditorTools
             }
             finally
             {
-                (settings.sunFrom,settings.contactShadows,settings.giDebugView,settings.closeUpSurface,settings.fineDetail,settings.kitProps,settings.kitInnerRadius,settings.kitOuterRadius,settings.reliefTrace)=saved;
-                foreach(var g in rig.Stage.root.GetComponentsInChildren<LODGroup>())g.ForceLOD(-1);
+                JsonUtility.FromJsonOverwrite(snapshot,settings);
+                ForceLevel(rig.Stage.root.GetComponentsInChildren<LODGroup>(),-1);
                 ApplyLights(rig);
             }
             md.AppendLine();md.AppendLine("## Checks");md.AppendLine();
@@ -263,6 +256,124 @@ namespace DeathStar.EditorTools
             md.AppendLine($"Edges found since the editor loaded: {stats[1]:N0} convex, {stats[2]:N0} soft, {stats[3]:N0} concave, {stats[0]:N0} with nothing (seams, flat joins, open ends).");
             checks.Add((stage.triangles<=BudgetStageTriangles,$"stage triangles within budget: {stage.triangles:N0}"));
             checks.Add((edgeMs<onMs*0.3,$"finding edges takes under 30% of the stage build ({edgeMs:0} of {onMs:0} ms)"));
+        }
+
+        // The far level's station relief: traced in its shells (TileGreeble.hlsl) against the mid level's mesh relief.
+        static void GreebleCheck(Rig rig,StringBuilder md,List<(bool ok,string text)> checks)
+        {
+            var settings=StationLightingSettings.Current;var stage=rig.Stage;
+            var groups=stage.root.GetComponentsInChildren<LODGroup>();
+            void Force(int level)=>ForceLevel(groups,level);
+            settings.kitProps=false;
+            md.AppendLine("# Station relief in the far level");md.AppendLine();
+            md.AppendLine($"{DateTime.Now:yyyy-MM-dd HH:mm}. Traced in shells; it sinks into the face from {settings.greebleLowerNear:0} to {settings.greebleLowerFar:0} m. Sun 25° above each surface, from the side.");
+            md.AppendLine();
+            md.AppendLine($"Stage: {stage.triangles:N0} triangles near, {stage.farTriangles:N0} far (with the relief as geometry the far level was about 315,000).");
+            md.AppendLine();
+            md.AppendLine("Columns: the mid level (relief as geometry), the far level (relief traced), the far level with the trace off (plain face), difference mid/far ×4. Pixels changed against the mid level.");
+            md.AppendLine();md.AppendLine("| Spot | Distance | Traced | Plain |");md.AppendLine("|---|---:|---:|---:|");
+            {
+                foreach(var spot in Spots(rig,"top","trench","hull"))
+                {
+                    if(!Aim(stage.root,spot,out var hit,out var normal,out var dir)){checks.Add((false,$"{spot.name}: the spot's ray meets the stage"));continue;}
+                    settings.sunFrom=SideSun(normal,dir,25);ApplyLights(rig);
+                    var sheet=new List<Texture2D>();
+                    foreach(float d in new[]{110f,160f,250f,400f})
+                    {
+                        var v=Stand(hit,normal,dir,d,spot.elevation);
+                        Force(1);var mesh=rig.Shoot(v,W,H);
+                        Force(2);var traced=rig.Shoot(v,W,H);
+                        settings.greebleTrace=false;var plain=rig.Shoot(v,W,H);settings.greebleTrace=true;
+                        float a=Darkening(mesh,traced).changed,b=Darkening(mesh,plain).changed;
+                        md.AppendLine($"| {spot.name} | {d:0} m | {a:P1} | {b:P1} |");
+                        if(d<=250)checks.Add((a<b,$"{spot.name} at {d:0} m: the traced relief is closer to the mesh than the plain face ({a:P1} of pixels differ against {b:P1})"));
+                        var hdr=rig.ShootHdr(v,800,450);
+                        checks.Add((hdr.bad==0,$"{spot.name} at {d:0} m, far level: no NaN or infinite pixels (bad {hdr.bad:P2})"));
+                        sheet.Add(mesh);sheet.Add(traced);sheet.Add(plain);sheet.Add(Difference(mesh,traced,4));
+                    }
+                    SaveSheet(sheet,4,Path.Combine(CloseDir,$"greeble-{spot.name}.png"));
+                    foreach(var t in sheet)UnityEngine.Object.DestroyImmediate(t);
+                }
+                // The relief view over the station, every tile far: traced relief cyan.
+                settings.reliefDebug=true;Force(2);ApplyLights(rig);
+                foreach(var (name,view,_) in Views)
+                {
+                    if(name!="fragment"&&name!="station")continue;
+                    var t=rig.Shoot(view(),W,H);Save(t,Path.Combine(CloseDir,$"greeble-view-{name}.png"));UnityEngine.Object.DestroyImmediate(t);
+                }
+                settings.reliefDebug=false;ApplyLights(rig);
+                // A rough cost: frame time (render and read back) of the station view, every tile far, trace on and off
+                // in turn so the editor's drift falls on both alike.
+                var sv=Array.Find(Views,x=>x.name=="station").view();
+                var times=new[]{new List<double>(),new List<double>()};
+                for(int k=0;k<13;k++)for(int on=1;on>=0;on--)
+                {
+                    settings.greebleTrace=on==1;
+                    var clock=System.Diagnostics.Stopwatch.StartNew();var t=rig.Shoot(sv,W,H,false,1);
+                    if(k>0)times[on].Add(clock.Elapsed.TotalMilliseconds);   // (the first pair warms up)
+                    UnityEngine.Object.DestroyImmediate(t);
+                }
+                double withTrace=Median(times[1]),without=Median(times[0]);
+                md.AppendLine();md.AppendLine($"Station view, every tile far, {W} × {H}: {withTrace:0.0} ms a frame with the trace, {without:0.0} ms without, {withTrace-without:0.0} ms for the trace (render and read back, medians of 12 taken in turn; rough).");
+            }
+        }
+
+        // Every tile at one level of detail (-1: back to its own pick); a forced level doesn't dither against another.
+        static void ForceLevel(LODGroup[] groups,int level)
+        {
+            foreach(var g in groups){g.fadeMode=level<0?LODFadeMode.CrossFade:LODFadeMode.None;g.ForceLOD(level<0?-1:Mathf.Min(level,g.lodCount-1));}
+        }
+        static double Median(List<double> l){l.Sort();return l[l.Count/2];}
+        // A sheet of close shots, command and hull at 2 m with the sun from the side, a column for each variant (each sets
+        // the settings its column shows).
+        static void SettingSheet(Rig rig,string file,params Action[] variants)
+        {
+            var settings=StationLightingSettings.Current;settings.kitProps=false;
+            var sheet=new List<Texture2D>();
+            foreach(var spot in Spots(rig,"command","hull"))
+            {
+                if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
+                settings.sunFrom=SideSun(normal,dir,25);ApplyLights(rig);
+                foreach(var set in variants){set();sheet.Add(rig.Shoot(Stand(hit,normal,dir,2,spot.elevation),W,H));}
+            }
+            SaveSheet(sheet,variants.Length,Path.Combine(CloseDir,file));
+            foreach(var t in sheet)UnityEngine.Object.DestroyImmediate(t);
+        }
+
+        // The same close spots with the stage where it is and moved about 4 km off the origin, camera with it: nothing
+        // in the surface may depend on how far the world is from the origin.
+        static void PrecisionCheck(Rig rig,StringBuilder md,List<(bool ok,string text)> checks)
+        {
+            var settings=StationLightingSettings.Current;var root=rig.Stage.root.transform;
+            settings.kitProps=false;settings.closeUpSurface=true;settings.fineDetail=true;
+            var offset=new Vector3(2400,1700,-2900);var home=root.position;
+            md.AppendLine("# Far from the origin");md.AppendLine();
+            md.AppendLine($"{DateTime.Now:yyyy-MM-dd HH:mm}. Columns: the stage where it is, moved {offset.magnitude:0} m away (camera with it), difference ×4. Mean difference (0-255) and pixels off by more than 16.");
+            md.AppendLine();md.AppendLine("| Spot | Distance | Mean | Off |");md.AppendLine("|---|---:|---:|---:|");
+            var sheet=new List<Texture2D>();
+            try
+            {
+                foreach(var spot in Spots(rig,"top","hull","defense","command"))
+                {
+                    root.position=home;
+                    if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
+                    settings.sunFrom=SideSun(normal,dir,25);
+                    foreach(float d in new[]{0.7f,2f})
+                    {
+                        var v=Stand(hit,normal,dir,d,spot.elevation);
+                        root.position=home;StationVoxelGi.Invalidate();ApplyLights(rig);var near=rig.Shoot(v,W,H);
+                        root.position=home+offset;StationVoxelGi.Invalidate();ApplyLights(rig);
+                        var far=rig.Shoot(new TileGallery.View(v.position+offset,v.target+offset,v.up,v.fov),W,H);
+                        var (mean,off)=Error(far,near);
+                        md.AppendLine($"| {spot.name} | {d:0.0} m | {mean:0.00} | {off:P2} |");
+                        checks.Add((mean<1.5f&&off<0.005f,$"{spot.name} at {d:0.0} m looks the same {offset.magnitude:0} m from the origin (mean {mean:0.00}, {off:P2} of pixels off)"));
+                        sheet.Add(near);sheet.Add(far);sheet.Add(Difference(near,far,4));
+                    }
+                }
+            }
+            finally{root.position=home;StationVoxelGi.Invalidate();ApplyLights(rig);}
+            SaveSheet(sheet,3,Path.Combine(CloseDir,"precision.png"));
+            foreach(var t in sheet)UnityEngine.Object.DestroyImmediate(t);
         }
 
         static void DetailCheck(Rig rig,StringBuilder md,List<(bool ok,string text)> checks)
@@ -427,7 +538,6 @@ namespace DeathStar.EditorTools
                 if(on==1){draws.Add(kit.DrawMs);drawn=Math.Max(drawn,kit.Drawn);}
             }
             settings.kitProps=true;
-            double Median(List<double> l){l.Sort();return l[l.Count/2];}
             double offMs=Median(times[0]),onMs=Median(times[1]),drawMs=Median(draws);
             md.AppendLine();md.AppendLine("## Frame cost");md.AppendLine();
             md.AppendLine($"Editor, median CPU wall time per 800 × 450 frame including readback, alternating: {offMs:0.0} ms without the kit, {onMs:0.0} ms with it; the kit's own gather and submission {drawMs:0.00} ms (median), for up to {drawn} props.");
@@ -439,7 +549,7 @@ namespace DeathStar.EditorTools
             var settings=StationLightingSettings.Current;var stage=rig.Stage;
             var groups=stage.root.GetComponentsInChildren<LODGroup>();
             // A forced level must not dither against the one the group would pick.
-            void Force(int level){foreach(var g in groups){g.fadeMode=level<0?LODFadeMode.CrossFade:LODFadeMode.None;g.ForceLOD(level<0?-1:Mathf.Min(level,g.lodCount-1));}}
+            void Force(int level)=>ForceLevel(groups,level);
             md.AppendLine("# Middle-range relief trace");md.AppendLine();
             md.AppendLine($"{DateTime.Now:yyyy-MM-dd HH:mm}. Plates sink into the face from {settings.reliefLowerNear:0} to {settings.reliefLowerFar:0} m. Sun 25° above each surface, from the side.");
             md.AppendLine();

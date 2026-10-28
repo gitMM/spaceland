@@ -21,6 +21,7 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 00e23475a06a0f541b051e678629f885, type: 2}
   - {fileID: 2100000, guid: 3cdd3b86f3897fb4c87c2fed7bc78293, type: 2}
   - {fileID: 2100000, guid: 4e6823edb710b56448cb29b6696beaac, type: 2}
+  - {fileID: 2100000, guid: 3be20eccda276c74bbaa9e9e90c9a951, type: 2}
   sky: {fileID: 2100000, guid: 6c9a9fede1b83f44aa2fbdb1504dbdf1, type: 2}
   reflection: {fileID: 8900000, guid: 440608316bc658642b2d2f1a9516397b, type: 2}
   post: {fileID: 11400000, guid: 6c1d4bf684205b44295c857e7b5e2d2d, type: 2}

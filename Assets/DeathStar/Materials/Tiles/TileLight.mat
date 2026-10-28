@@ -38,6 +38,7 @@ Material:
     - _Smoothness: 0.5
     - _TileChunk: 0
     - _TileKitMode: 0
+    - _TileShell: 0
     m_Colors:
     - _BaseColor: {r: 0.01, g: 0.01, b: 0.01, a: 1}
     - _Emission: {r: 5, g: 5, b: 5, a: 1}

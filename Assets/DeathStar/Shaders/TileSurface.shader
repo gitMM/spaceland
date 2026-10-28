@@ -15,6 +15,9 @@ Shader "DeathStar/Tile Surface"
         _PatternStrength("Pattern strength", Range(0, 2)) = 1
         // StationKit's own copies: 1 instanced props, 2 pipes and cables (TileKitFade).
         [HideInInspector] _TileKitMode("Kit mode", Float) = 0
+        // TileSlot.Relief: the far level's relief shells, traced (TileGreeble.hlsl). Their material turns the shadow
+        // caster pass off: the wall under them casts.
+        [Toggle(_TILE_SHELL)] _TileShell("Relief shell", Float) = 0
         // StationChunks' copies: 1 draws a chunk's massing from its baked atlas.
         [HideInInspector] _TileChunk("Chunk", Float) = 0
         [HideInInspector] _TileChunkColour("Chunk colour", 2D) = "grey" {}
@@ -53,6 +56,7 @@ Shader "DeathStar/Tile Surface"
             #pragma target 4.5
             #pragma vertex Vert
             #pragma fragment Frag
+            #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
@@ -78,6 +82,7 @@ Shader "DeathStar/Tile Surface"
             #pragma target 4.5
             #pragma vertex Vert
             #pragma fragment Frag
+            #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
@@ -124,6 +129,7 @@ Shader "DeathStar/Tile Surface"
             #pragma target 4.5
             #pragma vertex TileDepthVert
             #pragma fragment TileDepthFrag
+            #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile_instancing
             ENDHLSL
         }
@@ -139,6 +145,7 @@ Shader "DeathStar/Tile Surface"
             #pragma target 4.5
             #pragma vertex TileDepthNormalVert
             #pragma fragment TileDepthNormalFrag
+            #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile_instancing
             ENDHLSL
         }

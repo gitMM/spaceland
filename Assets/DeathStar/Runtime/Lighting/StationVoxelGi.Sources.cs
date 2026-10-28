@@ -27,8 +27,11 @@ namespace DeathStar
         readonly List<Source> sources=new();
         static readonly int BaseColorId=Shader.PropertyToID("_BaseColor"),MetallicId=Shader.PropertyToID("_Metallic"),EmissionId=Shader.PropertyToID("_Emission");
 
+        // (a material that casts no shadow is no occluder either: the far level's relief shells, which as boxes would
+        // fill the space over the relief)
         static bool Supported(Material material)=>material && material.shader &&
-            (material.shader.name=="DeathStar/Tile Surface" || material.shader.name=="DeathStar/Tile Glass");
+            (material.shader.name=="DeathStar/Tile Surface" || material.shader.name=="DeathStar/Tile Glass") &&
+            material.GetShaderPassEnabled("ShadowCaster");
 
         int Collect(Scene scene,int cullingMask,StationLightingSettings settings)
         {

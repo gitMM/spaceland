@@ -45,6 +45,7 @@ namespace DeathStar
 
         public static void Build(TileMesh m,in Face face,in Finish finish)
         {
+            var start=m.ReliefStart();
             uint plane=Hash(Hash((uint)(face.axis*2+(face.sign>0?1:0))),Mathf.RoundToInt(face.plane*4));
             var off=new Vector2(R(plane,1)*Big,R(plane,2)*Big);
             var w=face.window;
@@ -81,6 +82,10 @@ namespace DeathStar
                 }
                 Node(c,r,p.seed,0,p.h,p.density);
             }
+            // the far level draws a traced shell instead, over the window less its holes
+            var cells=new List<(Rect r,int sides)>();
+            Cells(c,face.window,(cell,sides)=>cells.Add((cell,sides)),false);
+            m.ReliefEnd(start,face.axis,face.sign,face.plane,cells,finish);
         }
 
         // The top-level plates over an area of a plane: a Pythagorean tiling of 32 m and 12 m squares, each row of
@@ -484,9 +489,10 @@ namespace DeathStar
             Cells(c,r,(cell,sides)=>Emit(c,cell,h0,h1,sides,f));
         }
         // The parts of r inside the face window and outside its holes, each with the sides it needs: on r's own
-        // edges and round holes; at the window edge only where the relief does not carry on into the neighbouring
-        // face. sides: 1 left (u min), 2 right, 4 bottom (v min), 8 top.
-        static void Cells(Ctx c,Rect r,System.Action<Rect,int> emit)
+        // edges (unless ownEdges is false: then they count as the window's) and round holes; at the window edge only
+        // where the relief does not carry on into the neighbouring face. sides: 1 left (u min), 2 right, 4 bottom
+        // (v min), 8 top.
+        static void Cells(Ctx c,Rect r,System.Action<Rect,int> emit,bool ownEdges=true)
         {
             var win=c.face.window;
             if(!Overlaps(r,win))return;
@@ -494,7 +500,7 @@ namespace DeathStar
             bool inside=r.xMin>=win.xMin&&r.xMax<=win.xMax&&r.yMin>=win.yMin&&r.yMax<=win.yMax;
             bool hit=false;
             if(holes!=null)foreach(var hole in holes)if(Overlaps(r,hole)){hit=true;break;}
-            if(inside&&!hit){emit(r,15);return;}
+            if(inside&&!hit&&ownEdges){emit(r,15);return;}
             var xs=c.xs;var ys=c.ys;xs.Clear();ys.Clear();
             xs.Add(r.xMin);xs.Add(r.xMax);ys.Add(r.yMin);ys.Add(r.yMax);
             void AddX(float x){if(x>r.xMin&&x<r.xMax)xs.Add(x);}
@@ -514,7 +520,7 @@ namespace DeathStar
             }
             int Side(int i,int j,int di,int dj,int bit,bool onEdge)
             {
-                if(onEdge)return bit;
+                if(onEdge&&ownEdges)return bit;
                 if(Keep(i+di,j+dj))return 0;
                 float x=di==0?(xs[i]+xs[i+1])*0.5f:(di<0?xs[i]-1e-3f:xs[i+1]+1e-3f);
                 float y=dj==0?(ys[j]+ys[j+1])*0.5f:(dj<0?ys[j]-1e-3f:ys[j+1]+1e-3f);
@@ -529,17 +535,7 @@ namespace DeathStar
             }
         }
 
-        static void Emit(Ctx c,Rect r,float h0,float h1,int sides,in Finish f)
-        {
-            var F=c.face;int a=F.axis,ua=(a+1)%3,va=(a+2)%3;
-            Vector3 P(float u,float v,float h){var p=Vector3.zero;p[ua]=u;p[va]=v;p[a]=F.plane+F.sign*h;return p-F.origin;}
-            Vector3 n=Vector3.zero;n[a]=F.sign;
-            Vector3 eu=Vector3.zero;eu[ua]=1;Vector3 ev=Vector3.zero;ev[va]=1;
-            c.m.Quad(f,P(r.xMin,r.yMin,h1),P(r.xMax,r.yMin,h1),P(r.xMax,r.yMax,h1),P(r.xMin,r.yMax,h1),n,eu);
-            if((sides&1)!=0)c.m.Quad(f,P(r.xMin,r.yMin,h0),P(r.xMin,r.yMax,h0),P(r.xMin,r.yMax,h1),P(r.xMin,r.yMin,h1),-eu,ev);
-            if((sides&2)!=0)c.m.Quad(f,P(r.xMax,r.yMin,h0),P(r.xMax,r.yMax,h0),P(r.xMax,r.yMax,h1),P(r.xMax,r.yMin,h1),eu,ev);
-            if((sides&4)!=0)c.m.Quad(f,P(r.xMin,r.yMin,h0),P(r.xMax,r.yMin,h0),P(r.xMax,r.yMin,h1),P(r.xMin,r.yMin,h1),-ev,eu);
-            if((sides&8)!=0)c.m.Quad(f,P(r.xMin,r.yMax,h0),P(r.xMax,r.yMax,h0),P(r.xMax,r.yMax,h1),P(r.xMin,r.yMax,h1),ev,eu);
-        }
+        static void Emit(Ctx c,Rect r,float h0,float h1,int sides,in Finish f)=>
+            c.m.FaceBox(f,c.face.axis,c.face.sign,c.face.plane,c.face.origin,r,h0,h1,sides);
     }
 }

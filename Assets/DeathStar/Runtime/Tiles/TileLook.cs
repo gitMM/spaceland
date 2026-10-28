@@ -53,6 +53,12 @@ namespace DeathStar
                 case TileSlot.Recess:Surface(m,new Color(0.006f,0.006f,0.007f),0f,0.15f,Color.black);break;
                 case TileSlot.Light:Surface(m,new Color(0.01f,0.01f,0.01f),0f,0.5f,new Color(5f,5f,5f));break;
                 case TileSlot.Accent:Surface(m,new Color(1f,1f,1f),0f,0.32f,Color.black);break;
+                case TileSlot.Relief:
+                    // the far level's relief shells (TileMesh.Shells.cs): the paint, traced; they cast no shadow (the
+                    // wall under them does) and so aren't occluders for voxel GI either
+                    Configure(m,TileSlot.Paint);
+                    m.SetFloat("_TileShell",1);m.EnableKeyword("_TILE_SHELL");m.SetShaderPassEnabled("ShadowCaster",false);
+                    break;
                 case TileSlot.Glass:
                     m.SetVector("_GlassTint",new Vector4(0.46f,0.5f,0.52f,1));
                     m.SetVector("_RoomColor",new Vector4(1f,0.76f,0.52f,1));

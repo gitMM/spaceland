@@ -18,7 +18,8 @@ struct TileAttributes
     float4 local      : TEXCOORD1;
     float4 extent     : TEXCOORD2;
     float4 overlay    : TEXCOORD3;
-    float4 relief     : TEXCOORD6;   // plain armour of the mid and far levels: station position, layout (TileRelief.hlsl)
+    float4 relief     : TEXCOORD6;   // plain armour of the mid and far levels: station position, layout (TileRelief.hlsl);
+                                     // on a relief shell its station position and face plane (TileGreeble.hlsl)
     float2 atlas      : TEXCOORD7;   // StationChunks: where a chunk's massing reads its baked atlas
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
@@ -53,6 +54,15 @@ void TileKitClip(float fade, float4 positionCS)
     if (fade < 1) clip(fade - InterleavedGradientNoise(positionCS.xy, 0) * .998 - .001);
 }
 
+// Global: how many times supersampled the picture is (the lab), so fades follow the final picture's pixels. 0 = 1.
+float _TileFootprintScale;
+// Metres a pixel of the final picture spans here. viewWS: the position relative to the camera (its derivatives stay
+// exact far from the origin).
+float TileFootprint(float3 viewWS)
+{
+    return max(max(length(ddx(viewWS)), length(ddy(viewWS))), 1e-5) * max(_TileFootprintScale, 1);
+}
+
 float TileHash(float2 p)
 {
     float3 q = frac(float3(p.xyx) * 0.1031);
@@ -85,6 +95,57 @@ float Stripe(float x, float duty)
 float GridLine(float x, float duty) { return Stripe(x + duty * 0.5, duty); }
 
 
+#if defined(_TILE_SHELL)
+// The far level's station relief (TileGreeble.hlsl): the depth passes trace it too, so the depth texture holds the
+// relief and not its shell, and drop pixels whose ray leaves the shell.
+#include "TileGreeble.hlsl"
+#if UNITY_REVERSED_Z
+    #define TILE_SHELL_DEPTH SV_DepthLessEqual
+#else
+    #define TILE_SHELL_DEPTH SV_DepthGreaterEqual
+#endif
+struct TileDepthVaryings
+{
+    noperspective centroid float4 positionCS : SV_POSITION;
+    float3 viewWS     : TEXCOORD0;
+    float3 normalWS   : TEXCOORD1;
+    float4 station    : TEXCOORD2;
+    float4 rect       : TEXCOORD3;
+    float4 shell      : TEXCOORD4;
+};
+TileDepthVaryings TileDepthVert(TileAttributes v)
+{
+    TileDepthVaryings o;
+    UNITY_SETUP_INSTANCE_ID(v);
+    float3 p = TransformObjectToWorld(v.positionOS.xyz);
+    o.positionCS = TransformWorldToHClip(p);
+    o.viewWS = p - _WorldSpaceCameraPos;
+    o.normalWS = TransformObjectToWorldNormal(v.normalOS);
+    o.station = v.relief; o.rect = v.local; o.shell = v.extent;
+    return o;
+}
+TileDepthVaryings TileDepthNormalVert(TileAttributes v) { return TileDepthVert(v); }
+// The traced surface's depth and world normal (no sun: depth only); false where the ray leaves the shell.
+bool TileShellSurface(TileDepthVaryings i, out float depth, out float3 normalWS)
+{
+    float3 wx = ddx(i.viewWS), wy = ddy(i.viewWS), sx = ddx(i.station.xyz), sy = ddy(i.station.xyz);
+    GreebleHit hit; float3 positionWS; float lower;
+    bool shown = GreebleShellSurface(i.viewWS, normalize(i.normalWS), i.station, i.rect, i.shell, wx, wy, sx, sy,
+        TileFootprint(i.viewWS), 0, hit, positionWS, normalWS, lower);
+    depth = GreebleDepth(positionWS, hit.face, i.positionCS.z);
+    return shown && isfinite(depth);
+}
+half TileDepthFrag(TileDepthVaryings i, out float depth : TILE_SHELL_DEPTH) : SV_Target
+{
+    float3 n; if (!TileShellSurface(i, depth, n)) clip(-1);
+    return depth;
+}
+half4 TileDepthNormalFrag(TileDepthVaryings i, out float depth : TILE_SHELL_DEPTH) : SV_Target
+{
+    float3 n; if (!TileShellSurface(i, depth, n)) clip(-1);
+    return half4(n, 0);
+}
+#else
 struct TileDepthVaryings
 {
     float4 positionCS : SV_POSITION;
@@ -116,5 +177,6 @@ TileDepthNormalVaryings TileDepthNormalVert(TileAttributes v)
     return o;
 }
 half4 TileDepthNormalFrag(TileDepthNormalVaryings i) : SV_Target { TileKitClip(i.fade, i.positionCS); return half4(NormalizeNormalPerPixel(i.normalWS), 0.0); }
+#endif
 
 #endif

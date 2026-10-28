@@ -13,7 +13,10 @@ float4 _StationHabitatFamily, _StationHabitatTint;
             {
                 // (noperspective centroid: required when the pixel shader writes conservative depth)
                 noperspective centroid float4 positionCS : SV_POSITION;
-                float3 positionWS : TEXCOORD0;
+                // The position relative to the camera (the world position is this plus the camera's): its screen
+                // derivatives stay exact on a station far from the origin, where a world position's carry the rounding
+                // of big numbers (speckled detail up close).
+                float3 viewWS     : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 float3 positionOS : TEXCOORD2;
                 float3 normalOS   : TEXCOORD3;
@@ -36,7 +39,7 @@ float4 _StationHabitatFamily, _StationHabitatTint;
                 VertexPositionInputs pos = GetVertexPositionInputs(v.positionOS.xyz);
                 // Match the depth/normal prepass exactly for the source redraw.
                 o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
-                o.positionWS = pos.positionWS;
+                o.viewWS = pos.positionWS - _WorldSpaceCameraPos;
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 o.positionOS = v.positionOS.xyz;
                 o.normalOS = v.normalOS;
@@ -71,8 +74,10 @@ float4 _StationHabitatFamily, _StationHabitatTint;
 StationGiSourceOutput Frag(Varyings i)
 #else
             // The relief trace moves the surface toward the camera, never away (reversed Z: depth only grows), so
-            // conservative depth keeps early depth testing.
-            #if UNITY_REVERSED_Z
+            // conservative depth keeps early depth testing. A relief shell's trace moves it away, never toward.
+            #if defined(_TILE_SHELL)
+                #define TILE_DEPTH TILE_SHELL_DEPTH
+            #elif UNITY_REVERSED_Z
                 #define TILE_DEPTH SV_DepthGreaterEqual
             #else
                 #define TILE_DEPTH SV_DepthLessEqual
@@ -92,13 +97,31 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                 depth = TILE_NEARER(i.positionCS.z);
                 #endif
                 TileKitClip(i.fade, i.positionCS);
+                float3 positionWS = i.viewWS + _WorldSpaceCameraPos;
+                // Screen derivatives, taken here in uniform control flow: inside a branch a 2 x 2 quad can straddle
+                // faces, and the derivatives there are undefined (NaN on bent tiles).
+                float3 wx = ddx(i.viewWS), wy = ddy(i.viewWS), sx = ddx(i.relief.xyz), sy = ddy(i.relief.xyz);
+                float footprint = TileFootprint(i.viewWS);
+                float3 nWS = normalize(i.normalWS);
+                #if defined(_TILE_SHELL)
+                // The far level's station relief: walk the view ray through it inside the shell (TileGreeble.hlsl);
+                // where the ray leaves the shell, whatever is behind shows. The GI sources take the wall under the
+                // shell instead: a far relief's bounce isn't worth a third trace.
+                GreebleHit shellHit = (GreebleHit)0; float3 shellWS = positionWS; float shellLower = 1;
+                #if defined(STATION_GI_SOURCE)
+                clip(-1);
+                #else
+                if (!GreebleShellSurface(i.viewWS, nWS, i.relief, i.edge0, i.edge1, wx, wy, sx, sy, footprint,
+                    _MainLightPosition.xyz, shellHit, shellWS, nWS, shellLower)) clip(-1);
+                #endif
+                #endif
+                // (on a shell, the shell's own face plane: its derivatives stay smooth where the trace steps)
                 float2 q = FacePlane(i.positionOS, normalize(i.normalOS));
                 int code = (int)round(i.code.x);
                 float seed = i.code.y;
                 half3 albedo = _BaseColor.rgb * i.color.rgb;
                 half smooth = _Smoothness;
                 half k = _PatternStrength;
-                float3 nWS = normalize(i.normalWS);
 
                 if (code == 1)          // shell panels, staggered row by row
                 {
@@ -157,48 +180,54 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                 TileEdgeSurface edged;
                 edged.normalWS = nWS; edged.albedo = albedo; edged.metallic = metallic; edged.smoothness = smooth; edged.emission = 0;
                 float3 axisT, axisB; FacePlaneAxes(normalize(i.normalOS), axisT, axisB);
-                TilePaintedMetal(q, TransformObjectToWorldDir(axisT), TransformObjectToWorldDir(axisB), TileFootprint(i.positionWS), edged);
-                TileEdges(i.edge0, i.edge1, i.code.z, i.code.w, i.positionWS, nWS, q, edged);
+                TilePaintedMetal(q, TransformObjectToWorldDir(axisT), TransformObjectToWorldDir(axisB), footprint, edged);
+                TileEdges(i.edge0, i.edge1, i.code.z, i.code.w, positionWS, wx, wy, footprint, nWS, q, edged);
                 albedo = edged.albedo; metallic = edged.metallic; smooth = edged.smoothness;
                 float3 shadingN = edged.normalWS;
-                // Screen derivatives for the relief trace, taken here in uniform control flow: inside its branch a 2 x 2
-                // quad can straddle armour and other faces, and the derivatives there are undefined (NaN on bent tiles).
-                float3 wx = ddx(i.positionWS), wy = ddy(i.positionWS), sx = ddx(i.relief.xyz), sy = ddy(i.relief.xyz);
-                float reliefFootprint = TileFootprint(i.positionWS);
-                float3 surfaceWS = i.positionWS;
+                float3 surfaceWS = positionWS;
                 half occlusion = 1;
                 float reliefShown = -1, reliefPlate = 0;   // for the relief view: how high the plates stand, and plate or face
                 StationSurfaceShadow = 1;
+                #if defined(_TILE_SHELL)
+                {
+                    surfaceWS = shellWS;
+                    albedo *= shellHit.tone;
+                    reliefShown = shellLower; reliefPlate = shellHit.face ? 0 : 1;
+                    // Once sunk, a rough stand-in for the relief's average darkening (guessed, not measured like the
+                    // armour's fold).
+                    float fold = 1 - shellLower;
+                    StationSurfaceShadow = shellHit.shadow * lerp(1, .82, fold);
+                    albedo *= lerp(1, .92, fold); occlusion = lerp(1, .85, fold);
+                    #if !defined(STATION_GI_SOURCE)
+                    depth = GreebleDepth(shellWS, shellHit.face, i.positionCS.z);
+                    #endif
+                }
+                bool hasRelief = false;
+                #else
                 // The armour's plates, traced where the mesh left the armour plain (mid and far levels).
                 // (a mesh without uv6 reads w as 1; a real layout code is never under 2 either way)
                 bool hasRelief = abs(i.relief.w) > 1.5;
+                #endif
                 if (_TileRelief.x > .5 && hasRelief)
                 {
                     int c = (int)round(i.relief.w), m = c >> 1, layout = ((m % 9) + 9) % 9;
                     ReliefFace face; face.ua = layout / 3; face.va = layout % 3; face.ax = 3 - face.ua - face.va;
                     face.key = (m - layout) / 9; face.allCalm = (c & 1) != 0;
                     float3 s0 = i.relief.xyz;
-                    // World and station frames from screen derivatives (the Foundry bends one into the other).
-                    float3 crossS = cross(sx, sy);
-                    float3 ns = crossS * rsqrt(max(dot(crossS, crossS), 1e-30)); if (dot(cross(wx, wy), nWS) < 0) ns = -ns;
-                    float3x3 W = transpose(float3x3(wx, wy, nWS)), S = transpose(float3x3(sx, sy, ns));
-                    // A frame squashed flat (a face seen edge-on, or no area on screen) has no inverse: leave it plain.
-                    float detW = abs(dot(wx, cross(wy, nWS))), detS = abs(dot(sx, cross(sy, ns)));
-                    bool frame = detW > 1e-6 * dot(wx, wx) * length(wy) && detS > 1e-6 * dot(sx, sx) * length(sy) && dot(crossS, crossS) > 1e-24;
-                    float3x3 toStation = mul(S, ReliefInverse(W)), toWorld = mul(W, ReliefInverse(S));
-                    float distanceToCamera = distance(i.positionWS, _WorldSpaceCameraPos);
-                    float lower = saturate((_TileRelief.z - distanceToCamera) / max(_TileRelief.z - _TileRelief.y, 1));
+                    // world and station frames (a frame squashed flat has no inverse: leave the armour plain there)
+                    float3 ns; float3x3 toStation, toWorld;
+                    bool frame = ReliefFrame(wx, wy, nWS, sx, sy, ns, toStation, toWorld);
+                    float lower = ReliefLower(_TileRelief, length(i.viewWS));
                     // the plain band along the face's edges (only the mid level carries edges)
                     float trim = 1e3;
                     [unroll] for (int e = 0; e < 4; e++) { trim = min(trim, i.edge0[e]); trim = min(trim, i.edge1[e]); }
                     if (trim > RELIEF_TRIM && frame)
                     {
-                        float footprint = reliefFootprint;
-                        float3 dirS = normalize(mul(toStation, i.positionWS - _WorldSpaceCameraPos));
+                        float3 dirS = normalize(mul(toStation, i.viewWS));
                         float3 sunS = normalize(mul(toStation, _MainLightPosition.xyz));
                         ReliefHit hit = ReliefTrace(face, s0, ns, dirS, sunS, lower, footprint * 1.5);
                         reliefShown = lower; reliefPlate = hit.height > 0 ? 1 : 0;
-                        surfaceWS = i.positionWS + mul(toWorld, hit.station - s0);
+                        surfaceWS = positionWS + mul(toWorld, hit.station - s0);
                         if (dot(hit.wall, hit.wall) > 0) shadingN = normalize(mul(toWorld, hit.wall));
                         // plate tones and the dark face showing in gaps fade as the plates sink...
                         half tone = hit.plate > 0 ? .95 + hit.plate * .1 : (hit.height <= 0 ? .78 : 1);
@@ -216,12 +245,11 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                         smooth = max(0, smooth - ReliefFoldSpread * .3 * fold);
                         // never let a bad trace through to lighting or depth
                         if (any(!isfinite(surfaceWS)) || any(!isfinite(shadingN)) || !isfinite(StationSurfaceShadow))
-                        { surfaceWS = i.positionWS; shadingN = edged.normalWS; StationSurfaceShadow = 1; }
+                        { surfaceWS = positionWS; shadingN = edged.normalWS; StationSurfaceShadow = 1; }
                         #if !defined(STATION_GI_SOURCE)
                         // 3 mm behind where it hit: where a real plate of the near level shares a handover band with it,
                         // the plate wins instead of the two fighting.
-                        float4 clip = TransformWorldToHClip(surfaceWS + normalize(surfaceWS - _WorldSpaceCameraPos) * .003);
-                        depth = max(TILE_NEARER(clip.z / clip.w), depth);   // (conservative: never farther than the face)
+                        depth = max(TILE_NEARER(ReliefDepthAt(surfaceWS, .003)), depth);   // (conservative: never farther than the face)
                         #endif
                     }
                 }

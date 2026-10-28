@@ -32,11 +32,33 @@ float3x3 ReliefInverse(float3x3 m)
     return transpose(float3x3(r0, r1, r2)) / (abs(det) > 1e-20 ? det : 1e-20);
 }
 
+// The lowbias32 finaliser: a well mixed hash of h (TileGreeble's hash, GreebleField.Hash, uses it too).
+uint ReliefMix(uint h) { h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16; return h; }
 float ReliefH01(int a, int b, int c, int k)
 {
     uint h = (uint)a * 73856093u ^ (uint)b * 19349663u ^ (uint)c * 83492791u ^ (uint)k * 2654435761u;
-    h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
-    return (h & 0xFFFFFF) / 16777216.0;
+    return (ReliefMix(h) & 0xFFFFFF) / 16777216.0;
+}
+
+// World and station frames at a pixel, from screen derivatives of both positions (the Foundry bends one into the
+// other): ns the surface's station normal, toStation maps a world direction into station space, toWorld back. False
+// where either frame is squashed flat (a face seen edge-on, or no area on screen): it has no inverse.
+bool ReliefFrame(float3 wx, float3 wy, float3 nWS, float3 sx, float3 sy, out float3 ns, out float3x3 toStation, out float3x3 toWorld)
+{
+    float3 crossS = cross(sx, sy);
+    ns = crossS * rsqrt(max(dot(crossS, crossS), 1e-30)); if (dot(cross(wx, wy), nWS) < 0) ns = -ns;
+    float3x3 W = transpose(float3x3(wx, wy, nWS)), S = transpose(float3x3(sx, sy, ns));
+    float detW = abs(dot(wx, cross(wy, nWS))), detS = abs(dot(sx, cross(sy, ns)));
+    toStation = mul(S, ReliefInverse(W)); toWorld = mul(W, ReliefInverse(S));
+    return detW > 1e-6 * dot(wx, wx) * length(wy) && detS > 1e-6 * dot(sx, sx) * length(sy) && dot(crossS, crossS) > 1e-24;
+}
+// How far traced relief stands at this distance from the camera: 1 whole, 0 sunk into the face over band.y-band.z m.
+float ReliefLower(float4 band, float distance) { return saturate((band.z - distance) / max(band.z - band.y, 1)); }
+// Clip-space depth of a world point pushed push metres away from the camera (negative: toward it).
+float ReliefDepthAt(float3 surfaceWS, float push)
+{
+    float4 clip = TransformWorldToHClip(surfaceWS + normalize(surfaceWS - _WorldSpaceCameraPos) * push);
+    return clip.z / clip.w;
 }
 bool ReliefEdge(int k, int row, int key, bool calm)
 {

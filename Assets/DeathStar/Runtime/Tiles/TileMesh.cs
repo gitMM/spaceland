@@ -5,7 +5,8 @@ using UnityEngine.Rendering;
 namespace DeathStar
 {
     // Material slots of a settlement tile: one submesh and one TileLibrary material each.
-    public enum TileSlot { Paint, Trim, Dark, Metal, Recess, Glass, Light, Accent }
+    // Relief: the far level's shells over the station relief (TileMesh.Shells.cs), traced by TileSurface.
+    public enum TileSlot { Paint, Trim, Dark, Metal, Recess, Glass, Light, Accent, Relief }
 
     // Surface treatment read by DeathStar/Tile Surface from uv0.x.
     // Carved: the near level's armour carving (plates and the face under them), plain paint marked for the relief view.
@@ -28,7 +29,7 @@ namespace DeathStar
     // frames (TileBuilder.Face) have x to the right and y up as seen from outside, and z pointing into the face.
     public sealed partial class TileMesh
     {
-        public const int SlotCount=8;
+        public const int SlotCount=9;
         readonly List<Vector3> positions=new List<Vector3>(),normals=new List<Vector3>();
         readonly List<Vector4> tangents=new List<Vector4>();
         readonly List<Vector2> codes=new List<Vector2>(),local=new List<Vector2>(),extent=new List<Vector2>();
@@ -425,7 +426,8 @@ namespace DeathStar
             var carved=jobs.ToArray();
             var farJob=new int[carved.Length];for(int k=0;k<farJob.Length;k++)farJob[k]=-1;
             var far=new TileMesh{retainWarpData=retainWarpData,seed=seed,overlay=overlay};var map=new List<int>(positions.Count);
-            // Everything outside the Detail ranges, in order; then the armour plain; then the Detail parts, coarse.
+            // Everything outside the Detail ranges (the station relief's among them), in order; then the armour plain;
+            // then the relief's shells; then the Detail parts, coarse.
             var into=new int[positions.Count];int d=0;
             for(int v=0;v<positions.Count;v++)
             {
@@ -457,6 +459,8 @@ namespace DeathStar
                 far.Emit(j.f.slot,far.Raw(j.A,j.N,t4,j.f),far.Raw(j.B,j.N,t4,j.f),far.Raw(j.C,j.N,t4,j.f),far.Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
                 for(int q=0;q<4;q++)map.Add(-1);
             }
+            var shellData=new List<(int index,Vector4 uv1,Vector4 uv2,Vector4 uv6)>();
+            EmitShells(far,map,shellData);
             if(farBuilds.Count>0)
             {
                 var twin=Coarse(1);
@@ -483,11 +487,13 @@ namespace DeathStar
                 var midMap=new int[mid.positions.Count];for(int v=0;v<midMap.Length;v++)midMap[v]=v<positions.Count?v:-1;
                 MidFromNear=midMap;
             }
-            farBuilds.Clear();details.Clear();
+            farBuilds.Clear();details.Clear();shells.Clear();
             Flush();
             // Now the carving's outcome per face is known: the relief channel marks the faces the near mesh carved.
-            var farMesh=far.Build(name+" far",false);FarFromNear=map.ToArray();
-            farMesh.SetUVs(6,Relief(far.positions.Count,carved,farJob));
+            var farMesh=far.Build(name+" far",false,shellData);FarFromNear=map.ToArray();
+            var far6=Relief(far.positions.Count,carved,farJob);
+            foreach(var x in shellData)far6[x.index]=x.uv6;
+            farMesh.SetUVs(6,far6);
             if(mid!=null){Mid=mid.Build(name+" mid",true);Mid.SetUVs(6,Relief(mid.positions.Count,carved,midJob));}
             return (Build(name,true),farMesh);
         }
@@ -536,11 +542,12 @@ namespace DeathStar
         // A vertex already in mesh space.
         int Raw(Vector3 p,Vector3 n,Vector4 t,in Finish f){var saved=matrix;matrix=Matrix4x4.identity;int i=Vertex(p,n,t,f);matrix=saved;return i;}
         // edges: work out the face edges for the close-up surface (TileMesh.Edges.cs); the far level goes without.
-        Mesh Build(string name,bool edges)
+        // shells: uv1 and uv2 of the relief shells' vertices (EmitShells).
+        Mesh Build(string name,bool edges,List<(int index,Vector4 uv1,Vector4 uv2,Vector4 uv6)> shells=null)
         {
             var mesh=new Mesh{name=name,indexFormat=positions.Count>65535?IndexFormat.UInt32:IndexFormat.UInt16};
             mesh.SetVertices(positions);mesh.SetNormals(normals);mesh.SetTangents(tangents);mesh.SetColors(colors);
-            SetEdgeChannels(mesh,edges);mesh.SetUVs(3,overlays);
+            SetEdgeChannels(mesh,edges,shells);mesh.SetUVs(3,overlays);
             if(retainWarpData){mesh.SetUVs(4,surfaceFrames);mesh.SetUVs(5,metricAnchors);}
             mesh.subMeshCount=SlotCount;
             for(int i=0;i<SlotCount;i++)mesh.SetTriangles(indices[i],i,false);

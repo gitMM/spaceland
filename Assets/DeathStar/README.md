@@ -393,8 +393,10 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
 - **Close-up surface** (`TileMesh.Edges.cs`, `TileEdges.hlsl`): a Burst pass at build time finds each face's convex,
   soft and concave edges from the faces meeting them (tile seams and flat joins get none) and gives every vertex its
   distance to up to eight of them (uv1, uv2; kinds and part thickness in uv0.zw). TileSurface draws a rounded bevel
-  normal sized to the part, a warm highlight, light chips of bare metal, dark creases. Costs about 0.8 s of the gallery's
-  3.5 s build, 24 bytes a vertex.
+  normal sized to the part, a warm highlight, light chips of bare metal, dark creases. **Bevel Width** scales the bevel
+  (0.25-6 times), **Bevel Roundness** turns it from round (1) to a flat 45-degree chamfer (0). Derivatives come from the
+  position relative to the camera, and detail is laid out in the mesh's own metres, so nothing jitters far from the
+  origin. Costs about 0.8 s of the gallery's 3.5 s build, 24 bytes a vertex.
 - **Fine detail and painted metal**: in each face's own rectangle, screws at corners and along edges, an inset groove,
   dot-grid grilles, warning triangles, crosses, labels and indicator lights (a station-space random per face, uv0.w);
   **Edge Wear Width** sets how far wear chips reach in from an edge (0.5-12 times its bevel);
@@ -411,6 +413,14 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
   250 m. **Show Relief (debug)** colours real carving orange and traced plates cyan, dimmer as they sink.
 - **Fold** (`ReliefFold.cs` writes `TileReliefFold.hlsl`): the carving's average sun visibility by sun height, cavity,
   seam darkening and roughness, measured once over random faces, applied as the plates sink.
+- **Station relief in the far level** (`TileMesh.Shells.cs`, `TileGreeble.hlsl`): `GreebleField` records each face's
+  relief; the far level leaves that geometry out and draws a shell instead, over each free rect of the face a box up to
+  the relief's top with sides only where the relief stops, in its own slot (`TileSlot.Relief`, keyword `_TILE_SHELL`).
+  TileSurface walks the view ray through an HLSL port of the relief inside it (in the depth passes too), then toward the
+  sun; shells cast no shadow, and screen and voxel GI take the wall under them. The mesh relief is unchanged in the
+  near and mid levels. It sinks into the face from 300 to
+  700 m (**Station Relief Lowered From / Flat At**) under a guessed fold; **Trace Station Relief** turns it off. Not
+  ported: a face's holes (relief near a family form can differ from the mesh).
 - **Chunks for orbit** (`StationChunks`): each 8 x 8 x 8 chunk's exposed cell faces merged into rectangles, its tiles
   baked into an atlas (normal and height-derived occlusion, colour and glow) by orthographic renders; beyond 600 m a
   camera draws the chunks instead of their tiles. Baked on demand (`Bake`, or in play once the camera pulls back).
@@ -419,5 +429,7 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
 the vertex and build cost), `detail` (1, 5 m, and shimmer at 20 m against a 16-sample reference), `kit` (a walk past the
 ring's edge, grow-in against a hard edge, and frame cost), `relief` (trace against carving from 20 to 250 m, and the
 triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chunks against a 16-sample reference),
-`nan` (no NaN pixels on bent Foundry tiles), `reliefview` (the relief view), `wear` (Edge Wear Width 1, 4, 10).
+`nan` (no NaN pixels on bent Foundry tiles), `reliefview` (the relief view), `wear` (Edge Wear Width 1, 4, 10),
+`bevel` (Bevel Width and Roundness), `precision` (the stage 4 km from the origin looks the same), `greeble` (the far
+level's traced station relief against the mesh relief, 110-400 m).
 

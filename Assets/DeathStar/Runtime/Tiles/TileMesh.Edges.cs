@@ -38,7 +38,7 @@ namespace DeathStar
         public static long EdgeTicks;
 
         // uv0-uv2 of the mesh being built; find: work out the edges (the far level goes without).
-        void SetEdgeChannels(Mesh mesh,bool find)
+        void SetEdgeChannels(Mesh mesh,bool find,List<(int index,Vector4 uv1,Vector4 uv2,Vector4 uv6)> shells)
         {
             int n=positions.Count;
             long t0=System.Diagnostics.Stopwatch.GetTimestamp();
@@ -69,6 +69,7 @@ namespace DeathStar
             try
             {
                 job.Run();
+                if(shells!=null)foreach(var s in shells){job.uv1[s.index]=s.uv1;job.uv2[s.index]=s.uv2;}
                 mesh.SetUVs(0,job.uv0);mesh.SetUVs(1,job.uv1);mesh.SetUVs(2,job.uv2);
                 for(int i=0;i<4;i++)EdgeStats[i]+=job.stats[i];
                 if(job.slots.Length>0)KitSlots.Add(mesh,new List<KitSlot>(job.slots.AsArray().ToArray()));

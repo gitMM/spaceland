@@ -14,16 +14,10 @@
 // Globals (StationLightingSettings): _TileStyle x 1 turns edges on, y wear, z edge highlight, w crease darkness;
 // _TileDetail x 1 turns fine detail on, y density, z painted metal strength, w the base texture's size in metres.
 float4 _TileStyle;
-// x: how far wear chips reach, in bevels (0 unset: 1).
+// x: how far wear chips reach, in natural bevels; y: the bevel's width, in natural bevels (0 unset: 1); z: 0 a rounded
+// bevel, 1 a flat chamfer (Bevel Roundness, inverted so unset is round).
 float4 _TileStyle2;
 float4 _TileDetail;
-// Global: how many times supersampled the picture is (the lab), so fades follow the final picture's pixels. 0 = 1.
-float _TileFootprintScale;
-// Metres a pixel of the final picture spans here.
-float TileFootprint(float3 positionWS)
-{
-    return max(max(length(ddx(positionWS)), length(ddy(positionWS))), 1e-5) * max(_TileFootprintScale, 1);
-}
 TEXTURE2D(_TileMetalTex); SAMPLER(sampler_TileMetalTex);
 // StationKit: _TileKitCentre xyz the ring's centre, w 1 while props are on; _TileKit x inner radius, y outer, z density.
 float4 _TileKitCentre;
@@ -85,25 +79,27 @@ void TilePaintedMetal(float2 q, float3 tangent, float3 bitangent, float footprin
 float TileInside(float f, float footprint) { return saturate(.5 - f / footprint); }
 
 // Layer 2 and fine detail. d0, d1: distances to edges 0-7 (metres before the Foundry bends the tile); kinds: two bits
-// per edge; packed: the part's thickness in millimetres plus the face's random number; q: metres across the face.
-void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionWS, float3 nWS, float2 q, inout TileEdgeSurface s)
+// per edge; packed: the part's thickness in millimetres plus the face's random number; dpdx, dpdy: screen derivatives
+// of the position relative to the camera; footprint: TileFootprint; q: metres across the face.
+void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionWS, float3 dpdx, float3 dpdy, float footprint, float3 nWS, float2 q, inout TileEdgeSurface s)
 {
     // Derivatives first: every lane of a 2x2 quad shares the triangle, but keep them out of branches anyway.
-    float3 dpdx = ddx(positionWS), dpdy = ddy(positionWS);
     float4 dx0 = ddx(d0), dy0 = ddy(d0), dx1 = ddx(d1), dy1 = ddy(d1);
     uint flags = (uint)round(kinds);
     if (_TileStyle.x < .5 || flags == 0) return;
     float part = floor(packed) * .001, random = frac(packed);
 
-    // Surface gradient (Mikkelsen): each distance is affine on the face, so its gradient is exact per triangle. Its
-    // length undoes the Foundry's stretch, turning distances back into true metres.
+    // Surface gradient (Mikkelsen): each distance is affine on the face, so its gradient is exact per triangle and
+    // gives the direction into the face. Distances stay in the mesh's own metres: dividing by the gradient's length
+    // would undo the Foundry's slight stretch, but that length comes from screen derivatives, and its rounding noise
+    // times a distance of a metre jittered the detail by millimetres from one 2x2 block of pixels to the next.
     float3 r1 = cross(dpdy, nWS), r2 = cross(nWS, dpdx);
     float det = dot(dpdx, r1);
     float inv = abs(det) > 1e-20 ? rcp(det) : 0;
-    float footprint = max(max(length(dpdx), length(dpdy)), 1e-5) * max(_TileFootprintScale, 1);   // metres per pixel
 
     float em[8]; float3 eg[8]; uint ek[8];
-    float r = clamp(part * .12, .006, .04);                           // bevel radius, chunky for the part's size
+    float r0 = clamp(part * .12, .006, .04);                          // natural bevel radius, chunky for the part's size
+    float r = r0 * (_TileStyle2.y > 0 ? _TileStyle2.y : 1);           // the bevel as drawn (Bevel Width)
     float c1 = 1e3, c2 = 1e3; float3 g1 = 0, g2 = 0;                  // the two nearest convex edges
     float soft = 1e3; float3 gs = 0;
     float crease = 1e3;
@@ -118,7 +114,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
         float3 g = (gx * r1 + gy * r2) * inv;
         float len = length(g);
         if (len < 1e-4) kind = 0;
-        float m = max(d, 0) / max(len, 1e-4); g /= max(len, 1e-4);   // true metres; g points into the face
+        float m = max(d, 0); g /= max(len, 1e-4);   // g points into the face
         em[k] = m; eg[k] = g; ek[k] = kind;
         if (kind == TILE_EDGE_CONCAVE) crease = min(crease, m);
         else if (kind == TILE_EDGE_SOFT) { if (m < soft) { soft = m; gs = g; } }
@@ -129,19 +125,22 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
         }
     }
 
-    // Rounded corners where two convex edges meet square on: distance to a quarter circle, and its gradient.
+    // Rounded corners where two convex edges meet square on: distance to a quarter circle, and its gradient. A chamfer
+    // meets its neighbour in a mitre instead.
+    float chop = saturate(_TileStyle2.z);
     float dist = c1; float3 inward = g1;
     if (c2 < r && abs(dot(g1, g2)) < .5)
     {
         float2 e = r - float2(c1, c2);
-        dist = r - length(e);
-        inward = normalize(g1 * e.x + g2 * e.y);
+        dist = lerp(r - length(e), c1, chop);
+        inward = normalize(lerp(normalize(g1 * e.x + g2 * e.y), g1, chop));
     }
     float bevelVis = saturate(r / footprint * .5 - .75);    // gone once the bevel is a pixel and a half, whole at 3.5
     float u = saturate(1 - dist / r);
+    float facet = TileInside(dist - r, footprint);          // on a chamfer's flat cut, antialiased along its inner edge
     // Quarter-round profile: the normal turns toward the edge, half of a square edge's turn at the edge itself, so
-    // both faces meet in the same direction.
-    float tilt = asin(u) * .5 * bevelVis;
+    // both faces meet in the same direction. A chamfer turns that same 45 degrees over its whole cut.
+    float tilt = lerp(asin(u) * .5, facet * .7854, chop) * bevelVis;
     float3 n = s.normalWS * cos(tilt) - inward * sin(tilt);
     // Soft edges (onto a chamfer) turn less.
     float us = saturate(1 - soft / (r * .6));
@@ -150,7 +149,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
 
     // Warm highlight on the bevel: brighter, warmer and glossier paint, which the light then picks out where the
     // bevel turns to it.
-    float band = smoothstep(0, 1, u) * bevelVis;
+    float band = lerp(smoothstep(0, 1, u), facet, chop) * bevelVis;
     s.albedo = lerp(s.albedo, s.albedo * half3(1.45, 1.25, .95), band * _TileStyle.z);
     s.smoothness = lerp(s.smoothness, max(s.smoothness, .55), band * _TileStyle.z);
 
@@ -308,7 +307,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
     // Wear chips: flat blocks of light, glossy bare metal along sharp convex edges (pixel-art wear: lighter than
     // the paint, never darker), from stepped noise in square blocks about a part's hundredth across. Under about
     // three pixels a block they turn to their average coverage instead of shimmering.
-    float wearBand = r * 2.5 * (_TileStyle2.x > 0 ? _TileStyle2.x : 1);
+    float wearBand = r0 * 2.5 * (_TileStyle2.x > 0 ? _TileStyle2.x : 1);
     float reach = saturate(1 - dist / wearBand);
     float cell = clamp(part * .03, .01, .02);
     float2 block = floor(q / cell);
@@ -323,7 +322,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
     s.smoothness = lerp(s.smoothness, .72, chip);
 
     // Creases: dirt darkening out from concave edges, and a thin dark line in the seam itself.
-    float creaseBand = r * 2.5;
+    float creaseBand = r0 * 2.5;
     float dirt = 1 - saturate(crease / creaseBand);
     dirt *= dirt;
     float lineWidth = .003;
