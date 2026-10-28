@@ -4,10 +4,11 @@ using UnityEngine;
 namespace DeathStar
 {
     // The small-object kit of doc/close-up-detail-plan.md (layer 3): ten props that stand on hull plates near the
-    // player. Each is built from TileMesh primitives with chunky chamfers, so the close-up surface gives it bevels,
+    // player. Each is built from simple TileMesh primitives; the close-up surface supplies bevels,
     // chips and creases like the tiles (the edge pass stands in for a baked curvature mask). Frame: the plate's normal
     // is +y, the prop's base at y=0, its long side along x, centred on the origin. Three levels: 0 as built, 1 the
-    // tiles' coarse far level (fewer sides, no chamfers), 2 a block or two.
+    // tiles' coarse far level (fewer sides), 2 a block or two. Chamfers stay in the shader at every level: even
+    // tiny slats would otherwise cost 44 triangles per box instead of 12.
     public static class KitProps
     {
         public const int Count=10,Levels=3;
@@ -58,64 +59,64 @@ namespace DeathStar
             switch(prop)
             {
                 case 0:   // vent: a framed box with louvre slats
-                    m.Box(Paint,new Vector3(0,0.045f,0),new Vector3(0.5f,0.09f,0.34f),0.02f);
+                    m.Box(Paint,new Vector3(0,0.045f,0),new Vector3(0.5f,0.09f,0.34f));
                     if(block)break;
                     m.Box(Dark,new Vector3(0,0.092f,0),new Vector3(0.42f,0.006f,0.26f));
-                    for(int i=0;i<5;i++)m.Box(Metal,new Vector3(0,0.1f,-0.1f+i*0.05f),new Vector3(0.4f,0.016f,0.022f),0.005f);
+                    for(int i=0;i<5;i++)m.Box(Metal,new Vector3(0,0.1f,-0.1f+i*0.05f),new Vector3(0.4f,0.016f,0.022f));
                     break;
                 case 1:   // hatch: a low plate with a frame, hinges and a handle
-                    m.Box(Paint,new Vector3(0,0.02f,0),new Vector3(0.6f,0.04f,0.6f),0.015f);
+                    m.Box(Paint,new Vector3(0,0.02f,0),new Vector3(0.6f,0.04f,0.6f));
                     if(block)break;
-                    m.Box(Trim,new Vector3(0,0.05f,0),new Vector3(0.5f,0.02f,0.5f),0.01f);
-                    foreach(float z in new[]{-0.16f,0.16f})m.Box(Metal,new Vector3(-0.3f,0.04f,z),new Vector3(0.06f,0.05f,0.08f),0.01f);
-                    m.Box(Metal,new Vector3(0.18f,0.075f,0),new Vector3(0.03f,0.03f,0.16f),0.008f);
+                    m.Box(Trim,new Vector3(0,0.05f,0),new Vector3(0.5f,0.02f,0.5f));
+                    foreach(float z in new[]{-0.16f,0.16f})m.Box(Metal,new Vector3(-0.3f,0.04f,z),new Vector3(0.06f,0.05f,0.08f));
+                    m.Box(Metal,new Vector3(0.18f,0.075f,0),new Vector3(0.03f,0.03f,0.16f));
                     break;
                 case 2:   // junction box: a box with a lid seam and two cable glands
-                    m.Box(Paint,new Vector3(0,0.11f,0),new Vector3(0.36f,0.22f,0.28f),0.02f);
+                    m.Box(Paint,new Vector3(0,0.11f,0),new Vector3(0.36f,0.22f,0.28f));
                     if(block)break;
-                    m.Box(Paint,new Vector3(0,0.225f,0),new Vector3(0.38f,0.03f,0.3f),0.012f);
-                    foreach(float x in new[]{-0.08f,0.08f})m.Cylinder(Dark,new Vector3(x,0.08f,-0.14f),new Vector3(x,0.08f,-0.2f),0.022f,10,true,true,0.004f);
+                    m.Box(Paint,new Vector3(0,0.225f,0),new Vector3(0.38f,0.03f,0.3f));
+                    foreach(float x in new[]{-0.08f,0.08f})m.Cylinder(Dark,new Vector3(x,0.08f,-0.14f),new Vector3(x,0.08f,-0.2f),0.022f,8,false,true);
                     m.Box(Warn,new Vector3(0,0.14f,0.141f),new Vector3(0.12f,0.06f,0.004f));
                     break;
                 case 3:   // pipe piece: a pipe on two saddles, flanged at both ends
                     if(block){m.Box(Metal,new Vector3(0,0.09f,0),new Vector3(0.8f,0.13f,0.13f));break;}
-                    m.Cylinder(Metal,new Vector3(-0.4f,0.1f,0),new Vector3(0.4f,0.1f,0),0.06f,16,true,true,0.006f);
-                    foreach(float x in new[]{-0.36f,0.36f})m.Cylinder(Trim,new Vector3(x-0.02f,0.1f,0),new Vector3(x+0.02f,0.1f,0),0.08f,16,true,true,0.006f);
-                    foreach(float x in new[]{-0.2f,0.2f})m.Box(Dark,new Vector3(x,0.03f,0),new Vector3(0.06f,0.06f,0.15f),0.01f);
+                    m.Cylinder(Metal,new Vector3(-0.4f,0.1f,0),new Vector3(0.4f,0.1f,0),0.06f,12,true,true);
+                    foreach(float x in new[]{-0.36f,0.36f})m.Cylinder(Trim,new Vector3(x-0.02f,0.1f,0),new Vector3(x+0.02f,0.1f,0),0.08f,12,true,true);
+                    foreach(float x in new[]{-0.2f,0.2f})m.Box(Dark,new Vector3(x,0.03f,0),new Vector3(0.06f,0.06f,0.15f));
                     break;
                 case 4:   // cable run: clamps holding a pair of cables
                     if(block){m.Box(Dark,new Vector3(0,0.03f,0),new Vector3(0.7f,0.05f,0.1f));break;}
-                    foreach(float z in new[]{-0.025f,0.025f})m.Cylinder(Dark,new Vector3(-0.35f,0.035f,z),new Vector3(0.35f,0.035f,z),0.018f,10,true,true);
-                    foreach(float x in new[]{-0.25f,0f,0.25f})m.Box(Metal,new Vector3(x,0.035f,0),new Vector3(0.04f,0.07f,0.11f),0.008f);
+                    foreach(float z in new[]{-0.025f,0.025f})m.Cylinder(Dark,new Vector3(-0.35f,0.035f,z),new Vector3(0.35f,0.035f,z),0.018f,8,true,true);
+                    foreach(float x in new[]{-0.25f,0f,0.25f})m.Box(Metal,new Vector3(x,0.035f,0),new Vector3(0.04f,0.07f,0.11f));
                     break;
                 case 5:   // light: a housing with a glowing lens behind a cage
-                    m.Box(Paint,new Vector3(0,0.03f,0),new Vector3(0.28f,0.06f,0.14f),0.012f);
+                    m.Box(Paint,new Vector3(0,0.03f,0),new Vector3(0.28f,0.06f,0.14f));
                     m.Box(Lamp,new Vector3(0,0.065f,0),new Vector3(0.22f,0.012f,0.09f));
                     if(block)break;
-                    foreach(float x in new[]{-0.07f,0f,0.07f})m.Box(Dark,new Vector3(x,0.08f,0),new Vector3(0.012f,0.02f,0.12f),0.003f);
+                    foreach(float x in new[]{-0.07f,0f,0.07f})m.Box(Dark,new Vector3(x,0.08f,0),new Vector3(0.012f,0.02f,0.12f));
                     break;
                 case 6:   // grab bar: two posts and a bar
                     if(block){m.Box(Metal,new Vector3(0,0.06f,0),new Vector3(0.44f,0.1f,0.04f));break;}
-                    foreach(float x in new[]{-0.2f,0.2f}){m.Box(Trim,new Vector3(x,0.01f,0),new Vector3(0.06f,0.02f,0.06f),0.006f);m.Cylinder(Metal,new Vector3(x,0.02f,0),new Vector3(x,0.1f,0),0.016f,10,false,true);}
-                    m.Cylinder(Metal,new Vector3(-0.21f,0.1f,0),new Vector3(0.21f,0.1f,0),0.016f,10,true,true);
+                    foreach(float x in new[]{-0.2f,0.2f}){m.Box(Trim,new Vector3(x,0.01f,0),new Vector3(0.06f,0.02f,0.06f));m.Cylinder(Metal,new Vector3(x,0.02f,0),new Vector3(x,0.1f,0),0.016f,8,false,true);}
+                    m.Cylinder(Metal,new Vector3(-0.21f,0.1f,0),new Vector3(0.21f,0.1f,0),0.016f,8,true,true);
                     break;
                 case 7:   // valve: a base, a stem and a hand wheel with spokes
-                    m.Box(Paint,new Vector3(0,0.04f,0),new Vector3(0.18f,0.08f,0.18f),0.015f);
+                    m.Box(Paint,new Vector3(0,0.04f,0),new Vector3(0.18f,0.08f,0.18f));
                     if(block){m.Box(Metal,new Vector3(0,0.13f,0),new Vector3(0.26f,0.04f,0.26f));break;}
-                    m.Cylinder(Metal,new Vector3(0,0.08f,0),new Vector3(0,0.15f,0),0.02f,10,false,true);
-                    m.Torus(Warn,new Vector3(0,0.15f,0),Vector3.up,Vector3.right,Mathf.PI*2,0.12f,0.014f,20,8);
+                    m.Cylinder(Metal,new Vector3(0,0.08f,0),new Vector3(0,0.15f,0),0.02f,8,false,true);
+                    m.Torus(Warn,new Vector3(0,0.15f,0),Vector3.up,Vector3.right,Mathf.PI*2,0.12f,0.014f,16,6);
                     foreach(float a in new[]{0f,60f,120f}){m.Push(new Vector3(0,0.15f,0),Quaternion.Euler(0,a,0));m.Box(Metal,Vector3.zero,new Vector3(0.24f,0.014f,0.014f));m.Pop();}
                     break;
                 case 8:   // fin block: a block with cooling fins
-                    m.Box(Dark,new Vector3(0,0.04f,0),new Vector3(0.4f,0.08f,0.26f),0.015f);
+                    m.Box(Dark,new Vector3(0,0.04f,0),new Vector3(0.4f,0.08f,0.26f));
                     if(block){m.Box(Metal,new Vector3(0,0.11f,0),new Vector3(0.36f,0.06f,0.22f));break;}
-                    for(int i=0;i<6;i++)m.Box(Metal,new Vector3(-0.15f+i*0.06f,0.11f,0),new Vector3(0.014f,0.06f,0.22f),0.004f);
+                    for(int i=0;i<6;i++)m.Box(Metal,new Vector3(-0.15f+i*0.06f,0.11f,0),new Vector3(0.014f,0.06f,0.22f));
                     break;
                 default:  // access panel: a raised plate with an inset door, two buttons and a status light
-                    m.Box(Paint,new Vector3(0,0.015f,0),new Vector3(0.46f,0.03f,0.32f),0.012f);
+                    m.Box(Paint,new Vector3(0,0.015f,0),new Vector3(0.46f,0.03f,0.32f));
                     if(block)break;
-                    m.Box(Trim,new Vector3(-0.04f,0.035f,0),new Vector3(0.28f,0.012f,0.24f),0.006f);
-                    foreach(float z in new[]{-0.06f,0.06f})m.Cylinder(Dark,new Vector3(0.16f,0.03f,z),new Vector3(0.16f,0.05f,z),0.018f,10,false,true,0.004f);
+                    m.Box(Trim,new Vector3(-0.04f,0.035f,0),new Vector3(0.28f,0.012f,0.24f));
+                    foreach(float z in new[]{-0.06f,0.06f})m.Cylinder(Dark,new Vector3(0.16f,0.03f,z),new Vector3(0.16f,0.05f,z),0.018f,8,false,true);
                     m.Box(Lamp,new Vector3(0.16f,0.04f,0.12f),new Vector3(0.02f,0.02f,0.02f));
                     break;
             }

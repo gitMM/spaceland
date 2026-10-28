@@ -8,7 +8,7 @@ namespace DeathStar.EditorTools
     {
         static readonly string[] TopFields={"m_Script","screenSpaceGi","screenGiStrength","screenGiRadius",
             "screenGiSlices","screenGiSliceSteps","screenGiSurfaceThickness","screenGiAoRadius",
-            "giDebugView","habitatTintEnabled","habitatTint","voxelGi","voxelGiStrength","voxelGiDistance","voxelGiResolution","voxelGiSecondBounce"};
+            "giDebugView","defaultTileTint","habitatTintEnabled","habitatTint","voxelGi","voxelGiStrength","voxelGiDistance","voxelGiResolution","voxelGiSecondBounce"};
         public override void OnInspectorGUI() {
             serializedObject.Update();
             EditorGUILayout.LabelField("Distant and off-screen bounce",EditorStyles.boldLabel);
@@ -31,7 +31,8 @@ namespace DeathStar.EditorTools
             Field("giDebugView","Lighting Debug View");
             EditorGUILayout.HelpBox("With voxel bounce enabled, keep screen-space bounce near 1 m for fine contacts. Longer screen-space distances move the handoff to voxels farther away. AO distance remains independent.",MessageType.Info);
             EditorGUILayout.Space();
-            Field("habitatTintEnabled","Red Habitat paint");Field("habitatTint","Habitat Tint (linear)");
+            Field("defaultTileTint","Default Tile Tint (linear)");
+            Field("habitatTintEnabled","Enable Habitat Tint");Field("habitatTint","Habitat Tint (linear)");
             EditorGUILayout.Space();
             DrawPropertiesExcluding(serializedObject,TopFields);
             serializedObject.ApplyModifiedProperties();

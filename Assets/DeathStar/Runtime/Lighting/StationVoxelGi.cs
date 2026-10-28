@@ -84,7 +84,7 @@ namespace DeathStar
             if(s.voxelGiSecondBounce)h.Add(Mathf.Clamp(s.voxelGiDistance,5,80));
             h.Add(s.sunFrom);h.Add(s.sunColor);h.Add(s.sunIntensity);h.Add(s.receivedShadowStrength);
             h.Add(s.planetFrom);h.Add(s.planetColor);h.Add(s.planetIntensity);
-            h.Add(s.habitatTintEnabled);if(s.habitatTintEnabled)h.Add(s.habitatTint);h.Add(s.emission);
+            h.Add(s.defaultTileTint);h.Add(s.habitatTintEnabled);if(s.habitatTintEnabled)h.Add(s.habitatTint);h.Add(s.emission);
             return h.ToHashCode();
         }
 

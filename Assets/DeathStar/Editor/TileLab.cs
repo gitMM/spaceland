@@ -74,6 +74,7 @@ namespace DeathStar.EditorTools
             if(mode=="snap")return Snap(rig,opts);
             if(mode=="closeup")return CloseUp(rig,opts);
             if(mode=="voxelgi")return VoxelGiCheck(rig);
+            if(mode=="emissiongi")return EmissionGiCheck(rig);
             if(mode=="voxelbench")return VoxelPerformance(rig);
             int only=Array.FindIndex(Examples,e=>e.name.ToLowerInvariant()==mode);
             if(only>=0)

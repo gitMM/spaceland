@@ -7,7 +7,7 @@
 // plates sink into the face, w 1 shows the relief view (carving orange, traced plates cyan dimming as they sink).
 float4 _TileRelief;
 float _StationAmbient, _StationEmission;
-float4 _StationHabitatFamily, _StationHabitatTint;
+float4 _StationHabitatFamily, _StationHabitatTint, _StationDefaultTileTint;
 
             struct Varyings
             {
@@ -257,6 +257,8 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                 // diffuse-source pass; display overlays remain separate.
                 if(_StationHabitatTint.a>.5 && distance(i.overlay.rgb,_StationHabitatFamily.rgb)<.01)
                     albedo *= _StationHabitatTint.rgb;
+                else
+                    albedo *= _StationDefaultTileTint.rgb;
                 half3 emission = _Emission.rgb * i.color.rgb + edged.emission;
                 // A chunk's massing (StationChunks): the tiles as baked, colour, glow, normal and occlusion.
                 if (_TileChunk > .5)

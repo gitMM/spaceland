@@ -22,6 +22,7 @@ MonoBehaviour:
   planetIntensity: 0.6
   ambientLight: 1
   ambientColor: {r: 0.07, g: 0.072, b: 0.078, a: 1}
+  defaultTileTint: {r: 0.16551794, g: 0.2452913, b: 0.3056603, a: 1}
   habitatTintEnabled: 1
   habitatTint: {r: 1, g: 0.045, b: 0.16, a: 1}
   voxelGi: 1
@@ -30,22 +31,50 @@ MonoBehaviour:
   voxelGiResolution: 128
   voxelGiSecondBounce: 1
   screenSpaceGi: 1
-  screenGiStrength: 0.5
-  screenGiRadius: 0.8
-  screenGiSlices: 4
-  screenGiSliceSteps: 14
+  screenGiStrength: 1
+  screenGiRadius: 1
+  screenGiSlices: 8
+  screenGiSliceSteps: 24
   screenGiSurfaceThickness: 0.261
   screenSpaceAmbientOcclusion: 1
   ssaoStrength: 1
   ssaoDirectStrength: 1
-  screenGiAoRadius: 0.858
+  screenGiAoRadius: 2.6
   screenGiAoIntensity: 0.51
+  contactShadows: 1
+  contactStrength: 1
+  contactLengthNear: 0.5
+  contactLengthFar: 2
+  contactFarDistance: 150
+  contactSteps: 24
+  contactThickness: 0.6
+  closeUpSurface: 1
+  bevelWidth: 2.29
+  bevelRoundness: 0.353
+  edgeWear: 1
+  edgeWearWidth: 4.96
+  edgeHighlight: 0.6
+  creaseDarkness: 0.7
+  fineDetail: 1
+  detailDensity: 1
+  paintedMetal: 1
+  reliefTrace: 1
+  reliefLowerNear: 150
+  reliefLowerFar: 250
+  reliefDebug: 0
+  greebleTrace: 1
+  greebleLowerNear: 300
+  greebleLowerFar: 700
+  kitProps: 1
+  kitDensity: 0.35
+  kitInnerRadius: 14
+  kitOuterRadius: 20
   emission: 1
   reflections: 1
   exposure: 0.2
   contrast: 14
   saturation: -4
-  bloom: 0.35
+  bloom: 1.33
   bloomThreshold: 1
   bloomScatter: 0.65
   giDebugView: 0

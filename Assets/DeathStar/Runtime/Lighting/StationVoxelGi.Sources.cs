@@ -53,7 +53,7 @@ namespace DeathStar
                     if(!mesh||!mesh.isReadable)continue;
                     var key=new HashCode();key.Add(mesh.GetInstanceID());key.Add(mesh.vertexCount);key.Add(mesh.subMeshCount);
                     key.Add(r.localToWorldMatrix);key.Add(mesh.bounds);
-                    key.Add(settings.habitatTintEnabled);if(settings.habitatTintEnabled)key.Add(settings.habitatTint);key.Add(settings.emission);
+                    key.Add(settings.defaultTileTint);key.Add(settings.habitatTintEnabled);if(settings.habitatTintEnabled)key.Add(settings.habitatTint);key.Add(settings.emission);
                     materials.Clear();r.GetSharedMaterials(materials);
                     bool supported=false;
                     // Include null/unsupported slots and their positions: moving a
@@ -123,6 +123,8 @@ namespace DeathStar
                     Vector3 diffuse=Vector3.Scale(albedo,tint);
                     if(settings.habitatTintEnabled&&overlays.Count==vertices.Count&&(RGB(overlays[ia])-habitat).sqrMagnitude<.0001f)
                         diffuse=Vector3.Scale(diffuse,RGB(settings.habitatTint));
+                    else
+                        diffuse=Vector3.Scale(diffuse,RGB(settings.defaultTileTint));
                     triangleScratch.Add(new Triangle{a=a,b=b,c=c,normal=normal.normalized,albedo=diffuse,emission=Vector3.Scale(emission,tint),area=area});
                 }
             }

@@ -28,6 +28,15 @@ namespace DeathStar
         }
         readonly List<Chunk> chunks=new List<Chunk>();
         public bool Baked {get;private set;}
+        Color bakedDefaultTint,bakedHabitatTint;
+        bool bakedHabitatTintEnabled;
+        void CheckPaint()
+        {
+            if(!Baked)return;
+            var s=StationLightingSettings.Current;
+            if(bakedDefaultTint!=s.defaultTileTint||bakedHabitatTintEnabled!=s.habitatTintEnabled||
+                (s.habitatTintEnabled&&bakedHabitatTint!=s.habitatTint))Baked=false;
+        }
         public int ChunkCount=>chunks.Count;
         public int Triangles{get{int n=0;foreach(var c in chunks)if(c.mesh)n+=c.mesh.triangles.Length/3;return n;}}
         // Lab: >=0 forces every chunk on (1) or off (0) for every camera.
@@ -215,7 +224,8 @@ namespace DeathStar
                     chunk.colour.SetPixels(colourPx);chunk.colour.Apply(true,false);chunk.normal.SetPixels(normalPx);chunk.normal.Apply(true,false);
                     chunk.material.SetTexture("_TileChunkColour",chunk.colour);chunk.material.SetTexture("_TileChunkNormal",chunk.normal);
                 }
-                Baked=true;
+                bakedDefaultTint=settings.defaultTileTint;bakedHabitatTint=settings.habitatTint;
+                bakedHabitatTintEnabled=settings.habitatTintEnabled;Baked=true;
             }
             finally
             {
@@ -248,6 +258,7 @@ namespace DeathStar
         // In play, bake once the main camera pulls back toward the switch (it takes a moment).
         void LateUpdate()
         {
+            CheckPaint();
             if(!Application.isPlaying||Baked||chunks.Count==0)return;
             var main=Camera.main;
             if(main&&Vector3.Distance(main.transform.position,transform.position)>switchDistance*0.6f)Bake();
@@ -255,6 +266,7 @@ namespace DeathStar
         bool Far(Chunk c,Camera camera)=>force>=0?force==1:Vector3.Distance(camera.transform.position,transform.TransformPoint(c.bounds.center))>switchDistance;
         void BeginCamera(ScriptableRenderContext context,Camera camera)
         {
+            CheckPaint();
             if(!Baked||camera.cameraType==CameraType.Preview||camera.cameraType==CameraType.Reflection||camera.name=="Chunk bake camera")return;
             foreach(var c in chunks)
             {

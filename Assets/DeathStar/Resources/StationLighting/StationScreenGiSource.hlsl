@@ -1,8 +1,8 @@
 // Adapted from C:/Transhuman/Button, 2026-10-28.
 #ifndef STATION_SCREEN_GI_SOURCE_INCLUDED
 #define STATION_SCREEN_GI_SOURCE_INCLUDED
-// Diffuse-only sources: no highlights, tone mapping, fixture emission, or
-// previous screen GI result. Only directly lit diffuse energy is transported.
+// Transport directly lit diffuse radiance and material emission, without
+// highlights, tone mapping or the previous screen GI result.
 struct StationGiSourceOutput {
     float4 radiance : SV_Target0;
     float4 receiver : SV_Target1;
@@ -49,7 +49,9 @@ StationGiSourceOutput StationGiSource(InputData inputData, SurfaceData surfaceDa
         direct+=inputData.vertexLighting*StationDirectSettings().y*ao.directAmbientOcclusion;
     #endif
     StationGiSourceOutput result;
-    result.radiance=float4(max(0,brdf.diffuse*direct)*bounceStrength/PI,1);
+    // Emission is already outgoing radiance: do not multiply it by the lamp's
+    // dark base reflectance or divide it by PI like reflected irradiance.
+    result.radiance=float4((max(0,brdf.diffuse*direct)/PI+max(0,surfaceData.emission))*bounceStrength,1);
     result.receiver=float4(brdf.diffuse*receiveStrength,1);
     return result;
 }

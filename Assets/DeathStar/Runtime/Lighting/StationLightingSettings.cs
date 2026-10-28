@@ -31,7 +31,9 @@ namespace DeathStar
         [Header("Ambient (linear)")]
         public bool ambientLight=true;
         public Color ambientColor=new Color(.07f,.072f,.078f);
-        [Header("Habitat paint")]
+        [Header("Tile paint")]
+        [Tooltip("Default physical tile tint (linear). White preserves the material colours; enabled Habitat Tint overrides it on habitat tiles.")]
+        public Color defaultTileTint=Color.white;
         public bool habitatTintEnabled=true;
         [Tooltip("Physical diffuse tint, also used by screen-space bounce sources.")]
         public Color habitatTint=new Color(1f,.045f,.16f);
@@ -155,6 +157,7 @@ namespace DeathStar
             Shader.SetGlobalVector("_TileGreeble",new Vector4(greebleTrace?1:0,greebleLowerNear,Mathf.Max(greebleLowerFar,greebleLowerNear+1),0));
             Shader.SetGlobalVector("_TileDetail",new Vector4(fineDetail?1:0,detailDensity,fineDetail?paintedMetal:0,1.5f));
             Shader.SetGlobalVector("_StationHabitatFamily",TileLook.FamilyColor(TileFamily.Habitat));
+            Shader.SetGlobalVector("_StationDefaultTileTint",new Vector4(defaultTileTint.r,defaultTileTint.g,defaultTileTint.b,1));
             Shader.SetGlobalVector("_StationHabitatTint",new Vector4(habitatTint.r,habitatTint.g,habitatTint.b,habitatTintEnabled?1:0));
         }
         public void ApplyPost(VolumeProfile p) {

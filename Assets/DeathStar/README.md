@@ -333,7 +333,12 @@ emission, shadow softness, screen-space bounce/AO and image controls. Changes ap
 in Edit/Play mode; they do not regenerate construction. The sky directions and
 synthetic reflection environment follow the same light settings.
 
-For broader SSILVB bounce, the shared Inspector exposes **Bounce Distance (m)**
+In the shared Inspector, **Default Tile Tint (linear)** sits beside **Habitat Tint**. White preserves
+the authored tile colours; enabled Habitat Tint overrides the default on habitat
+tiles. Both tints affect visible paint and GI, and changing them refreshes distant
+chunk colours. Emissive lamps keep their own colours.
+
+The screen-space controls include **Bounce Distance (m)**
 (0.1–30), **Sampling Directions** (2–12), **Samples Per Side** (4–32), and
 **Assumed Surface Thickness (m)** (0.01–3). **AO Distance (m)** (0.05–5) remains
 independent. A starting experiment is 5 m bounce, 0.75 m AO, 6 directions and 24
@@ -350,7 +355,11 @@ texel-grid self-shadowing on sloping panels. Blocker depth is compared at actual
 texel centres so the softness transition stays stable within a texel.
 The renderer uses Button-derived SSILVB in place of Unity SSAO, with a separate
 AO-only path when bounce is disabled. Tile surface source shading excludes debug
-overlays, specular and emission; opaque window surfaces block source visibility.
+overlays and specular, but includes material emission so visible lamps illuminate
+nearby surfaces. Opaque window surfaces still only block source visibility.
+`tools/tile-lab.sh emissiongi` checks the caged lamps against a wall and ledge with
+direct light, voxel GI and bloom disabled; paired images and measurements are in
+`DeathStarRuns/Tiles/emission-gi/`.
 A dedicated source depth target handles Forward+ independently of its partial
 prepass. The older indirect-drawn planet shader is outside the settlement-material
 lighting path.
@@ -383,6 +392,7 @@ Use the profile's screen-bounce-only, AO-only and diffuse-source diagnostic view
 to inspect the contributions. Post-processing still applies in these views.
 `tools/death-star/VerifyLighting.cs` (entry `LightingCompare.Run`) writes the
 existing lighting comparisons to `DeathStarRuns/Lighting`.
+
 ### Close-up detail
 
 `doc/close-up-detail-plan.md`, all seven milestones. Every switch below is in **Death Star → Lighting settings**.
