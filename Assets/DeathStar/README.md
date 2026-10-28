@@ -320,11 +320,22 @@ detached editor job (`unity job wait`), because a direct call is aborted after 3
 
 ### Unified station lighting
 
-**Death Star → Lighting settings** selects `Resources/StationLighting/MainLighting.asset`.
+**Death Star → Lighting settings** opens the dedicated **Station Lighting** window,
+editing `Resources/StationLighting/MainLighting.asset`. Bounce distance and quality
+controls are at the top; the same controls also appear in the asset's Inspector.
 Foundry, Tile Gallery and Tile Lab share its sun, planetshine, ambient, reflection,
 emission, shadow softness, screen-space bounce/AO and image controls. Changes apply
 in Edit/Play mode; they do not regenerate construction. The sky directions and
 synthetic reflection environment follow the same light settings.
+
+For broader SSILVB bounce, the shared Inspector exposes **Bounce Distance (m)**
+(0.1–30), **Sampling Directions** (2–12), **Samples Per Side** (4–32), and
+**Assumed Surface Thickness (m)** (0.01–3). **AO Distance (m)** (0.05–5) remains
+independent. A starting experiment is 5 m bounce, 0.75 m AO, 6 directions and 24
+samples per side; leave thickness unchanged initially. Use **Lighting Debug View →
+Screen Space Gi Only** to isolate bounce. Larger sampling counts cost more GPU
+time, and longer reach still cannot recover hidden/off-screen sources. Existing
+saved values are unchanged; these controls update while playing.
 
 `StationPipeline` and `StationRenderer` are DeathStar-owned copies of the PC setup.
 The sun uses a 4096 shadow atlas with four cascades at 2.5%, 10% and 30% of
@@ -347,10 +358,21 @@ Occlusion controls belong to the station's SSILVB feature.
 `tools/death-star/VerifyUnifiedLighting.cs` checks this shared control path and
 renderer setup without rendering a large scene.
 
-The experimental world-space GI, physical window/hangar spill, test paint and
+The experimental world-space GI, physical window/hangar spill and
 associated diagnostics have been removed. The installed lighting is the shared
 sun/planet rig, ambient and reflections, corrected shadows, screen-space bounce/AO,
 and the original emissive windows with bloom.
+**Red Habitat paint** is enabled again, with its color controlled by **Habitat Tint**.
+This changes diffuse reflectance in both visible shading and SSILVB source lighting,
+so the color can participate in screen-space bounce. It does not restore the removed solver.
+
+Tile surface base reflectance is stored as a **linear Vector shader property**.
+Do not change it to a Color property without converting the authored material data:
+Unity's sRGB decoding would turn 0.36 reflectance into approximately 0.106, weakening
+both the emitting and receiving sides of diffuse bounce. `tools/death-star/VerifyScreenBounce.cs`
+(entry `VerifyScreenBounce.Run`) renders a small fixed-camera tile scene, compares
+bounce on/off, and checks visible red bounce on neutral surfaces. Its captures go
+to `DeathStarRuns/BounceRepair`; it does not run the full station stress workload.
 
 Use the profile's screen-bounce-only, AO-only and diffuse-source diagnostic views
 to inspect the contributions. Post-processing still applies in these views.

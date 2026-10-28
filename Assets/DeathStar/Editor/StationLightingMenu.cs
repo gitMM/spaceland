@@ -9,7 +9,7 @@ namespace DeathStar.EditorTools
     public static class StationLightingMenu
     {
         [MenuItem("Death Star/Lighting settings")]
-        public static void SelectSettings() {Selection.activeObject=StationLightingSettings.Current;EditorGUIUtility.PingObject(Selection.activeObject);}
+        public static void SelectSettings() {Selection.activeObject=StationLightingSettings.Current;StationLightingWindow.Open();}
 
         [MenuItem("Death Star/Install unified lighting")]
         public static void Install() {

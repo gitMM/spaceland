@@ -1,6 +1,7 @@
             #include "../Resources/StationLighting/StationLighting.hlsl"
 #include "../Resources/StationLighting/StationScreenGiSource.hlsl"
 float _StationAmbient, _StationEmission;
+float4 _StationHabitatFamily, _StationHabitatTint;
 
             struct Varyings
             {
@@ -108,6 +109,10 @@ half4 Frag(Varyings i) : SV_Target
                 albedo *= 1 - wear * saturate(blotch * 0.16);
 
                 half metallic = _Metallic;
+                // Physical paint is shared by visible shading and the SSILVB
+                // diffuse-source pass; display overlays remain separate.
+                if(_StationHabitatTint.a>.5 && distance(i.overlay.rgb,_StationHabitatFamily.rgb)<.01)
+                    albedo *= _StationHabitatTint.rgb;
                 half3 emission = _Emission.rgb * i.color.rgb;
                 if (_TileClay > 0.5) { albedo = 0.36; metallic = 0; smooth = 0.25; emission = 0; }
                 // Planning overlay: family colour over the relief's own light and shade; untyped hull dims a little.

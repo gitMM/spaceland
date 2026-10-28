@@ -31,19 +31,33 @@ namespace DeathStar
         [Header("Ambient (linear)")]
         public bool ambientLight=true;
         public Color ambientColor=new Color(.07f,.072f,.078f);
+        [Header("Habitat paint")]
+        public bool habitatTintEnabled=true;
+        [Tooltip("Physical diffuse tint, also used by screen-space bounce sources.")]
+        public Color habitatTint=new Color(1f,.045f,.16f);
         [Header("Screen-space bounce")]
         public bool screenSpaceGi=true;
-        [Range(0,1)] public float screenGiStrength=.5f;
-        [Range(.1f,2)] public float screenGiRadius=.8f;
-        [Range(2,8)] public int screenGiSlices=4;
-        [Range(4,16)] public int screenGiSliceSteps=8;
-        [Range(.01f,.5f)] public float screenGiSurfaceThickness=.12f;
+        [InspectorName("Bounce Strength"),Range(0,1)] public float screenGiStrength=.5f;
+        [InspectorName("Bounce Distance (m)"),Range(.1f,30)]
+        [Tooltip("Maximum distance between a receiver and a visible bounce source. Try 5–10 m for nearby station walls. Hidden and off-screen surfaces cannot contribute.")]
+        public float screenGiRadius=.8f;
+        [InspectorName("Sampling Directions"),Range(2,12)]
+        [Tooltip("More directions reduce directional gaps. Cost grows with directions × samples per side × 2. Try 6 directions with 24 samples for broader bounce.")]
+        public int screenGiSlices=4;
+        [InspectorName("Samples Per Side"),Range(4,32)]
+        [Tooltip("Samples along each side of a direction. Increase when extending bounce distance to reduce sparse sampling. Higher values cost more GPU time.")]
+        public int screenGiSliceSteps=8;
+        [InspectorName("Assumed Surface Thickness (m)"),Range(.01f,3)]
+        [Tooltip("Depth represented behind a visible surface. Controls occlusion and light leaks, not bounce distance. Keep thin armour thin; increasing this can over-darken gaps.")]
+        public float screenGiSurfaceThickness=.12f;
         [Header("Occlusion")]
         public bool screenSpaceAmbientOcclusion=true;
         [InspectorName("Occlusion Strength"),Range(0,1)] public float ssaoStrength=1;
         [InspectorName("Direct Light Occlusion"),Range(0,1)] public float ssaoDirectStrength=.1f;
-        [Range(.05f,1)] public float screenGiAoRadius=.3f;
-        [Range(0,3)] public float screenGiAoIntensity=.6f;
+        [InspectorName("AO Distance (m)"),Range(.05f,5)]
+        [Tooltip("Independent occlusion reach. Keep around 0.5–1 m for contacts while testing larger bounce distances. AO and bounce share the sampling budget.")]
+        public float screenGiAoRadius=.3f;
+        [InspectorName("AO Intensity"),Range(0,3)] public float screenGiAoIntensity=.6f;
         [Header("Materials and image")]
         [Min(0)] public float emission=1;
         [Min(0)] public float reflections=1;
@@ -52,6 +66,8 @@ namespace DeathStar
         [Min(0)] public float bloom=.35f;
         [Min(0)] public float bloomThreshold=1;
         [Range(0,1)] public float bloomScatter=.65f;
+        [InspectorName("Lighting Debug View")]
+        [Tooltip("Screen Space Gi Only isolates bounce; Screen Space Ao Only isolates occlusion. Return to Normal to see the combined lighting.")]
         public GiDebugView giDebugView;
         Cubemap environment;
         int environmentHash;
@@ -77,6 +93,8 @@ namespace DeathStar
             Shader.SetGlobalVector("_StationScreenOcclusion",new Vector4(screenSpaceAmbientOcclusion?ssaoStrength:0,ssaoDirectStrength,0,0));
             Shader.SetGlobalFloat("_StationAmbient",ambientLight?1:0);
             Shader.SetGlobalFloat("_StationEmission",emission);
+            Shader.SetGlobalVector("_StationHabitatFamily",TileLook.FamilyColor(TileFamily.Habitat));
+            Shader.SetGlobalVector("_StationHabitatTint",new Vector4(habitatTint.r,habitatTint.g,habitatTint.b,habitatTintEnabled?1:0));
         }
         public void ApplyPost(VolumeProfile p) {
             if(!p)return;

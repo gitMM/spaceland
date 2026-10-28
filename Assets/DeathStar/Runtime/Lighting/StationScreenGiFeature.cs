@@ -68,10 +68,10 @@ namespace DeathStar
             pass.Material=material;
             pass.DebugView=settings.giDebugView;
             pass.Parameters=new Vector4(giAvailable?Mathf.Clamp01(settings.screenGiStrength):0,
-                Mathf.Clamp(settings.screenGiRadius,.1f,2),0,0);
-            pass.SliceParameters=new Vector4(Mathf.Clamp(settings.screenGiSlices,2,8),
-                Mathf.Clamp(settings.screenGiSliceSteps,4,16),Mathf.Clamp(settings.screenGiSurfaceThickness,.01f,.5f),0);
-            pass.AoParameters=new Vector4(Mathf.Clamp(settings.screenGiAoRadius,.05f,1),Mathf.Clamp(settings.screenGiAoIntensity,0,3),0,0);
+                Mathf.Clamp(settings.screenGiRadius,.1f,30),0,0);
+            pass.SliceParameters=new Vector4(Mathf.Clamp(settings.screenGiSlices,2,12),
+                Mathf.Clamp(settings.screenGiSliceSteps,4,32),Mathf.Clamp(settings.screenGiSurfaceThickness,.01f,3),0);
+            pass.AoParameters=new Vector4(Mathf.Clamp(settings.screenGiAoRadius,.05f,5),Mathf.Clamp(settings.screenGiAoIntensity,0,3),0,0);
             pass.DirectAo=settings.ssaoDirectStrength;
 
             // AO writes its own texture and never reads camera color. Only the

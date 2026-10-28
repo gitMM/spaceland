@@ -6,7 +6,9 @@ Shader "DeathStar/Tile Surface"
 {
     Properties
     {
-        _BaseColor("Base colour", Color) = (0.6, 0.6, 0.6, 1)
+        // TileLook authors linear reflectance. A Color property applies an
+        // extra sRGB decode (.36 becomes .106), suppressing both bounce ends.
+        _BaseColor("Base reflectance (linear)", Vector) = (0.6, 0.6, 0.6, 1)
         _Metallic("Metallic", Range(0, 1)) = 0
         _Smoothness("Smoothness", Range(0, 1)) = 0.3
         [HDR] _Emission("Emission", Color) = (0, 0, 0, 0)
