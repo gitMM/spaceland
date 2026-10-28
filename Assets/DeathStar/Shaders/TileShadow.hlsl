@@ -28,6 +28,6 @@ TileShadowVaryings TileShadowVert(TileAttributes v)
     return o;
 }
 
-half4 TileShadowFrag(TileShadowVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return 0; }
+half4 TileShadowFrag(TileShadowVaryings i) : SV_Target { TileKitClip(i.fade, i.positionCS); return 0; }
 
 #endif

@@ -64,7 +64,6 @@ Shader "DeathStar/Tile Surface"
             #pragma multi_compile _ _LIGHT_LAYERS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_instancing
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
 
             #include "TileSurfacePass.hlsl"
             ENDHLSL
@@ -90,7 +89,6 @@ Shader "DeathStar/Tile Surface"
             #pragma multi_compile _ _LIGHT_LAYERS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_instancing
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
 
             #include "TileSurfacePass.hlsl"
             ENDHLSL
@@ -109,7 +107,6 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileShadowVert
             #pragma fragment TileShadowFrag
             #pragma multi_compile_instancing
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             #include "TileShadow.hlsl"
             ENDHLSL
@@ -128,7 +125,6 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileDepthVert
             #pragma fragment TileDepthFrag
             #pragma multi_compile_instancing
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
             ENDHLSL
         }
 
@@ -144,7 +140,6 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileDepthNormalVert
             #pragma fragment TileDepthNormalFrag
             #pragma multi_compile_instancing
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
             ENDHLSL
         }
     }

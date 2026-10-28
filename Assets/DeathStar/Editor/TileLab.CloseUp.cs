@@ -19,6 +19,8 @@ namespace DeathStar.EditorTools
     //   closeup part=relief     the relief trace against the mesh carving from 20 to 250 m, the far level as it was
     //                           (plain armour), and the triangles each view draws with the mid level against without
     //   closeup part=fold       measure the carving's average effect once its plates have sunk (TileReliefFold.hlsl)
+    //   closeup part=wear       Edge Wear Width at 1, 4 and 10, close up
+    //   closeup part=reliefview the relief view (carving orange, traced plates cyan) over gallery views and two close spots
     //   closeup part=nan        Foundry (bent) tiles at 12, 30 and 60 m: no NaN or infinite pixels, each feature off in turn
     //   closeup part=orbit      the station from 200 m to orbit: tiles against chunks, each against tiles rendered at
     //                           16 samples a pixel
@@ -62,6 +64,46 @@ namespace DeathStar.EditorTools
                     case "kit":KitCheck(rig,md,checks);break;
                     case "relief":ReliefCheck(rig,md,checks);break;
                     case "orbit":OrbitCheck(rig,md,checks);break;
+                    case "wear":
+                    {
+                        // Edge Wear Width at 1, 4 and 10 on two close spots.
+                        var savedWidth=settings.edgeWearWidth;settings.kitProps=false;
+                        var sheet=new List<Texture2D>();
+                        try
+                        {
+                            foreach(var spot in Spots(rig,"command","hull"))
+                            {
+                                if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
+                                settings.sunFrom=SideSun(normal,dir,25);ApplyLights(rig);
+                                foreach(float width in new[]{1f,4f,10f}){settings.edgeWearWidth=width;sheet.Add(rig.Shoot(Stand(hit,normal,dir,2,spot.elevation),W,H));}
+                            }
+                        }
+                        finally{settings.edgeWearWidth=savedWidth;}
+                        SaveSheet(sheet,3,Path.Combine(CloseDir,"wear-width.png"));foreach(var t in sheet)UnityEngine.Object.DestroyImmediate(t);
+                        md.AppendLine("# Edge wear width");md.AppendLine();md.AppendLine("Columns: Edge Wear Width 1, 4, 10. Rows: command and hull at 2 m.");
+                        break;
+                    }
+                    case "reliefview":
+                    {
+                        // The relief view over a few gallery views and two close spots: carving orange, traced plates cyan.
+                        var saved2=settings.reliefDebug;settings.reliefDebug=true;settings.kitProps=false;ApplyLights(rig);   // (builds the stage)
+                        try
+                        {
+                            foreach(var (name,view,_) in Views)
+                            {
+                                if(name!="fragment"&&name!="surface"&&name!="trench"&&name!="station")continue;
+                                var t=rig.Shoot(view(),W,H);Save(t,Path.Combine(CloseDir,"reliefview-"+name+".png"));UnityEngine.Object.DestroyImmediate(t);
+                            }
+                            foreach(var spot in Spots(rig,"defense","command"))
+                            {
+                                if(!Aim(rig.Stage.root,spot,out var hit,out var normal,out var dir))continue;
+                                var t=rig.Shoot(Stand(hit,normal,dir,25,spot.elevation),W,H);Save(t,Path.Combine(CloseDir,$"reliefview-{spot.name}-25m.png"));UnityEngine.Object.DestroyImmediate(t);
+                            }
+                        }
+                        finally{settings.reliefDebug=saved2;}
+                        md.AppendLine("# Relief view");md.AppendLine();md.AppendLine("Carving built as geometry orange, plates traced by the shader cyan (dimmer as they sink), the face between traced plates blue, everything else grey.");
+                        break;
+                    }
                     case "nan":
                     {
                         // A Foundry seed with a Defense and a Habitat tile beside it, seen from about 30 m (the Foundry's own view).

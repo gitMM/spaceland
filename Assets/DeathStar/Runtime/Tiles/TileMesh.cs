@@ -8,7 +8,8 @@ namespace DeathStar
     public enum TileSlot { Paint, Trim, Dark, Metal, Recess, Glass, Light, Accent }
 
     // Surface treatment read by DeathStar/Tile Surface from uv0.x.
-    public enum TilePattern { Plain, Panels, Hazard, Deck, Grille, Markings, Armour }
+    // Carved: the near level's armour carving (plates and the face under them), plain paint marked for the relief view.
+    public enum TilePattern { Plain, Panels, Hazard, Deck, Grille, Markings, Armour, Carved }
 
     public readonly struct Finish
     {

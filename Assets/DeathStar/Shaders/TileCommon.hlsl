@@ -7,16 +7,6 @@
 //   uv3 = family overlay colour (alpha 0 for none).
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-#if defined(LOD_FADE_CROSSFADE)
-    #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
-#endif
-// A tile's levels of detail dither across each other (TileGallery.SetLods).
-void TileCrossFade(float4 positionCS)
-{
-    #if defined(LOD_FADE_CROSSFADE)
-        LODFadeCrossFade(positionCS);
-    #endif
-}
 
 struct TileAttributes
 {
@@ -108,7 +98,7 @@ TileDepthVaryings TileDepthVert(TileAttributes v)
     o.fade = TileKitFade();
     return o;
 }
-half TileDepthFrag(TileDepthVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return i.positionCS.z; }
+half TileDepthFrag(TileDepthVaryings i) : SV_Target { TileKitClip(i.fade, i.positionCS); return i.positionCS.z; }
 
 struct TileDepthNormalVaryings
 {
@@ -125,6 +115,6 @@ TileDepthNormalVaryings TileDepthNormalVert(TileAttributes v)
     o.fade = TileKitFade();
     return o;
 }
-half4 TileDepthNormalFrag(TileDepthNormalVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return half4(NormalizeNormalPerPixel(i.normalWS), 0.0); }
+half4 TileDepthNormalFrag(TileDepthNormalVaryings i) : SV_Target { TileKitClip(i.fade, i.positionCS); return half4(NormalizeNormalPerPixel(i.normalWS), 0.0); }
 
 #endif

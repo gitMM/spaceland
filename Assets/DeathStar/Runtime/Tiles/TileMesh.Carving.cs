@@ -209,7 +209,7 @@ namespace DeathStar
         int CarveFace(in Job j)
         {
             Vector3 A=j.A,B=j.B,C=j.C,D=j.D,N=j.N;
-            var plain=j.f.With(TilePattern.Plain);
+            var plain=j.f.With(TilePattern.Carved);
             // A face under another solid (a box's foot, a plinth's top under a tower) is left out.
             var mid=(A+B+C+D)*0.25f;
             bool Under(Vector3 p)=>InSolid(Vector3.MoveTowards(p,mid,0.01f)+N*0.01f);

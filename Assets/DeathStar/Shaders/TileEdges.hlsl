@@ -14,6 +14,8 @@
 // Globals (StationLightingSettings): _TileStyle x 1 turns edges on, y wear, z edge highlight, w crease darkness;
 // _TileDetail x 1 turns fine detail on, y density, z painted metal strength, w the base texture's size in metres.
 float4 _TileStyle;
+// x: how far wear chips reach, in bevels (0 unset: 1).
+float4 _TileStyle2;
 float4 _TileDetail;
 // Global: how many times supersampled the picture is (the lab), so fades follow the final picture's pixels. 0 = 1.
 float _TileFootprintScale;
@@ -306,7 +308,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
     // Wear chips: flat blocks of light, glossy bare metal along sharp convex edges (pixel-art wear: lighter than
     // the paint, never darker), from stepped noise in square blocks about a part's hundredth across. Under about
     // three pixels a block they turn to their average coverage instead of shimmering.
-    float wearBand = r * 2.5;
+    float wearBand = r * 2.5 * (_TileStyle2.x > 0 ? _TileStyle2.x : 1);
     float reach = saturate(1 - dist / wearBand);
     float cell = clamp(part * .03, .01, .02);
     float2 block = floor(q / cell);

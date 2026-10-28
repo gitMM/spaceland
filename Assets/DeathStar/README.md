@@ -397,6 +397,7 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
   3.5 s build, 24 bytes a vertex.
 - **Fine detail and painted metal**: in each face's own rectangle, screws at corners and along edges, an inset groove,
   dot-grid grilles, warning triangles, crosses, labels and indicator lights (a station-space random per face, uv0.w);
+  **Edge Wear Width** sets how far wear chips reach in from an edge (0.5-12 times its bevel);
   a low-contrast painted metal (`TileLook.MetalTexture`) with hashed tiling. Everything fades by its size on screen.
 - **Kit near the player** (`StationKit`, `KitProps`, `KitRoutes`): ten TileMesh-built props on rectangular plates within
   a ring round the camera (or `ringCentre`), 14-20 m, grown from flat and dithered out at the edge; beyond it TileSurface
@@ -404,9 +405,10 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
   box colliders within 4 m in play.
 - **Relief trace and mid level** (`TileRelief.hlsl`): the armour carving's layout in HLSL; mid and far meshes leave
   armour plain with its station position and layout in uv6, and TileSurface walks the view ray through the plates, traces
-  the sun for their shadows and writes conservative depth. Tiles now have three levels crossfading by dither: carving
-  to about 30 m, the mid level (full forms, traced armour) to 110 m, the far level. Plates sink into the face from 150 to
-  250 m.
+  the sun for their shadows and writes conservative depth. Tiles now have three levels: carving up close, the mid level
+  (full forms, traced armour) to about 110 m, the far level; through a narrow band at each handover both levels draw
+  whole (traced plates sit 3 mm behind real ones), so nothing pops or dithers. Plates sink into the face from 150 to
+  250 m. **Show Relief (debug)** colours real carving orange and traced plates cyan, dimmer as they sink.
 - **Fold** (`ReliefFold.cs` writes `TileReliefFold.hlsl`): the carving's average sun visibility by sun height, cavity,
   seam darkening and roughness, measured once over random faces, applied as the plates sink.
 - **Chunks for orbit** (`StationChunks`): each 8 x 8 x 8 chunk's exposed cell faces merged into rectangles, its tiles
@@ -416,5 +418,6 @@ existing lighting comparisons to `DeathStarRuns/Lighting`.
 `tools/tile-lab.sh closeup part=...` checks each: `contact` (20, 60, 150 m under a low sun), `surface` (1, 5, 20 m, and
 the vertex and build cost), `detail` (1, 5 m, and shimmer at 20 m against a 16-sample reference), `kit` (a walk past the
 ring's edge, grow-in against a hard edge, and frame cost), `relief` (trace against carving from 20 to 250 m, and the
-triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chunks against a 16-sample reference).
+triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chunks against a 16-sample reference),
+`nan` (no NaN pixels on bent Foundry tiles), `reliefview` (the relief view), `wear` (Edge Wear Width 1, 4, 10).
 

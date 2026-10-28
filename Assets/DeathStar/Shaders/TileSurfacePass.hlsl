@@ -4,7 +4,7 @@
 #include "TileRelief.hlsl"
 #include "TileReliefFold.hlsl"
 // Global (StationLightingSettings): x 1 traces the armour's relief on plain armour, y and z the distances over which the
-// plates sink into the face.
+// plates sink into the face, w 1 shows the relief view (carving orange, traced plates cyan dimming as they sink).
 float4 _TileRelief;
 float _StationAmbient, _StationEmission;
 float4 _StationHabitatFamily, _StationHabitatTint;
@@ -81,7 +81,6 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
 #endif
             {
                 UNITY_SETUP_INSTANCE_ID(i);
-                TileCrossFade(i.positionCS);
                 #if !defined(STATION_GI_SOURCE)
                 // Interpolated depth isn't bit for bit the depth prepass's: nudge it toward the camera so the opaque
                 // pass's depth test against the prepass never drops a pixel.
@@ -168,9 +167,12 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                 float reliefFootprint = TileFootprint(i.positionWS);
                 float3 surfaceWS = i.positionWS;
                 half occlusion = 1;
+                float reliefShown = -1, reliefPlate = 0;   // for the relief view: how high the plates stand, and plate or face
                 StationSurfaceShadow = 1;
                 // The armour's plates, traced where the mesh left the armour plain (mid and far levels).
-                if (_TileRelief.x > .5 && i.relief.w != 0)
+                // (a mesh without uv6 reads w as 1; a real layout code is never under 2 either way)
+                bool hasRelief = abs(i.relief.w) > 1.5;
+                if (_TileRelief.x > .5 && hasRelief)
                 {
                     int c = (int)round(i.relief.w), m = c >> 1, layout = ((m % 9) + 9) % 9;
                     ReliefFace face; face.ua = layout / 3; face.va = layout % 3; face.ax = 3 - face.ua - face.va;
@@ -195,6 +197,7 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                         float3 dirS = normalize(mul(toStation, i.positionWS - _WorldSpaceCameraPos));
                         float3 sunS = normalize(mul(toStation, _MainLightPosition.xyz));
                         ReliefHit hit = ReliefTrace(face, s0, ns, dirS, sunS, lower, footprint * 1.5);
+                        reliefShown = lower; reliefPlate = hit.height > 0 ? 1 : 0;
                         surfaceWS = i.positionWS + mul(toWorld, hit.station - s0);
                         if (dot(hit.wall, hit.wall) > 0) shadingN = normalize(mul(toWorld, hit.wall));
                         // plate tones and the dark face showing in gaps fade as the plates sink...
@@ -215,7 +218,9 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                         if (any(!isfinite(surfaceWS)) || any(!isfinite(shadingN)) || !isfinite(StationSurfaceShadow))
                         { surfaceWS = i.positionWS; shadingN = edged.normalWS; StationSurfaceShadow = 1; }
                         #if !defined(STATION_GI_SOURCE)
-                        float4 clip = TransformWorldToHClip(surfaceWS);
+                        // 3 mm behind where it hit: where a real plate of the near level shares a handover band with it,
+                        // the plate wins instead of the two fighting.
+                        float4 clip = TransformWorldToHClip(surfaceWS + normalize(surfaceWS - _WorldSpaceCameraPos) * .003);
                         depth = max(TILE_NEARER(clip.z / clip.w), depth);   // (conservative: never farther than the face)
                         #endif
                     }
@@ -235,6 +240,19 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                     shadingN = normalize(baked.rgb * 2 - 1); occlusion = baked.a;
                 }
                 if (_TileClay > 0.5) { albedo = 0.36; metallic = 0; smooth = 0.25; emission = 0; }
+                #if !defined(STATION_GI_SOURCE)
+                // Relief view: the near level's carving orange, plates traced by the shader cyan (the face between them
+                // blue), dimmer as they sink into the face; everything else grey.
+                if (_TileRelief.w > .5)
+                {
+                    half3 tint = half3(.12, .12, .12);
+                    if (code == 7) tint = half3(1, .45, .08);
+                    if (reliefShown >= 0) tint = lerp(half3(.05, .12, .3), reliefPlate > 0 ? half3(.1, .95, 1) : half3(.1, .3, .9), .25 + .75 * reliefShown);
+                    else if (hasRelief) tint = half3(.12, .2, .45);   // the plain band along a traced face's edges
+                    // mostly glowing, so the sun can't wash the colours out; a little lit, to keep the forms
+                    albedo = tint * .12; metallic = 0; smooth = .1; emission = tint * .7;
+                }
+                #endif
                 // Planning overlay: family colour over the relief's own light and shade; untyped hull dims a little.
                 half4 overlay = _TileOverlayTint.a > 0.5 ? (half4)_TileOverlayTint : i.overlay;
 #if !defined(STATION_GI_SOURCE)

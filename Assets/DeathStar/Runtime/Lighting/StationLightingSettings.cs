@@ -85,6 +85,8 @@ namespace DeathStar
         [Tooltip("Rounded bevels, warm edge highlights, worn chips and dark creases from each face's own edges (TileMesh.Edges.cs). Shading only.")]
         public bool closeUpSurface=true;
         [InspectorName("Edge Wear"),Range(0,1)] public float edgeWear=.5f;
+        [InspectorName("Edge Wear Width"),Range(0.5f,12),Tooltip("How far worn chips reach in from an edge, in times the edge's bevel (a part's size sets the bevel: 0.6-4 cm).")]
+        public float edgeWearWidth=1;
         [InspectorName("Edge Highlight"),Range(0,1)] public float edgeHighlight=.6f;
         [InspectorName("Crease Darkness"),Range(0,1)] public float creaseDarkness=.7f;
         [Tooltip("Screws, hole grids, carved grooves and small stencils on plates, and the painted metal base texture.")]
@@ -95,6 +97,8 @@ namespace DeathStar
         public bool reliefTrace=true;
         [InspectorName("Relief Lowered From (m)"),Range(20,500)] public float reliefLowerNear=150;
         [InspectorName("Relief Flat At (m)"),Range(30,800)] public float reliefLowerFar=250;
+        [InspectorName("Show Relief (debug)"),Tooltip("Carving built as geometry orange, plates traced by the shader cyan (dimmer as they sink), everything else grey.")]
+        public bool reliefDebug;
         [Header("Kit near the player")]
         [Tooltip("Small props (vents, hatches, boxes, pipes, lights...) on hull plates within a ring round the camera, grown in from flat at its edge (StationKit).")]
         public bool kitProps=true;
@@ -138,7 +142,8 @@ namespace DeathStar
             Shader.SetGlobalFloat("_StationAmbient",ambientLight?1:0);
             Shader.SetGlobalFloat("_StationEmission",emission);
             Shader.SetGlobalVector("_TileStyle",new Vector4(closeUpSurface?1:0,edgeWear,edgeHighlight,creaseDarkness));
-            Shader.SetGlobalVector("_TileRelief",new Vector4(reliefTrace?1:0,reliefLowerNear,Mathf.Max(reliefLowerFar,reliefLowerNear+1),0));
+            Shader.SetGlobalVector("_TileStyle2",new Vector4(edgeWearWidth,0,0,0));
+            Shader.SetGlobalVector("_TileRelief",new Vector4(reliefTrace?1:0,reliefLowerNear,Mathf.Max(reliefLowerFar,reliefLowerNear+1),reliefDebug?1:0));
             Shader.SetGlobalVector("_TileDetail",new Vector4(fineDetail?1:0,detailDensity,fineDetail?paintedMetal:0,1.5f));
             Shader.SetGlobalVector("_StationHabitatFamily",TileLook.FamilyColor(TileFamily.Habitat));
             Shader.SetGlobalVector("_StationHabitatTint",new Vector4(habitatTint.r,habitatTint.g,habitatTint.b,habitatTintEnabled?1:0));

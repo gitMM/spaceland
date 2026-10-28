@@ -122,8 +122,8 @@ namespace DeathStar
             go.transform.SetParent(parent,false);return go;
         }
         // A tile seen from further than about 30 m (a 5 m cube over ~170 px at 1080p) hands its armour carving over to
-        // the relief trace on plain armour (the mid level), dithering across; from about 110 m (~45 px) it takes the far
-        // level, with coarse forms and kits.
+        // the relief trace on plain armour (the mid level); from about 110 m (~45 px) it takes the far level, with coarse
+        // forms and kits.
         public const float MidDetail=0.6f,NearDetail=0.16f;
         static void AddTile(GameObject parent,string name,Mesh near,Mesh mid,Mesh far,Vector3 position,TileLibrary lib,bool dontSave)
         {
@@ -134,7 +134,9 @@ namespace DeathStar
             var r2=Add(go,"Far",far,Vector3.zero,Quaternion.identity,lib,dontSave);
             SetLods(go.AddComponent<LODGroup>(),r0,r1,r2);
         }
-        // Near, mid (may be null) and far, crossfading by dither so no level pops in.
+        // Near, mid (may be null) and far. Through a narrow band at each handover both levels draw, whole: they show the
+        // same plates (the traced ones sit a little behind real ones, so geometry wins), so nothing pops and nothing is
+        // dithered. TileSurface takes no LOD cross-fade keyword.
         public static void SetLods(LODGroup group,Renderer near,Renderer mid,Renderer far)
         {
             group.fadeMode=LODFadeMode.CrossFade;group.animateCrossFading=false;
