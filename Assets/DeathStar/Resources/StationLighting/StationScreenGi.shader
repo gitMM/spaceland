@@ -90,6 +90,65 @@ Shader "Hidden/DeathStar/Screen GI"
             color.rgb+=indirect;
             return color;
         }
+        // Sun contact shadows: march from each visible surface toward the sun through the depth buffer. A step
+        // lands in shadow when the visible surface there is in front of it by less than the assumed thickness.
+        float4 _ContactParams;   // length near, length far, far distance, thickness
+        float4 _ContactSettings; // steps, strength
+        float4 _ContactLightDir; // toward the sun, world space
+        float ContactShadow(Varyings input):SV_Target {
+            float3 p,n;float eye;
+            if(!Surface(input.texcoord,p,n,eye))return 1;
+            float3 l=normalize(_ContactLightDir.xyz);
+            // Faces turned from the sun get no direct light to shadow.
+            if(dot(n,l)<=.01)return 1;
+            float len=lerp(_ContactParams.x,_ContactParams.y,saturate(eye/_ContactParams.z));
+            float thickness=_ContactParams.w;
+            int steps=(int)_ContactSettings.x;
+            // One pixel's footprint per metre of eye depth.
+            // (The camera's own projection: in a blit the GPU projection can be flipped, with m11 negative.)
+            float pixel=2/(abs(unity_CameraProjection._m11)*_ScaledScreenParams.y);
+            // Start off the receiver by about a pixel so its own depth samples never shadow it.
+            float3 start=p+(n+l)*(.003+eye*pixel);
+            float jitter=InterleavedGradientNoise(input.positionCS.xy,0);
+            // In a blit URP's view-projection can be flipped against the inverse that rebuilt p (its own source notes
+            // invP*P may not be I). Calibrate on the pixel itself: if p projects to the mirrored row, mirror every step.
+            float selfY=ComputeNormalizedDeviceCoordinates(p,UNITY_MATRIX_VP).y;
+            bool mirror=abs(1-selfY-input.texcoord.y)<abs(selfY-input.texcoord.y);
+            float shadow=0;
+            [loop] for(int i=0;i<steps;i++) {
+                float t=(i+jitter)/steps;t*=t;   // denser near the receiver, where contacts are
+                float3 q=start+l*(len*t);
+                float3 ndc=ComputeNormalizedDeviceCoordinatesWithZ(q,UNITY_MATRIX_VP);
+                if(mirror)ndc.y=1-ndc.y;
+                if(any(ndc.xy<=0)||any(ndc.xy>=1))break;
+                float ray=-TransformWorldToView(q).z;
+                if(ray<=0)break;
+                float scene=LinearEyeDepth(SampleSceneDepth(ndc.xy),_ZBufferParams);
+                float gap=ray-scene;
+                // Depth is stored per pixel centre: allow for the slope across a pixel at this depth.
+                float tolerance=.002+ray*pixel*1.5;
+                float hit=saturate((gap-tolerance)/tolerance)*saturate((thickness-gap)/(thickness*.25));
+                // The last quarter of the ray fades, so the shadow map takes over without a hard end.
+                shadow=max(shadow,hit*saturate((1-t)*4));
+            }
+            return 1-shadow*_ContactSettings.y;
+        }
+        // The march jitters per pixel; a 3 x 3 average over neighbours at the same depth turns its dither into a soft
+        // penumbra without bleeding across silhouettes.
+        TEXTURE2D_X(_ContactRaw);
+        float ContactBlur(Varyings input):SV_Target {
+            uint2 pixel=(uint2)input.positionCS.xy;
+            float raw=LOAD_TEXTURE2D_X(_CameraDepthTexture,pixel).r;
+            float eye=LinearEyeDepth(raw,_ZBufferParams);
+            float sum=0,weights=0;
+            [unroll] for(int y=-1;y<=1;y++) [unroll] for(int x=-1;x<=1;x++) {
+                int2 q=clamp(int2(pixel)+int2(x,y),0,int2(_ScaledScreenParams.xy)-1);
+                float e=LinearEyeDepth(LOAD_TEXTURE2D_X(_CameraDepthTexture,q).r,_ZBufferParams);
+                float w=exp2(-abs(e-eye)/max(eye*.01,1e-3))*(x==0&&y==0?2:1);
+                sum+=LOAD_TEXTURE2D_X(_ContactRaw,q).r*w;weights+=w;
+            }
+            return sum/max(weights,1e-5);
+        }
         TEXTURE2D_X(_GiDebugAo);
         float4 ShowAo(Varyings input):SV_Target {
             float ao=SAMPLE_TEXTURE2D_X_LOD(_GiDebugAo,sampler_PointClamp,input.texcoord,0).r;
@@ -140,6 +199,21 @@ Shader "Hidden/DeathStar/Screen GI"
             #pragma vertex Vert
             #pragma fragment TraceAo
             #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            ENDHLSL
+        }
+        Pass {
+            Name "Sun contact shadows"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment ContactShadow
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            ENDHLSL
+        }
+        Pass {
+            Name "Sun contact shadow blur"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment ContactBlur
             ENDHLSL
         }
     }

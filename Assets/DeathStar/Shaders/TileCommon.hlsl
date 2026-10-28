@@ -2,10 +2,21 @@
 #define DEATHSTAR_TILE_COMMON_INCLUDED
 
 // Shared by the settlement tile shaders. Vertex layout from TileMesh:
-//   color.rgb tint, color.a wear;  uv0 = (TilePattern, seed);  uv1 = pane metres;  uv2 = pane size;
+//   color.rgb tint, color.a wear;  uv0 = (TilePattern, seed, edge kinds, part thickness);
+//   uv1, uv2 = distances to the face's edges 0-3 and 4-7 (TileMesh.Edges.cs), or on glass pane metres and pane size in xy;
 //   uv3 = family overlay colour (alpha 0 for none).
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#if defined(LOD_FADE_CROSSFADE)
+    #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
+#endif
+// A tile's levels of detail dither across each other (TileGallery.SetLods).
+void TileCrossFade(float4 positionCS)
+{
+    #if defined(LOD_FADE_CROSSFADE)
+        LODFadeCrossFade(positionCS);
+    #endif
+}
 
 struct TileAttributes
 {
@@ -13,19 +24,44 @@ struct TileAttributes
     float3 normalOS   : NORMAL;
     float4 tangentOS  : TANGENT;
     float4 color      : COLOR;
-    float2 code       : TEXCOORD0;
-    float2 local      : TEXCOORD1;
-    float2 extent     : TEXCOORD2;
+    float4 code       : TEXCOORD0;
+    float4 local      : TEXCOORD1;
+    float4 extent     : TEXCOORD2;
     float4 overlay    : TEXCOORD3;
+    float4 relief     : TEXCOORD6;   // plain armour of the mid and far levels: station position, layout (TileRelief.hlsl)
+    float2 atlas      : TEXCOORD7;   // StationChunks: where a chunk's massing reads its baked atlas
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
 // Global: 1 renders every tile surface as plain grey clay (relief check).
 float _TileClay;
+// Global, while StationChunks bakes: 1 writes world normal and height over _TileBakePlane (xyz normal, w offset),
+// 2 colour and glow, instead of lighting.
+float _TileBake;
+float4 _TileBakePlane;
 // Global: 1 tints every tile with its family's overlay colour (planning view).
 float _TileOverlay;
 // Per renderer: alpha 1 replaces the family colour with this one (the Foundry's shape view).
 float4 _TileOverlayTint;
+// StationKit's props, by their material copies (TILE_KIT_MODE, a per-material value so nothing leaks to the tiles'
+// batched draws): 1 instanced props, which take how far they have grown from their own y over x scale; 2 pipes and
+// cables, world-space meshes flattened along their plate's normal, whose matrix's determinant is how far they have
+// grown. As they flatten they also dither out, so a prop leaving at the ring's edge never pops.
+#ifndef TILE_KIT_MODE
+    #define TILE_KIT_MODE 0
+#endif
+float TileKitFade()
+{
+    float mode = TILE_KIT_MODE;
+    if (mode < .5) return 1;
+    if (mode > 1.5) return saturate(determinant((float3x3)UNITY_MATRIX_M));
+    float3 x = float3(UNITY_MATRIX_M._m00, UNITY_MATRIX_M._m10, UNITY_MATRIX_M._m20), y = float3(UNITY_MATRIX_M._m01, UNITY_MATRIX_M._m11, UNITY_MATRIX_M._m21);
+    return saturate(length(y) / max(length(x), 1e-5));
+}
+void TileKitClip(float fade, float4 positionCS)
+{
+    if (fade < 1) clip(fade - InterleavedGradientNoise(positionCS.xy, 0) * .998 - .001);
+}
 
 float TileHash(float2 p)
 {
@@ -59,17 +95,26 @@ float Stripe(float x, float duty)
 float GridLine(float x, float duty) { return Stripe(x + duty * 0.5, duty); }
 
 
-float4 TileDepthVert(TileAttributes v) : SV_POSITION
+struct TileDepthVaryings
 {
+    float4 positionCS : SV_POSITION;
+    float fade        : TEXCOORD0;
+};
+TileDepthVaryings TileDepthVert(TileAttributes v)
+{
+    TileDepthVaryings o;
     UNITY_SETUP_INSTANCE_ID(v);
-    return TransformObjectToHClip(v.positionOS.xyz);
+    o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
+    o.fade = TileKitFade();
+    return o;
 }
-half TileDepthFrag(float4 positionCS : SV_POSITION) : SV_Target { return positionCS.z; }
+half TileDepthFrag(TileDepthVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return i.positionCS.z; }
 
 struct TileDepthNormalVaryings
 {
     float4 positionCS : SV_POSITION;
     float3 normalWS   : TEXCOORD0;
+    float fade        : TEXCOORD1;
 };
 TileDepthNormalVaryings TileDepthNormalVert(TileAttributes v)
 {
@@ -77,8 +122,9 @@ TileDepthNormalVaryings TileDepthNormalVert(TileAttributes v)
     UNITY_SETUP_INSTANCE_ID(v);
     o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
     o.normalWS = TransformObjectToWorldNormal(v.normalOS);
+    o.fade = TileKitFade();
     return o;
 }
-half4 TileDepthNormalFrag(TileDepthNormalVaryings i) : SV_Target { return half4(NormalizeNormalPerPixel(i.normalWS), 0.0); }
+half4 TileDepthNormalFrag(TileDepthNormalVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return half4(NormalizeNormalPerPixel(i.normalWS), 0.0); }
 
 #endif

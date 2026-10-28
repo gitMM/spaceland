@@ -18,6 +18,24 @@ float4 StationDirectSettings()
 {
     return _StationLightingControlled > .5 ? _StationDirectLighting : float4(1,1,1,1);
 }
+// Sun contact shadows, traced through this camera's depth by StationScreenGiFeature. x is 1 only while the
+// texture belongs to the camera being drawn.
+TEXTURE2D_X(_StationContactShadowTexture);
+float4 _StationContactShadowParams;
+// screenUV: the pixel's normalized screen position (InputData.normalizedScreenSpaceUV), which matches how the
+// full-screen pass wrote the texture.
+// A surface's own shadow on the sun beyond the shadow map (the relief trace's plates); set before shading.
+static half StationSurfaceShadow = 1;
+half StationContactShadow(float2 screenUV)
+{
+    #if defined(_SURFACE_TYPE_TRANSPARENT)
+        return 1;
+    #else
+        if (_StationContactShadowParams.x < .5 || StationDirectSettings().z <= 0) return 1;
+        uint2 pixel = (uint2)clamp(screenUV * _ScaledScreenParams.xy, 0, _ScaledScreenParams.xy - 1);
+        return LOAD_TEXTURE2D_X(_StationContactShadowTexture, pixel).r;
+    #endif
+}
 // Integral of a unit-height triangular kernel, with support [-radius,+radius].
 // Integrating over real texel cells keeps subtexel motion continuous.
 float StationShadowTentIntegral(float x, float radius)
@@ -268,6 +286,7 @@ Light StationMainLight(float4 shadowCoord, float3 positionWS, half4 shadowMask,h
 Light StationMainLight(InputData inputData, half4 shadowMask, AmbientOcclusionFactor ao)
 {
     Light light = StationMainLight(inputData.shadowCoord,inputData.positionWS,shadowMask,inputData.tangentToWorld[2]);
+    light.shadowAttenuation *= StationContactShadow(inputData.normalizedScreenSpaceUV) * StationSurfaceShadow;
     light.color *= ao.directAmbientOcclusion;
     return light;
 }

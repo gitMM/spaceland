@@ -14,10 +14,11 @@ namespace DeathStar
         Material material;
         GiPass pass;
         CompositePass compositePass;
+        ContactPass contactPass;
         bool customAoActive;
         StationVoxelGi voxels;
         // Keep these indices in the same order as StationScreenGi.shader.
-        const int FilterGiAo=0, CompositeGi=1, ShowAo=2, FilterAo=3, Trace=4, TraceAo=5;
+        const int FilterGiAo=0, CompositeGi=1, ShowAo=2, FilterAo=3, Trace=4, TraceAo=5, Contact=6, ContactBlur=7;
         static readonly int AoTextureId=Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
         static readonly int SourceId=Shader.PropertyToID("_GiSource");
         static readonly int ReceiverId=Shader.PropertyToID("_GiReceiver");
@@ -32,6 +33,12 @@ namespace DeathStar
         static readonly int SliceParametersId=Shader.PropertyToID("_GiSliceParameters");
         static readonly int AoParametersId=Shader.PropertyToID("_GiAoParameters");
         static readonly int AmbientOcclusionId=Shader.PropertyToID("_AmbientOcclusionParam");
+        static readonly int ContactTextureId=Shader.PropertyToID("_StationContactShadowTexture");
+        static readonly int ContactGlobalId=Shader.PropertyToID("_StationContactShadowParams");
+        static readonly int ContactParametersId=Shader.PropertyToID("_ContactParams");
+        static readonly int ContactSettingsId=Shader.PropertyToID("_ContactSettings");
+        static readonly int ContactLightId=Shader.PropertyToID("_ContactLightDir");
+        static readonly int ContactRawId=Shader.PropertyToID("_ContactRaw");
         public override void Create()
         {
             voxels?.Dispose();voxels=new StationVoxelGi();
@@ -41,6 +48,7 @@ namespace DeathStar
             if(shader) material=CoreUtils.CreateEngineMaterial(shader);
             pass=new GiPass();
             compositePass=new CompositePass();
+            contactPass=new ContactPass();
             RenderPipelineManager.endCameraRendering-=EndCamera;
             RenderPipelineManager.endCameraRendering+=EndCamera;
         }
@@ -50,6 +58,8 @@ namespace DeathStar
                 Shader.DisableKeyword("_STATION_SCREEN_OCCLUSION");
             }
             customAoActive=false;
+            // Contact shadows are valid only while their pass has run for the camera being drawn.
+            Shader.SetGlobalVector(ContactGlobalId,Vector4.zero);
         }
         void EndCamera(ScriptableRenderContext context,Camera camera) => ResetAo();
         public override void AddRenderPasses(ScriptableRenderer renderer,ref RenderingData data)
@@ -63,7 +73,17 @@ namespace DeathStar
             bool supported=!data.cameraData.camera.stereoEnabled && data.cameraData.cameraType!=CameraType.Reflection &&
                 data.cameraData.renderType==CameraRenderType.Base && data.cameraData.cameraTargetDescriptor.msaaSamples<=1;
             if(!supported) return;
-            bool aoDebug=settings.giDebugView==GiDebugView.ScreenSpaceAoOnly;
+            if(settings.ContactShadowsActive) {
+                contactPass.Material=material;
+                contactPass.Parameters=new Vector4(Mathf.Max(.05f,settings.contactLengthNear),Mathf.Max(.05f,settings.contactLengthFar),
+                    Mathf.Max(1,settings.contactFarDistance),Mathf.Max(.02f,settings.contactThickness));
+                contactPass.Settings=new Vector4(Mathf.Clamp(settings.contactSteps,4,64),Mathf.Clamp01(settings.contactStrength),0,0);
+                // Before the GI sources are drawn, so bounce sources see the same sun shadows as the receivers.
+                contactPass.renderPassEvent=RenderPassEvent.AfterRenderingGbuffer+1;
+                renderer.EnqueuePass(contactPass);
+            }
+            bool contactDebug=settings.giDebugView==GiDebugView.ContactShadowsOnly;
+            bool aoDebug=settings.giDebugView==GiDebugView.ScreenSpaceAoOnly||contactDebug;
             bool voxelAvailable=!aoDebug && settings.giDebugView!=GiDebugView.ScreenSpaceGiOnly &&
                 settings.giDebugView!=GiDebugView.DiffuseSources && voxels.Prepare(data.cameraData.camera,settings,material);
             if(!voxelAvailable)material.SetVector("_StationVoxelParams",Vector4.zero);
@@ -86,7 +106,7 @@ namespace DeathStar
 
             customAoActive=true;
             compositePass.Material=material;
-            compositePass.AoOnly=aoDebug;
+            compositePass.AoOnly=aoDebug;compositePass.ContactOnly=contactDebug;
             compositePass.GiOnly=settings.giDebugView==GiDebugView.DiffuseSources?2:((settings.giDebugView==GiDebugView.ScreenSpaceGiOnly||settings.giDebugView==GiDebugView.VoxelGiOnly)?1:0);
             renderer.EnqueuePass(pass);
             // Ordinary AO is consumed during opaque shading; it needs no color copy.
@@ -99,13 +119,63 @@ namespace DeathStar
             CoreUtils.Destroy(material);
         }
 
+        sealed class ContactFrame : ContextItem {
+            public TextureHandle Shadow;
+            public override void Reset() {Shadow=TextureHandle.nullHandle;}
+        }
+        // Full-resolution sun visibility from a short march toward the sun through the depth buffer. Opaque station
+        // materials multiply it into the main light's shadow (StationLighting.hlsl).
+        sealed class ContactPass : ScriptableRenderPass {
+            public Material Material;
+            public Vector4 Parameters,Settings;
+            sealed class Data {public Material Material;public TextureHandle Depth,Normals;public Vector4 Parameters,Settings,Light;}
+            sealed class BlurData {public Material Material;public TextureHandle Depth,Raw;}
+            public ContactPass() {ConfigureInput(ScriptableRenderPassInput.Depth|ScriptableRenderPassInput.Normal);requiresIntermediateTexture=false;}
+            public override void RecordRenderGraph(RenderGraph graph,ContextContainer frameData) {
+                var resources=frameData.Get<UniversalResourceData>();
+                var camera=frameData.Get<UniversalCameraData>();
+                var lights=frameData.Get<UniversalLightData>();
+                if(!resources.cameraDepthTexture.IsValid()||!resources.cameraNormalsTexture.IsValid()||lights.mainLightIndex<0)return;
+                Vector3 toSun=-lights.visibleLights[lights.mainLightIndex].localToWorldMatrix.GetColumn(2);
+                var desc=camera.cameraTargetDescriptor;
+                desc.msaaSamples=1;desc.depthBufferBits=0;desc.depthStencilFormat=GraphicsFormat.None;desc.graphicsFormat=GraphicsFormat.R8_UNorm;
+                var raw=UniversalRenderer.CreateRenderGraphTexture(graph,desc,"Station sun contact shadows (raw)",false,FilterMode.Point);
+                var target=UniversalRenderer.CreateRenderGraphTexture(graph,desc,"Station sun contact shadows",false,FilterMode.Point);
+                using(var builder=graph.AddRasterRenderPass<Data>("Station sun contact shadows",out var data)) {
+                    data.Material=Material;data.Depth=resources.cameraDepthTexture;data.Normals=resources.cameraNormalsTexture;
+                    data.Parameters=Parameters;data.Settings=Settings;data.Light=toSun.normalized;
+                    builder.UseTexture(data.Depth);builder.UseTexture(data.Normals);
+                    builder.SetRenderAttachment(raw,0,AccessFlags.Write);
+                    builder.SetRenderFunc((Data d,RasterGraphContext ctx)=> {
+                        d.Material.SetTexture(DepthId,d.Depth);d.Material.SetTexture(NormalsId,d.Normals);
+                        d.Material.SetVector(ContactParametersId,d.Parameters);d.Material.SetVector(ContactSettingsId,d.Settings);
+                        d.Material.SetVector(ContactLightId,d.Light);
+                        Blitter.BlitTexture(ctx.cmd,d.Depth,new Vector4(1,1,0,0),d.Material,Contact);
+                    });
+                }
+                using(var builder=graph.AddRasterRenderPass<BlurData>("Station sun contact shadow blur",out var data)) {
+                    data.Material=Material;data.Depth=resources.cameraDepthTexture;data.Raw=raw;
+                    builder.UseTexture(data.Depth);builder.UseTexture(raw);
+                    builder.SetRenderAttachment(target,0,AccessFlags.Write);
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);builder.SetGlobalTextureAfterPass(target,ContactTextureId);
+                    builder.SetRenderFunc((BlurData d,RasterGraphContext ctx)=> {
+                        d.Material.SetTexture(ContactRawId,d.Raw);d.Material.SetTexture(DepthId,d.Depth);
+                        Blitter.BlitTexture(ctx.cmd,d.Raw,new Vector4(1,1,0,0),d.Material,ContactBlur);
+                        ctx.cmd.SetGlobalVector(ContactGlobalId,new Vector4(1,0,0,0));
+                    });
+                }
+                frameData.Create<ContactFrame>().Shadow=target;
+            }
+        }
+
         sealed class CombinedFrame : ContextItem {
             public TextureHandle Filtered,Receiver,Ao;
             public override void Reset() {Filtered=Receiver=Ao=TextureHandle.nullHandle;}
         }
         sealed class CompositePass : ScriptableRenderPass {
             public Material Material;
-            public bool AoOnly; public int GiOnly;
+            public bool AoOnly,ContactOnly; public int GiOnly;
             sealed class Data {public Material Material; public TextureHandle Color,Filtered,Receiver,Ao;public bool AoOnly; public int GiOnly;}
             public CompositePass() {renderPassEvent=RenderPassEvent.AfterRenderingOpaques+2;requiresIntermediateTexture=true;}
             public override void RecordRenderGraph(RenderGraph graph,ContextContainer frameData) {
@@ -119,6 +189,9 @@ namespace DeathStar
                 using(var builder=graph.AddRasterRenderPass<Data>("Station combined GI composite",out var data)) {
                     data.Material=Material;data.Color=resources.activeColorTexture;data.Filtered=combined.Filtered;data.Receiver=combined.Receiver;
                     data.AoOnly=AoOnly;data.GiOnly=GiOnly;data.Ao=combined.Ao;
+                    // The contact view shows the sun visibility mask through the AO diagnostic (white where lit).
+                    if(ContactOnly)data.Ao=frameData.Contains<ContactFrame>()&&frameData.Get<ContactFrame>().Shadow.IsValid()?
+                        frameData.Get<ContactFrame>().Shadow:graph.defaultResources.whiteTexture;
                     builder.UseTexture(data.Ao);
                     builder.UseTexture(data.Color);builder.UseTexture(data.Filtered);builder.UseTexture(data.Receiver);
                     builder.SetRenderAttachment(output,0,AccessFlags.Write);
@@ -195,6 +268,7 @@ namespace DeathStar
                         // global while it is attached for the Equal depth test.
                         if(resources.mainShadowsTexture.IsValid())builder.UseTexture(resources.mainShadowsTexture);
                         if(resources.additionalShadowsTexture.IsValid())builder.UseTexture(resources.additionalShadowsTexture);
+                        if(frameData.Contains<ContactFrame>()&&frameData.Get<ContactFrame>().Shadow.IsValid())builder.UseTexture(frameData.Get<ContactFrame>().Shadow);
                         builder.SetRenderAttachment(source,0,AccessFlags.Write);
                         builder.SetRenderAttachment(receiver,1,AccessFlags.Write);
                         builder.SetRenderAttachmentDepth(sourceDepth,AccessFlags.ReadWrite);

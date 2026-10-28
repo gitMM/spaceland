@@ -3,6 +3,7 @@
 #   tools/tile-lab.sh report
 #   tools/tile-lab.sh voxelgi   # red habitat, off-screen 20 m transport, second bounce, occlusion and cache/timing checks
 #   tools/tile-lab.sh voxelbench # paired reference/optimized cone throughput on actual station surfaces
+#   tools/tile-lab.sh closeup part=<contact|surface|detail|kit|relief|fold|orbit|nan>   # close-up detail checks -> DeathStarRuns/Tiles/closeup/
 #   tools/tile-lab.sh validate   # solver, curved geometry and Foundry edit/undo/picking checks
 #   tools/tile-lab.sh foundry    # automatically solved curved settlement pictures
 #   tools/tile-lab.sh limit      # just the cap at the build limit (narrowest and flattest cells)

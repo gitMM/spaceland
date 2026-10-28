@@ -132,6 +132,7 @@ namespace DeathStar
             colors.Add(new Color(f.tint.r,f.tint.g,f.tint.b,f.wear));overlays.Add(overlay);
             surfaceFrames.Add(surfaceFrame);
             metricAnchors.Add(metricAnchor);
+            faces.Add(face);
             return positions.Count-1;
         }
         void Emit(TileSlot slot,int a,int b,int c,int d,bool flip)
@@ -147,18 +148,21 @@ namespace DeathStar
         {
             if(dry||Hidden(a,b,c,d,n))return;
             if(f.pattern==TilePattern.Armour&&coarse==0&&Carve(f,a,b,c,d,n))return;
+            NextFace();
             Vector4 t4=t;t4.w=1;
             Emit(f.slot,Vertex(a,n,t4,f),Vertex(b,n,t4,f),Vertex(c,n,t4,f),Vertex(d,n,t4,f),Flip(a,b,c,d,n));
         }
         public void QuadSmooth(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 d,Vector3 na,Vector3 nb,Vector3 nc,Vector3 nd,Vector3 t)
         {
             if(dry||Hidden(a,b,c,d,na+nb+nc+nd))return;
+            NextFace(true);
             Vector4 t4=t;t4.w=1;
             Emit(f.slot,Vertex(a,na,t4,f),Vertex(b,nb,t4,f),Vertex(c,nc,t4,f),Vertex(d,nd,t4,f),Flip(a,b,c,d,na+nb+nc+nd));
         }
         public void Triangle(in Finish f,Vector3 a,Vector3 b,Vector3 c,Vector3 n)
         {
             if(dry)return;
+            NextFace();
             Vector4 t4=(b-a).normalized;t4.w=1;
             int i=Vertex(a,n,t4,f),j=Vertex(b,n,t4,f),k=Vertex(c,n,t4,f);
             var list=indices[(int)f.slot];
@@ -254,7 +258,7 @@ namespace DeathStar
         public void Glass(Rect r,float z)
         {
             if(dry)return;
-            var f=new Finish(TileSlot.Glass);var size=r.size;
+            var f=new Finish(TileSlot.Glass);var size=r.size;NextFace();
             // Tangent along x; w makes cross(normal,tangent)*w point up the pane.
             var t=new Vector4(1,0,0,-1);
             int a=Vertex(new Vector3(r.xMin,r.yMin,z),Vector3.back,t,f,Vector2.zero,size);
@@ -376,12 +380,17 @@ namespace DeathStar
             }
             if(!caps)return;
             Vector3 C=origin+pu*centroid.x+pv*centroid.y;
-            for(int i=0;i<poly.Count;i++)
+            for(int cap=0;cap<2;cap++)
             {
-                Vector2 p=poly[i],q=poly[(i+1)%poly.Count];
-                Vector3 P0=origin+pu*p.x+pv*p.y,Q0=origin+pu*q.x+pv*q.y;
-                Triangle(f,C+axis*a0,P0+axis*a0,Q0+axis*a0,-axis);
-                Triangle(f,C+axis*a1,P0+axis*a1,Q0+axis*a1,axis);
+                float a=cap==0?a0:a1;
+                BeginPolygon();
+                for(int i=0;i<poly.Count;i++)
+                {
+                    Vector2 p=poly[i],q=poly[(i+1)%poly.Count];
+                    Vector3 P0=origin+pu*p.x+pv*p.y,Q0=origin+pu*q.x+pv*q.y;
+                    Triangle(f,C+axis*a,P0+axis*a,Q0+axis*a,cap==0?-axis:axis);
+                }
+                EndPolygon();
             }
         }
         // Flat ring between two polygons with matching corners, at a along axis, facing sign*axis.
@@ -396,17 +405,24 @@ namespace DeathStar
             }
         }
 
-        public Mesh ToMesh(string name){Flush();return Build(name);}
+        public Mesh ToMesh(string name){Flush();return Build(name,true);}
         // For each vertex of the far mesh from the last ToMeshes, the near vertex it is identical to (-1: its own).
         public int[] FarFromNear {get;private set;}
         // The coarse level the last ToMeshes built the Detail parts at (0: none).
         public int FarLevel {get;private set;}
         // The mesh with the armour carved, and a far level of detail: the armour plain, the Detail parts coarse (null if
         // nothing is carved and there is no Detail).
+        // The middle level of the last ToMeshes (null if nothing was carved): the near mesh with the armour plain and its
+        // relief traced instead (TileRelief.hlsl), family forms and kits at full detail. Its vertices before the armour
+        // are the near mesh's own (MidFromNear).
+        public Mesh Mid {get;private set;}
+        public int[] MidFromNear {get;private set;}
         public (Mesh near,Mesh far) ToMeshes(string name)
         {
-            FarFromNear=null;FarLevel=0;
-            if(jobs.Count==0&&details.Count==0)return (Build(name),null);
+            FarFromNear=null;FarLevel=0;Mid=null;MidFromNear=null;
+            if(jobs.Count==0&&details.Count==0)return (Build(name,true),null);
+            var carved=jobs.ToArray();
+            var farJob=new int[carved.Length];for(int k=0;k<farJob.Length;k++)farJob[k]=-1;
             var far=new TileMesh{retainWarpData=retainWarpData,seed=seed,overlay=overlay};var map=new List<int>(positions.Count);
             // Everything outside the Detail ranges, in order; then the armour plain; then the Detail parts, coarse.
             var into=new int[positions.Count];int d=0;
@@ -417,7 +433,7 @@ namespace DeathStar
                 into[v]=far.positions.Count;map.Add(v);
                 far.positions.Add(positions[v]);far.normals.Add(normals[v]);far.tangents.Add(tangents[v]);far.codes.Add(codes[v]);
                 far.local.Add(local[v]);far.extent.Add(extent[v]);far.colors.Add(colors[v]);far.overlays.Add(overlays[v]);
-                far.surfaceFrames.Add(surfaceFrames[v]);far.metricAnchors.Add(metricAnchors[v]);
+                far.surfaceFrames.Add(surfaceFrames[v]);far.metricAnchors.Add(metricAnchors[v]);far.faces.Add(faces[v]);
             }
             for(int i=0;i<SlotCount;i++)
             {
@@ -435,7 +451,7 @@ namespace DeathStar
                 while(d<details.Count&&k>=details[d].j1)d++;
                 if(d<details.Count&&k>=details[d].j0)continue;
                 var j=jobs[k];
-                far.surfaceFrame=j.frame;far.metricAnchor=j.anchor;
+                far.surfaceFrame=j.frame;far.metricAnchor=j.anchor;farJob[k]=far.positions.Count;
                 Vector4 t4=(j.B-j.A).normalized;t4.w=1;
                 far.Emit(j.f.slot,far.Raw(j.A,j.N,t4,j.f),far.Raw(j.B,j.N,t4,j.f),far.Raw(j.C,j.N,t4,j.f),far.Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
                 for(int q=0;q<4;q++)map.Add(-1);
@@ -447,10 +463,51 @@ namespace DeathStar
                 if(farBudget>0&&far.TriangleCount+twin.TriangleCount>farBudget){twin=Coarse(2);FarLevel=2;}
                 int n=twin.positions.Count;twin.MoveTail(far,0,new int[SlotCount]);for(int k=0;k<n;k++)map.Add(-1);
             }
-            var farMesh=far.Build(name+" far");FarFromNear=map.ToArray();
+            // The middle level: every vertex so far, then the armour plain.
+            TileMesh mid=null;var midJob=new int[carved.Length];
+            if(carved.Length>0)
+            {
+                mid=new TileMesh{retainWarpData=retainWarpData,seed=seed,overlay=overlay};
+                mid.positions.AddRange(positions);mid.normals.AddRange(normals);mid.tangents.AddRange(tangents);mid.codes.AddRange(codes);
+                mid.local.AddRange(local);mid.extent.AddRange(extent);mid.colors.AddRange(colors);mid.overlays.AddRange(overlays);
+                mid.surfaceFrames.AddRange(surfaceFrames);mid.metricAnchors.AddRange(metricAnchors);mid.faces.AddRange(faces);
+                for(int i=0;i<SlotCount;i++)mid.indices[i].AddRange(indices[i]);
+                mid.faceCount=faceCount;
+                for(int k=0;k<carved.Length;k++)
+                {
+                    var j=carved[k];mid.surfaceFrame=j.frame;mid.metricAnchor=j.anchor;midJob[k]=mid.positions.Count;
+                    Vector4 t4=(j.B-j.A).normalized;t4.w=1;mid.NextFace();
+                    mid.Emit(j.f.slot,mid.Raw(j.A,j.N,t4,j.f),mid.Raw(j.B,j.N,t4,j.f),mid.Raw(j.C,j.N,t4,j.f),mid.Raw(j.D,j.N,t4,j.f),Flip(j.A,j.B,j.C,j.D,j.N));
+                }
+                var midMap=new int[mid.positions.Count];for(int v=0;v<midMap.Length;v++)midMap[v]=v<positions.Count?v:-1;
+                MidFromNear=midMap;
+            }
             farBuilds.Clear();details.Clear();
             Flush();
-            return (Build(name),farMesh);
+            // Now the carving's outcome per face is known: the relief channel marks the faces the near mesh carved.
+            var farMesh=far.Build(name+" far",false);FarFromNear=map.ToArray();
+            farMesh.SetUVs(6,Relief(far.positions.Count,carved,farJob));
+            if(mid!=null){Mid=mid.Build(name+" mid",true);Mid.SetUVs(6,Relief(mid.positions.Count,carved,midJob));}
+            return (Build(name,true),farMesh);
+        }
+        // uv6 of a mesh with the armour plain (TileRelief.hlsl): on the four vertices of each face the near mesh carved,
+        // its station position and its layout packed as ((key * 9 + ua * 3 + va) * 2 + calm), the way CarveFace lays it
+        // out; zero elsewhere. start: each face's first vertex in that mesh (-1 if it is not there).
+        Vector4[] Relief(int count,Job[] carved,int[] start)
+        {
+            var o=new Vector4[count];
+            for(int k=0;k<carved.Length;k++)
+            {
+                if(start[k]<0||k>=outcomes.Length||outcomes[k]>CarvedCalm)continue;
+                var j=carved[k];var N=j.N;
+                int ax=0;for(int i=1;i<3;i++)if(Mathf.Abs(N[i])>Mathf.Abs(N[ax]))ax=i;
+                int va=courseAxis<0?(ax+2)%3:courseAxis!=ax?courseAxis:courseSide,ua=3-ax-va;
+                int key=ax*2+(N[ax]>0?1:0)+31*Mathf.RoundToInt(Vector3.Dot(N,j.A+stationOffset)*8);
+                float code=((key*9+ua*3+va)*2)+(outcomes[k]==CarvedCalm?1:0);
+                var corners=new[]{j.A,j.B,j.C,j.D};
+                for(int q=0;q<4;q++){var s=corners[q]+stationOffset;o[start[k]+q]=new Vector4(s.x,s.y,s.z,code);}
+            }
+            return o;
         }
         // Moves the vertices from v0 on, and the triangles from i0 on in each slot (which use only those), to the end
         // of another mesh.
@@ -462,6 +519,7 @@ namespace DeathStar
             to.local.AddRange(local.GetRange(v0,n));to.extent.AddRange(extent.GetRange(v0,n));
             to.colors.AddRange(colors.GetRange(v0,n));to.overlays.AddRange(overlays.GetRange(v0,n));
             to.surfaceFrames.AddRange(surfaceFrames.GetRange(v0,n));to.metricAnchors.AddRange(metricAnchors.GetRange(v0,n));
+            to.faces.AddRange(faces.GetRange(v0,n));
             for(int i=0;i<SlotCount;i++)for(int k=i0[i];k<indices[i].Count;k++)to.indices[i].Add(indices[i][k]+offset);
             Truncate(v0,i0);
         }
@@ -471,16 +529,17 @@ namespace DeathStar
             positions.RemoveRange(v0,n);normals.RemoveRange(v0,n);tangents.RemoveRange(v0,n);codes.RemoveRange(v0,n);
             local.RemoveRange(v0,n);extent.RemoveRange(v0,n);colors.RemoveRange(v0,n);overlays.RemoveRange(v0,n);
             surfaceFrames.RemoveRange(v0,n);
-            metricAnchors.RemoveRange(v0,n);
+            metricAnchors.RemoveRange(v0,n);faces.RemoveRange(v0,n);
             for(int i=0;i<SlotCount;i++)indices[i].RemoveRange(i0[i],indices[i].Count-i0[i]);
         }
         // A vertex already in mesh space.
         int Raw(Vector3 p,Vector3 n,Vector4 t,in Finish f){var saved=matrix;matrix=Matrix4x4.identity;int i=Vertex(p,n,t,f);matrix=saved;return i;}
-        Mesh Build(string name)
+        // edges: work out the face edges for the close-up surface (TileMesh.Edges.cs); the far level goes without.
+        Mesh Build(string name,bool edges)
         {
             var mesh=new Mesh{name=name,indexFormat=positions.Count>65535?IndexFormat.UInt32:IndexFormat.UInt16};
             mesh.SetVertices(positions);mesh.SetNormals(normals);mesh.SetTangents(tangents);mesh.SetColors(colors);
-            mesh.SetUVs(0,codes);mesh.SetUVs(1,local);mesh.SetUVs(2,extent);mesh.SetUVs(3,overlays);
+            SetEdgeChannels(mesh,edges);mesh.SetUVs(3,overlays);
             if(retainWarpData){mesh.SetUVs(4,surfaceFrames);mesh.SetUVs(5,metricAnchors);}
             mesh.subMeshCount=SlotCount;
             for(int i=0;i<SlotCount;i++)mesh.SetTriangles(indices[i],i,false);

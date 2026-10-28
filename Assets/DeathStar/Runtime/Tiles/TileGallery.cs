@@ -56,6 +56,7 @@ namespace DeathStar
             stage.structure=TileStructure.Showcase(stage.specimens);
             var builder=new TileBuilder(stage.structure);
             var root=Node("Tile Gallery Stage",parent,dontSave);stage.root=root;
+            root.AddComponent<StationKit>();   // props near the camera on the tiles' plates
             var station=Node("Station",root.transform,dontSave);
             var specimenCells=new Dictionary<Vector3Int,TileFamily>();
             foreach(var sp in stage.specimens)specimenCells[sp.TileCell]=sp.family;
@@ -64,10 +65,11 @@ namespace DeathStar
                 var t=builder.Build(pair.Key);
                 if(t.VertexCount==0)continue;
                 string name=pair.Value.family+" "+pair.Key;
-                var (mesh,far)=t.ToMeshes(name);
+                var (mesh,far)=t.ToMeshes(name);var mid=t.Mid;
                 mesh.hideFlags=HideFlags.DontSave;stage.meshes.Add(mesh);
                 if(far!=null){far.hideFlags=HideFlags.DontSave;stage.meshes.Add(far);}
-                AddTile(station,name,mesh,far,TileStructure.Center(pair.Key),lib,dontSave);
+                if(mid!=null){mid.hideFlags=HideFlags.DontSave;stage.meshes.Add(mid);}
+                AddTile(station,name,mesh,mid,far,TileStructure.Center(pair.Key),lib,dontSave);
                 stage.triangles+=t.TriangleCount;stage.farTriangles+=far!=null?Triangles(far):t.TriangleCount;stage.tiles++;
                 if(specimenCells.TryGetValue(pair.Key,out var fam)&&fam==pair.Value.family)stage.stats[fam]=(t.TriangleCount,t.Bounds);
             }
@@ -108,6 +110,8 @@ namespace DeathStar
                 var grading=Node("Grading",root.transform,dontSave).AddComponent<Volume>();
                 grading.isGlobal=true;grading.sharedProfile=lib.post;
             }
+            // the view from orbit: chunk massing, baked when first needed
+            if(lib!=null)root.AddComponent<StationChunks>().Build(stage.structure,lib.materials[(int)TileSlot.Paint]);
             stage.buildMs=sw.Elapsed.TotalMilliseconds;
             StationVoxelGi.Invalidate();
             return stage;
@@ -117,17 +121,27 @@ namespace DeathStar
             var go=new GameObject(name);if(dontSave)go.hideFlags=HideFlags.DontSave;
             go.transform.SetParent(parent,false);return go;
         }
-        // A tile seen from further than about 110 m (a 5 m cube under ~45 px at 1080p) drops its armour carving.
-        public const float NearDetail=0.16f;
-        static void AddTile(GameObject parent,string name,Mesh near,Mesh far,Vector3 position,TileLibrary lib,bool dontSave)
+        // A tile seen from further than about 30 m (a 5 m cube over ~170 px at 1080p) hands its armour carving over to
+        // the relief trace on plain armour (the mid level), dithering across; from about 110 m (~45 px) it takes the far
+        // level, with coarse forms and kits.
+        public const float MidDetail=0.6f,NearDetail=0.16f;
+        static void AddTile(GameObject parent,string name,Mesh near,Mesh mid,Mesh far,Vector3 position,TileLibrary lib,bool dontSave)
         {
             if(far==null){Add(parent,name,near,position,Quaternion.identity,lib,dontSave);return;}
             var go=Node(name,parent.transform,dontSave);go.transform.localPosition=position;
             var r0=Add(go,"Near",near,Vector3.zero,Quaternion.identity,lib,dontSave);
-            var r1=Add(go,"Far",far,Vector3.zero,Quaternion.identity,lib,dontSave);
-            var lods=go.AddComponent<LODGroup>();
-            lods.SetLODs(new[]{new LOD(NearDetail,new Renderer[]{r0}),new LOD(0f,new Renderer[]{r1})});
-            lods.RecalculateBounds();
+            var r1=mid!=null?Add(go,"Mid",mid,Vector3.zero,Quaternion.identity,lib,dontSave):null;
+            var r2=Add(go,"Far",far,Vector3.zero,Quaternion.identity,lib,dontSave);
+            SetLods(go.AddComponent<LODGroup>(),r0,r1,r2);
+        }
+        // Near, mid (may be null) and far, crossfading by dither so no level pops in.
+        public static void SetLods(LODGroup group,Renderer near,Renderer mid,Renderer far)
+        {
+            group.fadeMode=LODFadeMode.CrossFade;group.animateCrossFading=false;
+            var lods=mid!=null?new[]{new LOD(MidDetail,new[]{near}),new LOD(NearDetail,new[]{mid}),new LOD(0f,new[]{far})}:
+                new[]{new LOD(NearDetail,new[]{near}),new LOD(0f,new[]{far})};
+            for(int i=0;i<lods.Length;i++)lods[i].fadeTransitionWidth=0.1f;
+            group.SetLODs(lods);group.RecalculateBounds();
         }
         public static int Triangles(Mesh m){long n=0;for(int i=0;i<m.subMeshCount;i++)n+=m.GetIndexCount(i);return (int)(n/3);}
         static MeshRenderer Add(GameObject parent,string name,Mesh mesh,Vector3 position,Quaternion rotation,TileLibrary lib,bool dontSave)

@@ -162,7 +162,9 @@ namespace DeathStar
             {
                 if(!cap)continue;
                 var p0=P(t,profile[0]);
+                m.BeginPolygon();
                 for(int i=1;i<n-1;i++)m.Triangle(f,p0,P(t,profile[i]),P(t,profile[i+1]),dir);
+                m.EndPolygon();
             }
         }
 

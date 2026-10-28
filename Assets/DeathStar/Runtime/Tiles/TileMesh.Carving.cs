@@ -114,14 +114,22 @@ namespace DeathStar
         // Faces of the last Flush switched to calm plates, of all it carved.
         public (int calm,int faces) CalmFaces {get;private set;}
         bool allCalm;
+        // How the last Flush left each face it was given, in order (the relief trace draws only what the mesh carved).
+        public const int Carved=0,CarvedCalm=1,LeftPlain=2,LeftOut=3;
+        int[] outcomes=new int[0];
         void Flush()
         {
             if(jobs.Count==0)return;
             var saved=matrix;matrix=Matrix4x4.identity;
             var list=jobs.ToArray();jobs.Clear();
+            outcomes=new int[list.Length];
             int v0=positions.Count;var i0=IndexCounts();int plain=TriangleCount;
-            void CarveJob(in Job j,bool calm){allCalm=calm;surfaceFrame=j.frame;metricAnchor=j.anchor;CarveFace(j);allCalm=false;}
-            foreach(var j in list)CarveJob(j,false);
+            void CarveJob(int k,bool calm)
+            {
+                var j=list[k];allCalm=calm;surfaceFrame=j.frame;metricAnchor=j.anchor;
+                int o=CarveFace(j);outcomes[k]=o==Carved&&calm?CarvedCalm:o;allCalm=false;
+            }
+            for(int k=0;k<list.Length;k++)CarveJob(k,false);
             NearCap=0;CalmFaces=(0,list.Length);
             if(nearBudget>0&&TriangleCount>nearBudget)
             {
@@ -131,7 +139,7 @@ namespace DeathStar
                 for(int k=0;k<list.Length;k++)
                     foreach(bool calm in new[]{false,true})
                     {
-                        CarveJob(list[k],calm);int n=TriangleCount-plain;Truncate(v0,i0);
+                        CarveJob(k,calm);int n=TriangleCount-plain;Truncate(v0,i0);
                         if(calm)calmCost[k]=n;else busy[k]=n;
                     }
                 var order=new List<int>();for(int k=0;k<list.Length;k++)order.Add(k);
@@ -140,20 +148,23 @@ namespace DeathStar
                 var calmed=new bool[list.Length];int count=0;
                 foreach(int k in order){if(total<=nearBudget)break;total-=busy[k]-calmCost[k];calmed[k]=true;count++;}
                 NearCap=1;CalmFaces=(count,list.Length);
-                if(total<=nearBudget)for(int k=0;k<list.Length;k++)CarveJob(list[k],calmed[k]);
+                if(total<=nearBudget)for(int k=0;k<list.Length;k++)CarveJob(k,calmed[k]);
                 else
                 {
                     NearCap=2;
-                    var largest=new List<Job>(list);largest.Sort((a,b)=>Area(b).CompareTo(Area(a)));
+                    var largest=new List<int>();for(int k=0;k<list.Length;k++)largest.Add(k);
+                    largest.Sort((a,b)=>Area(list[b]).CompareTo(Area(list[a])));
                     // each face still to come takes at least its plain quad
                     int left=largest.Count;
-                    foreach(var j in largest)
+                    foreach(int k in largest)
                     {
+                        var j=list[k];
                         left--;int v=positions.Count;var marks=IndexCounts();
-                        CarveJob(j,true);
+                        CarveJob(k,true);
                         if(TriangleCount+left*2<=nearBudget)continue;
                         Truncate(v,marks);surfaceFrame=j.frame;metricAnchor=j.anchor;
                         Quad(j.f.With(TilePattern.Plain),j.A,j.B,j.C,j.D,j.N,(j.B-j.A).normalized);
+                        outcomes[k]=LeftPlain;
                     }
                 }
             }
@@ -195,16 +206,16 @@ namespace DeathStar
         // A half-plane: the side to the left of e through o.
         struct Half{public Vector2 o,e;public Half(Vector2 o,Vector2 e){this.o=o;this.e=e;}}
 
-        void CarveFace(in Job j)
+        int CarveFace(in Job j)
         {
             Vector3 A=j.A,B=j.B,C=j.C,D=j.D,N=j.N;
             var plain=j.f.With(TilePattern.Plain);
             // A face under another solid (a box's foot, a plinth's top under a tower) is left out.
             var mid=(A+B+C+D)*0.25f;
             bool Under(Vector3 p)=>InSolid(Vector3.MoveTowards(p,mid,0.01f)+N*0.01f);
-            if(Under(mid)&&Under(A)&&Under(B)&&Under(C)&&Under(D))return;
+            if(Under(mid)&&Under(A)&&Under(B)&&Under(C)&&Under(D))return LeftOut;
             Quad(plain,A,B,C,D,N,(B-A).normalized);   // the floor the seams show
-            if(Facing(A,B,C,D,N))return;
+            if(Facing(A,B,C,D,N))return LeftPlain;
             int ax=0;for(int i=1;i<3;i++)if(Mathf.Abs(N[i])>Mathf.Abs(N[ax]))ax=i;
             int va=courseAxis<0?(ax+2)%3:courseAxis!=ax?courseAxis:courseSide,ua=3-ax-va;
             Vector3 so=stationOffset;
@@ -265,7 +276,9 @@ namespace DeathStar
                     }
                 }
             }
+            return Carved;
         }
+
         // Plate edges fall on cell boundaries by hash, and at least every fourth boundary, so every face agrees. Calm
         // plates are mostly long.
         static bool Edge(int k,int row,int key,bool calm)=>((k%4)+4)%4==0||H01(k,row,key,0)<(calm?0.2f:0.45f);
@@ -409,7 +422,9 @@ namespace DeathStar
             if(SignedArea(p)<0)p.Reverse();
             var top=bevel>0?Inset(p,bevel)??p:p;
             var tris=Triangulate(top);
+            BeginPolygon();
             for(int i=0;i+2<tris.Count;i+=3)Triangle(f,lift(top[tris[i]],h1),lift(top[tris[i+1]],h1),lift(top[tris[i+2]],h1),N);
+            EndPolygon();
             for(int i=0;i<p.Count;i++)
             {
                 int j=(i+1)%p.Count;

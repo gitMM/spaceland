@@ -110,6 +110,7 @@ namespace DeathStar
             var probe=new SphericalHarmonicsL2();probe.AddAmbientLight(settings.ambientColor);
             RenderSettings.ambientProbe=probe;
             RenderSettings.defaultReflectionMode=DefaultReflectionMode.Custom;RenderSettings.customReflectionTexture=settings.Reflection;
+            Shader.SetGlobalTexture("_TileMetalTex",MetalTexture);
             if(RenderSettings.skybox)ConfigureSky(RenderSettings.skybox);
         }
         public static void Restore(Saved s)
@@ -117,6 +118,51 @@ namespace DeathStar
             RenderSettings.ambientMode=s.mode;RenderSettings.ambientSkyColor=s.sky;RenderSettings.ambientEquatorColor=s.equator;
             RenderSettings.ambientGroundColor=s.ground;RenderSettings.ambientLight=s.flat;RenderSettings.ambientProbe=s.probe;RenderSettings.defaultReflectionMode=s.reflectionMode;
             RenderSettings.customReflectionTexture=s.reflection;RenderSettings.skybox=s.skybox;RenderSettings.fog=s.fog;RenderSettings.reflectionIntensity=s.reflectionIntensity;
+        }
+
+        // The painted metal base of the close-up surface (doc/close-up-detail-plan.md, layer 1): a tiling 1.5 m square,
+        // low in contrast, so it supports the pixel-art look instead of fighting it. R: albedo around 0.5 (soft paint
+        // patches, fine grain, sparse dark and pale specks; nothing directional, there is no down), G: roughness around
+        // 0.5, B and A: a faint normal (x, y).
+        // Linear, built once; TileSurface samples it with hashed tiling so the repeat doesn't show.
+        static Texture2D metal;
+        public static Texture2D MetalTexture
+        {
+            get
+            {
+                if(metal)return metal;
+                const int N=256;
+                metal=new Texture2D(N,N,TextureFormat.RGBA32,true,true){name="Tile Metal",wrapMode=TextureWrapMode.Repeat,filterMode=FilterMode.Trilinear,anisoLevel=8,hideFlags=HideFlags.HideAndDontSave};
+                float Hash(int x,int y,int k){uint h=(uint)(x&(N-1))*73856093u^(uint)(y&(N-1))*19349663u^(uint)k*83492791u;h^=h>>13;h*=0x5bd1e995u;h^=h>>15;return (h&0xffff)/65535f;}
+                // Value noise with period N on a lattice of `cells` cells.
+                float Noise(float x,float y,int cells,int k)
+                {
+                    float s=N/(float)cells;x/=s;y/=s;int ix=Mathf.FloorToInt(x),iy=Mathf.FloorToInt(y);float fx=x-ix,fy=y-iy;
+                    fx=fx*fx*(3-2*fx);fy=fy*fy*(3-2*fy);
+                    float H(int a,int b)=>Hash(((a%cells)+cells)%cells*(N/cells),((b%cells)+cells)%cells*(N/cells),k);
+                    return Mathf.Lerp(Mathf.Lerp(H(ix,iy),H(ix+1,iy),fx),Mathf.Lerp(H(ix,iy+1),H(ix+1,iy+1),fx),fy);
+                }
+                var height=new float[N*N];var px=new Color32[N*N];
+                for(int y=0;y<N;y++)for(int x=0;x<N;x++)
+                {
+                    float blotch=Noise(x,y,4,1)*0.55f+Noise(x,y,8,2)*0.3f+Noise(x,y,16,3)*0.15f;
+                    height[y*N+x]=blotch;
+                }
+                for(int y=0;y<N;y++)for(int x=0;x<N;x++)
+                {
+                    int i=y*N+x;
+                    float blotch=Noise(x,y,4,1)*0.55f+Noise(x,y,8,2)*0.3f+Noise(x,y,16,3)*0.15f,grain=Noise(x,y,64,6);
+                    float h=Hash(x,y,5),dark=h>0.988f?1:0,pale=h<0.006f?1:0;
+                    float albedo=0.5f+0.14f*(blotch-0.5f)+0.05f*(grain-0.5f)-0.16f*dark+0.08f*pale;
+                    float rough=0.5f+0.35f*(Noise(x,y,8,7)-0.5f)+0.1f*dark;
+                    float dx=height[y*N+((x+1)&(N-1))]-height[y*N+((x+N-1)&(N-1))],dy=height[((y+1)&(N-1))*N+x]-height[((y+N-1)&(N-1))*N+x];
+                    var n=new Vector3(-dx*4,-dy*4,1).normalized;
+                    px[i]=new Color32(B(albedo),B(rough),B(0.5f+0.5f*n.x),B(0.5f+0.5f*n.y));
+                }
+                metal.SetPixels32(px);metal.Apply(true,true);
+                return metal;
+                static byte B(float v)=>(byte)Mathf.Clamp(Mathf.RoundToInt(v*255),0,255);
+            }
         }
 
         // Dark environment for reflections, with a hot spot where the sun is and a glow where the planet is.

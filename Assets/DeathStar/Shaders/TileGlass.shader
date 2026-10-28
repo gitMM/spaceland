@@ -81,8 +81,8 @@ Shader "DeathStar/Tile Glass"
                 o.positionWS = pos.positionWS;
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 o.tangentWS = float4(TransformObjectToWorldDir(v.tangentOS.xyz), v.tangentOS.w);
-                o.local = v.local;
-                o.extent = v.extent;
+                o.local = v.local.xy;
+                o.extent = v.extent.xy;
                 // Pane's own number mixed with where the tile stands, so repeated tiles light their rooms differently.
                 float3 origin = UNITY_MATRIX_M._m03_m13_m23;
                 o.pane = frac(v.code.x + TileHash3(round(origin * 0.5) + 0.37) * 7.13);
@@ -159,6 +159,9 @@ Shader "DeathStar/Tile Glass"
                 half3 env = GlossyEnvironmentReflection(R, 0.05, 1) * _Reflection;
                 half3 glint = sun.color * sunVis * pow(saturate(dot(R, sun.direction)), 900) * 40;
                 half3 col = c * _GlassTint.rgb * (1 - fres) + (env + glint) * max(fres, 0.06);
+                if (_TileBake > .5)
+                    return _TileBake < 1.5 ? half4(N * .5 + .5, dot(_TileBakePlane.xyz, i.positionWS) + _TileBakePlane.w)
+                        : half4(.04, .04, .045, Luminance(c * _GlassTint.rgb));
                 return half4(col, 1);
             }
             ENDHLSL

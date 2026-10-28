@@ -383,3 +383,38 @@ Use the profile's screen-bounce-only, AO-only and diffuse-source diagnostic view
 to inspect the contributions. Post-processing still applies in these views.
 `tools/death-star/VerifyLighting.cs` (entry `LightingCompare.Run`) writes the
 existing lighting comparisons to `DeathStarRuns/Lighting`.
+### Close-up detail
+
+`doc/close-up-detail-plan.md`, all seven milestones. Every switch below is in **Death Star → Lighting settings**.
+
+- **Contact shadows** (`StationScreenGiFeature`, `StationScreenGi.shader`): a 24-step march toward the sun through the
+  depth buffer, 0.5 m long near the camera to 2 m at 150 m, blurred over neighbours at the same depth, multiplied into
+  the main light's shadow. Debug view **Contact Shadows Only** shows the mask.
+- **Close-up surface** (`TileMesh.Edges.cs`, `TileEdges.hlsl`): a Burst pass at build time finds each face's convex,
+  soft and concave edges from the faces meeting them (tile seams and flat joins get none) and gives every vertex its
+  distance to up to eight of them (uv1, uv2; kinds and part thickness in uv0.zw). TileSurface draws a rounded bevel
+  normal sized to the part, a warm highlight, light chips of bare metal, dark creases. Costs about 0.8 s of the gallery's
+  3.5 s build, 24 bytes a vertex.
+- **Fine detail and painted metal**: in each face's own rectangle, screws at corners and along edges, an inset groove,
+  dot-grid grilles, warning triangles, crosses, labels and indicator lights (a station-space random per face, uv0.w);
+  a low-contrast painted metal (`TileLook.MetalTexture`) with hashed tiling. Everything fades by its size on screen.
+- **Kit near the player** (`StationKit`, `KitProps`, `KitRoutes`): ten TileMesh-built props on rectangular plates within
+  a ring round the camera (or `ringCentre`), 14-20 m, grown from flat and dithered out at the edge; beyond it TileSurface
+  folds their darkening into the plate. Pipes and cables (Burst sweeps) join props on the same plate. Instanced draws,
+  box colliders within 4 m in play.
+- **Relief trace and mid level** (`TileRelief.hlsl`): the armour carving's layout in HLSL; mid and far meshes leave
+  armour plain with its station position and layout in uv6, and TileSurface walks the view ray through the plates, traces
+  the sun for their shadows and writes conservative depth. Tiles now have three levels crossfading by dither: carving
+  to about 30 m, the mid level (full forms, traced armour) to 110 m, the far level. Plates sink into the face from 150 to
+  250 m.
+- **Fold** (`ReliefFold.cs` writes `TileReliefFold.hlsl`): the carving's average sun visibility by sun height, cavity,
+  seam darkening and roughness, measured once over random faces, applied as the plates sink.
+- **Chunks for orbit** (`StationChunks`): each 8 x 8 x 8 chunk's exposed cell faces merged into rectangles, its tiles
+  baked into an atlas (normal and height-derived occlusion, colour and glow) by orthographic renders; beyond 600 m a
+  camera draws the chunks instead of their tiles. Baked on demand (`Bake`, or in play once the camera pulls back).
+
+`tools/tile-lab.sh closeup part=...` checks each: `contact` (20, 60, 150 m under a low sun), `surface` (1, 5, 20 m, and
+the vertex and build cost), `detail` (1, 5 m, and shimmer at 20 m against a 16-sample reference), `kit` (a walk past the
+ring's edge, grow-in against a hard edge, and frame cost), `relief` (trace against carving from 20 to 250 m, and the
+triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chunks against a 16-sample reference).
+

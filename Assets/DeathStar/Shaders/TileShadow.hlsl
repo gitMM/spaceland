@@ -7,9 +7,16 @@
 float3 _LightDirection;
 float3 _LightPosition;
 
-float4 TileShadowVert(TileAttributes v) : SV_POSITION
+struct TileShadowVaryings
+{
+    float4 positionCS : SV_POSITION;
+    float fade        : TEXCOORD0;
+};
+TileShadowVaryings TileShadowVert(TileAttributes v)
 {
     UNITY_SETUP_INSTANCE_ID(v);
+    TileShadowVaryings o;
+    o.fade = TileKitFade();
     float3 p = TransformObjectToWorld(v.positionOS.xyz);
     float3 n = TransformObjectToWorldNormal(v.normalOS);
     #if _CASTING_PUNCTUAL_LIGHT_SHADOW
@@ -17,9 +24,10 @@ float4 TileShadowVert(TileAttributes v) : SV_POSITION
     #else
         float3 l = _LightDirection;
     #endif
-    return ApplyShadowClamping(TransformWorldToHClip(ApplyShadowBias(p, n, l)));
+    o.positionCS = ApplyShadowClamping(TransformWorldToHClip(ApplyShadowBias(p, n, l)));
+    return o;
 }
 
-half4 TileShadowFrag() : SV_Target { return 0; }
+half4 TileShadowFrag(TileShadowVaryings i) : SV_Target { TileCrossFade(i.positionCS); TileKitClip(i.fade, i.positionCS); return 0; }
 
 #endif

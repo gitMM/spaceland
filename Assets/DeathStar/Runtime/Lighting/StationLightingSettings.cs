@@ -4,7 +4,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace DeathStar
 {
-    public enum GiDebugView { Normal, ScreenSpaceGiOnly, ScreenSpaceAoOnly, DiffuseSources, VoxelGiOnly=5 }
+    public enum GiDebugView { Normal, ScreenSpaceGiOnly, ScreenSpaceAoOnly, DiffuseSources, ContactShadowsOnly, VoxelGiOnly }
 
     [CreateAssetMenu(menuName="Death Star/Lighting settings")]
     public sealed class StationLightingSettings : ScriptableObject
@@ -66,6 +66,41 @@ namespace DeathStar
         [Tooltip("Independent occlusion reach. Keep around 0.5–1 m for contacts while testing larger bounce distances. AO and bounce share the sampling budget.")]
         public float screenGiAoRadius=.3f;
         [InspectorName("AO Intensity"),Range(0,3)] public float screenGiAoIntensity=.6f;
+        [Header("Contact shadows")]
+        [Tooltip("Sun shadows of small relief traced through the depth buffer, multiplied into the main light's shadow.")]
+        public bool contactShadows=true;
+        [InspectorName("Contact Strength"),Range(0,1)] public float contactStrength=1;
+        [InspectorName("Contact Length Near (m)"),Range(.1f,4)]
+        [Tooltip("Ray length toward the sun for surfaces close to the camera.")]
+        public float contactLengthNear=.5f;
+        [InspectorName("Contact Length Far (m)"),Range(.1f,8)]
+        [Tooltip("Ray length at Contact Far Distance and beyond; the length blends between the two.")]
+        public float contactLengthFar=2;
+        [InspectorName("Contact Far Distance (m)"),Range(10,400)] public float contactFarDistance=150;
+        [InspectorName("Contact Steps"),Range(8,32)] public int contactSteps=24;
+        [InspectorName("Contact Thickness (m)"),Range(.02f,3)]
+        [Tooltip("Depth assumed behind a visible surface. Geometry further behind it casts nothing.")]
+        public float contactThickness=.6f;
+        [Header("Close-up surface")]
+        [Tooltip("Rounded bevels, warm edge highlights, worn chips and dark creases from each face's own edges (TileMesh.Edges.cs). Shading only.")]
+        public bool closeUpSurface=true;
+        [InspectorName("Edge Wear"),Range(0,1)] public float edgeWear=.5f;
+        [InspectorName("Edge Highlight"),Range(0,1)] public float edgeHighlight=.6f;
+        [InspectorName("Crease Darkness"),Range(0,1)] public float creaseDarkness=.7f;
+        [Tooltip("Screws, hole grids, carved grooves and small stencils on plates, and the painted metal base texture.")]
+        public bool fineDetail=true;
+        [InspectorName("Detail Density"),Range(0,1)] public float detailDensity=.6f;
+        [InspectorName("Painted Metal"),Range(0,1)] public float paintedMetal=.7f;
+        [Tooltip("Trace the armour's plates on plain armour (the mid and far levels), so carving carries on past the near level.")]
+        public bool reliefTrace=true;
+        [InspectorName("Relief Lowered From (m)"),Range(20,500)] public float reliefLowerNear=150;
+        [InspectorName("Relief Flat At (m)"),Range(30,800)] public float reliefLowerFar=250;
+        [Header("Kit near the player")]
+        [Tooltip("Small props (vents, hatches, boxes, pipes, lights...) on hull plates within a ring round the camera, grown in from flat at its edge (StationKit).")]
+        public bool kitProps=true;
+        [InspectorName("Kit Density"),Range(0,1)] public float kitDensity=.35f;
+        [InspectorName("Kit Inner Radius (m)"),Range(2,40)] public float kitInnerRadius=14;
+        [InspectorName("Kit Outer Radius (m)"),Range(3,50)] public float kitOuterRadius=20;
         [Header("Materials and image")]
         [Min(0)] public float emission=1;
         [Min(0)] public float reflections=1;
@@ -89,6 +124,7 @@ namespace DeathStar
                 return environment;
             }
         }
+        public bool ContactShadowsActive=>contactShadows&&contactStrength>0&&receivedShadowStrength>0;
         void OnDisable(){if(environment){if(Application.isPlaying)Destroy(environment);else DestroyImmediate(environment);}}
         void OnValidate(){
             #if UNITY_EDITOR
@@ -101,6 +137,9 @@ namespace DeathStar
             Shader.SetGlobalVector("_StationScreenOcclusion",new Vector4(screenSpaceAmbientOcclusion?ssaoStrength:0,ssaoDirectStrength,0,0));
             Shader.SetGlobalFloat("_StationAmbient",ambientLight?1:0);
             Shader.SetGlobalFloat("_StationEmission",emission);
+            Shader.SetGlobalVector("_TileStyle",new Vector4(closeUpSurface?1:0,edgeWear,edgeHighlight,creaseDarkness));
+            Shader.SetGlobalVector("_TileRelief",new Vector4(reliefTrace?1:0,reliefLowerNear,Mathf.Max(reliefLowerFar,reliefLowerNear+1),0));
+            Shader.SetGlobalVector("_TileDetail",new Vector4(fineDetail?1:0,detailDensity,fineDetail?paintedMetal:0,1.5f));
             Shader.SetGlobalVector("_StationHabitatFamily",TileLook.FamilyColor(TileFamily.Habitat));
             Shader.SetGlobalVector("_StationHabitatTint",new Vector4(habitatTint.r,habitatTint.g,habitatTint.b,habitatTintEnabled?1:0));
         }

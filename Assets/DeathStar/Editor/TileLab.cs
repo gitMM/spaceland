@@ -72,6 +72,7 @@ namespace DeathStar.EditorTools
             using var rig=new Rig(lib);
             if(mode=="warmup")return Warmup(rig);
             if(mode=="snap")return Snap(rig,opts);
+            if(mode=="closeup")return CloseUp(rig,opts);
             if(mode=="voxelgi")return VoxelGiCheck(rig);
             if(mode=="voxelbench")return VoxelPerformance(rig);
             int only=Array.FindIndex(Examples,e=>e.name.ToLowerInvariant()==mode);
@@ -142,12 +143,12 @@ namespace DeathStar.EditorTools
             md.AppendLine();
             md.AppendLine("Triangles per view with each tile at the level of detail its LOD group picks (all tiles, before frustum culling):");
             md.AppendLine();
-            md.AppendLine("| View | Near tiles | Far tiles | Triangles |");
-            md.AppendLine("|---|---:|---:|---:|");
+            md.AppendLine("| View | Near tiles | Mid tiles | Far tiles | Triangles |");
+            md.AppendLine("|---|---:|---:|---:|---:|");
             foreach(var (name,view,_) in Views)
             {
-                var (near,far,tris)=Drawn(stage,view());
-                md.AppendLine($"| {name} | {near} | {far} | {tris:N0} |");
+                var (near,mid,far,tris)=Drawn(stage,view());
+                md.AppendLine($"| {name} | {near} | {mid} | {far} | {tris:N0} |");
             }
             checks.Add((stage.farTriangles<stage.triangles*0.6f,$"the far level of detail drops the carving: {stage.farTriangles/1000}k against {stage.triangles/1000}k triangles"));
             md.AppendLine();
@@ -236,23 +237,27 @@ namespace DeathStar.EditorTools
 
         // Which level each tile's LOD group picks for a view (Unity's rule: bounds size over the frustum height at its
         // distance, times the LOD bias), and the triangles that draws.
-        static (int near,int far,long tris) Drawn(TileGallery.Stage stage,TileGallery.View v)
+        // nearUntil: draw the near level whenever the group would pick the near or the mid one (the levels before the
+        // mid level and the relief trace, for comparison).
+        static (int near,int mid,int far,long tris) Drawn(TileGallery.Stage stage,TileGallery.View v,bool nearUntilFar=false)
         {
-            int near=0,far=0;long tris=0;
+            int near=0,mid=0,far=0;long tris=0;
             float k=2*Mathf.Tan(v.fov*0.5f*Mathf.Deg2Rad);
             foreach(var g in stage.root.GetComponentsInChildren<LODGroup>())
             {
                 var lods=g.GetLODs();
                 float d=Vector3.Distance(v.position,g.transform.TransformPoint(g.localReferencePoint));
                 float rel=g.size*QualitySettings.lodBias/(k*Mathf.Max(d,0.01f));
-                bool isNear=rel>=lods[0].screenRelativeTransitionHeight;
-                if(isNear)near++;else far++;
-                var r=(isNear?lods[0]:lods[1]).renderers[0];
+                int level=lods.Length-1;
+                for(int i=0;i<lods.Length-1;i++)if(rel>=lods[i].screenRelativeTransitionHeight){level=i;break;}
+                if(nearUntilFar&&level<lods.Length-1)level=0;
+                if(level==0)near++;else if(level==lods.Length-1)far++;else mid++;
+                var r=lods[level].renderers[0];
                 tris+=TileGallery.Triangles(r.GetComponent<MeshFilter>().sharedMesh);
             }
             foreach(var r in stage.root.GetComponentsInChildren<MeshRenderer>())
                 if(r.GetComponentInParent<LODGroup>()==null)tris+=TileGallery.Triangles(r.GetComponent<MeshFilter>().sharedMesh);
-            return (near,far,tris);
+            return (near,mid,far,tris);
         }
 
         static string Swatch(Color c)=>c.a<0.5f?"grey":"#"+ColorUtility.ToHtmlStringRGB(c.gamma);
@@ -859,16 +864,26 @@ namespace DeathStar.EditorTools
                 UnityEngine.Object.DestroyImmediate(warm);
             }
 
-            public Texture2D Shoot(TileGallery.View v,int w,int h,bool coded=false)
+            // scale: rendered at that many times the size and averaged down (1 for raw aliasing, as in the shimmer check).
+            public Texture2D Shoot(TileGallery.View v,int w,int h,bool coded=false,int scale=2)
             {
                 float overlay=Shader.GetGlobalFloat("_TileOverlay");
                 Shader.SetGlobalFloat("_TileOverlay",coded?1:0);
                 cam.transform.SetPositionAndRotation(v.position,Quaternion.LookRotation(v.target-v.position,v.up));
                 cam.fieldOfView=v.fov;
                 cam.farClipPlane=Vector3.Distance(v.position,v.target)+200f;   // also the shadow distance
-                var big=RenderTexture.GetTemporary(w*2,h*2,24,RenderTextureFormat.ARGB32);big.filterMode=FilterMode.Bilinear;
+                var big=RenderTexture.GetTemporary(w*scale,h*scale,24,RenderTextureFormat.ARGB32);big.filterMode=FilterMode.Bilinear;
                 var small=RenderTexture.GetTemporary(w,h,0,RenderTextureFormat.ARGB32);
+                // The close-up surface fades detail by the final picture's pixels, not the supersampled ones.
+                Shader.SetGlobalFloat("_TileFootprintScale",scale);
                 cam.targetTexture=big;cam.Render();cam.targetTexture=null;
+                Shader.SetGlobalFloat("_TileFootprintScale",1);
+                // Halve until one step from the target: each bilinear blit at exactly half size is a 2 x 2 box.
+                for(int k=scale;k>2;k/=2)
+                {
+                    var half=RenderTexture.GetTemporary(w*k/2,h*k/2,0,RenderTextureFormat.ARGB32);half.filterMode=FilterMode.Bilinear;
+                    Graphics.Blit(big,half);RenderTexture.ReleaseTemporary(big);big=half;
+                }
                 Graphics.Blit(big,small);
                 var prev=RenderTexture.active;RenderTexture.active=small;
                 var tex=new Texture2D(w,h,TextureFormat.RGBA32,false);tex.ReadPixels(new Rect(0,0,w,h),0,0);tex.Apply();
@@ -876,6 +891,29 @@ namespace DeathStar.EditorTools
                 RenderTexture.ReleaseTemporary(big);RenderTexture.ReleaseTemporary(small);
                 Shader.SetGlobalFloat("_TileOverlay",overlay);
                 return tex;
+            }
+
+            // Raw HDR colour, no post-processing: the largest value, the share of pixels that are NaN or infinite, and of
+            // pixels brighter than 50.
+            public (float max,float bad,float hot) ShootHdr(TileGallery.View v,int w,int h)
+            {
+                var data=UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam);bool post=data.renderPostProcessing;data.renderPostProcessing=false;
+                cam.transform.SetPositionAndRotation(v.position,Quaternion.LookRotation(v.target-v.position,v.up));cam.fieldOfView=v.fov;
+                cam.farClipPlane=Vector3.Distance(v.position,v.target)+200f;
+                var rt=RenderTexture.GetTemporary(w,h,24,RenderTextureFormat.ARGBHalf);
+                cam.targetTexture=rt;cam.Render();cam.targetTexture=null;data.renderPostProcessing=post;
+                var prev=RenderTexture.active;RenderTexture.active=rt;
+                var tex=new Texture2D(w,h,TextureFormat.RGBAHalf,false,true);tex.ReadPixels(new Rect(0,0,w,h),0,0);tex.Apply();
+                RenderTexture.active=prev;RenderTexture.ReleaseTemporary(rt);
+                var px=tex.GetPixels();UnityEngine.Object.DestroyImmediate(tex);
+                float max=0;int bad=0,hot=0;
+                foreach(var c in px)
+                {
+                    float m=Mathf.Max(c.r,Mathf.Max(c.g,c.b));
+                    if(float.IsNaN(m)||float.IsInfinity(m)){bad++;continue;}
+                    max=Mathf.Max(max,m);if(m>50)hot++;
+                }
+                return (max,bad/(float)px.Length,hot/(float)px.Length);
             }
 
             public void Dispose()

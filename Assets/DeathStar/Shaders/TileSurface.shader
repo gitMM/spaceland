@@ -13,6 +13,12 @@ Shader "DeathStar/Tile Surface"
         _Smoothness("Smoothness", Range(0, 1)) = 0.3
         [HDR] _Emission("Emission", Color) = (0, 0, 0, 0)
         _PatternStrength("Pattern strength", Range(0, 2)) = 1
+        // StationKit's own copies: 1 instanced props, 2 pipes and cables (TileKitFade).
+        [HideInInspector] _TileKitMode("Kit mode", Float) = 0
+        // StationChunks' copies: 1 draws a chunk's massing from its baked atlas.
+        [HideInInspector] _TileChunk("Chunk", Float) = 0
+        [HideInInspector] _TileChunkColour("Chunk colour", 2D) = "grey" {}
+        [HideInInspector] _TileChunkNormal("Chunk normal", 2D) = "bump" {}
     }
 
     SubShader
@@ -20,14 +26,20 @@ Shader "DeathStar/Tile Surface"
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
 
         HLSLINCLUDE
-        #include "TileCommon.hlsl"
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         CBUFFER_START(UnityPerMaterial)
             half4 _BaseColor;
             half _Metallic;
             half _Smoothness;
             half4 _Emission;
             half _PatternStrength;
+            half _TileKitMode;
+            half _TileChunk;
         CBUFFER_END
+        TEXTURE2D(_TileChunkColour); SAMPLER(sampler_TileChunkColour);
+        TEXTURE2D(_TileChunkNormal); SAMPLER(sampler_TileChunkNormal);
+        #define TILE_KIT_MODE _TileKitMode
+        #include "TileCommon.hlsl"
         ENDHLSL
 
         Pass
@@ -52,6 +64,7 @@ Shader "DeathStar/Tile Surface"
             #pragma multi_compile _ _LIGHT_LAYERS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_instancing
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
 
             #include "TileSurfacePass.hlsl"
             ENDHLSL
@@ -77,6 +90,7 @@ Shader "DeathStar/Tile Surface"
             #pragma multi_compile _ _LIGHT_LAYERS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_instancing
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
 
             #include "TileSurfacePass.hlsl"
             ENDHLSL
@@ -95,6 +109,7 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileShadowVert
             #pragma fragment TileShadowFrag
             #pragma multi_compile_instancing
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             #include "TileShadow.hlsl"
             ENDHLSL
@@ -113,6 +128,7 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileDepthVert
             #pragma fragment TileDepthFrag
             #pragma multi_compile_instancing
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
             ENDHLSL
         }
 
@@ -128,6 +144,7 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileDepthNormalVert
             #pragma fragment TileDepthNormalFrag
             #pragma multi_compile_instancing
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
             ENDHLSL
         }
     }
