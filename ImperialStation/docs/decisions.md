@@ -1,5 +1,75 @@
 # Decisions
 
+## Combined fixed-station pressure — recovery corrections
+
+- The user approved explicit evidence-based review outcomes for insufficiently
+  attributable cases. An unfinished audit, unread decision, missing grant or invalid
+  provenance still fails. Every subject who qualifies for custody must complete
+  release and return to duty; the clear-day requirement is unchanged.
+- A cleaner retains a fresh zero-dirt observation as local completion immediately
+  after inspection or cleaning. An intervening need break must not erase completed
+  work and require another visit next shift. The completion report still travels
+  through the ordinary queue and terminal; authority learns only on receipt.
+  The regression fails before this correction and verifies exact continuation
+  afterward. Recovery seed 7 now has no overdue report, so its coverage gate must
+  reject it for that reason alone, like seed 91; seed 42 still exercises recovery.
+- A formed team's finite search allowance is one configured roster cycle, capped
+  by authorization expiry. This gives a late-shift formation its next duty interval
+  after sleep. Schema 45 validates the revised deadline. The schema-44 one-shift
+  behavior below is historical.
+- Replacement searches lower the priority of an old terminal clue after receiving
+  a negative search report newer than that visit. The clue remains a candidate;
+  a newer authenticated visit restores its priority. Private search state is absent
+  from this decision.
+- Before starting custody, each guard forecasts their own already-urgent needs and due toilet visit
+  through the known route and published intake duration. A predicted critical need
+  permits ordinary relief first. Preparation persists through travel and relief;
+  the target is reinspected afterward. Each co-located participant can refuse the
+  handoff based on their own readiness. Failed relief retains its existing bounded retry;
+  no remote partner needs, service occupancy or physical route truth are consulted.
+- A local intake refusal due to full capacity, busy service, or outage remains
+  known until a co-located service change wakes the waiting leader. Ordinary
+  routine wakeups do not erase the refusal or generate repeated failed actions.
+- A received original reply closes an unposted welfare search. An original
+  completion also cancels an unposted replacement. Already-issued patrols and
+  replacement attempts retain their independent received outcomes.
+- Snapshot validation follows replacement ancestry only after all branches have
+  been read, and validates the actual descendant report rather than inventing a
+  direct child or original-worker response.
+- Guards who leave an identified target or fail a co-located custody handoff must
+  inspect again before attempting custody. A formed team's search has a local
+  one-shift deadline that survives routine breaks. A guard reports `TeamNotReady`
+  through ordinary terminals; only received terminal outcomes permit replacement.
+  This adds `SearchAbandoned` to persisted states and advances the schema to 44.
+- Audit failures retain increasing backoff until login or a records query succeeds
+  at the audit's assigned terminal. Merely planning another attempt is not progress.
+- Dispatch checks completed escort status before scanning received guard history.
+  Both predicates are read-only; candidate lists, saved state and continuation
+  events remain identical, while completed cases stop adding history-scan cost.
+  Active guard checks use the ledger's existing record-kind history index, which
+  is rebuilt on restore; no additional saved or authoritative state is introduced.
+- The pressure fixture places assigned bedrooms and matching published rest tiles
+  across the maintenance corridor from daily meals, providing ordinary observation
+  coverage. Its gate requires a full configured day with backlogs remaining clear;
+  the nine-day population run has not yet met that condition.
+- Benchmark checkpoints use a schema-2 JSON manifest and a sibling binary payload.
+  The population end state exceeded JSON's single-string limit when base64-encoded.
+  Both payload SHA-256 and canonical-state digest are checked on restore. Inline
+  schema-1 checkpoints/replay bundles remain supported. This container-format fix
+  did not change Core schema 44 at introduction; the later guard-deadline change
+  above advances current Core snapshots to 45.
+- Rechecking an assigned task after release counts as resuming work even when
+  another worker already completed the physical task. No extra dirt is injected
+  solely to force the released worker to remove a unit.
+- A released subject whose assignments are all terminal may return to idle duty:
+  the workload requires a later inbox read and a later on-duty boundary. It reports
+  this separately from resumed work and still requires actual resumed work by at
+  least one released subject.
+- Initial misconduct actions are contiguous; the 2,048-citizen generator test
+  verifies all 128 bad installations physically occur. Each guard starts with one
+  finite kit in inventory and equips it autonomously. The combined workload tests
+  shared staffing and custody rather than recall of remote equipment stock.
+
 ## Integration and scale — 2026-10-29
 
 | Decision | Requirements | Reason |
@@ -33,7 +103,7 @@
 | JSON results distinguish assertion/runtime outcomes and ordinary action failures | R-RUN-02..05 | The exact fixture's early pickup deliberately fails but all assertions pass. Per-action path-budget exhaustion is not misreported as no-route. |
 | Viewer shows an initial projection and replays recorded movements | R-OBS-08 | Browser floats are display-only. Canonical state remains in the core checkpoint. Large Int64 tick values beyond JS safe integers are rejected by the trace loader. |
 
-The current binary snapshot schema is version 42. The historical version-9 increment included knowledge, terminals,
+The current binary snapshot schema is version 44. The historical version-9 increment included knowledge, terminals,
 messages, beliefs, report/repair planning, public work catalog, resource claims and
 physical work, attempts, local order copies, check-in policy, scoped record queries,
 stack operations, physical stashes, resolved perception rules, sensor packets/schedules,
@@ -254,6 +324,16 @@ No migration guarantee for unpublished development checkpoints is made.
 | Require one unambiguous assignment and authenticated submissions | Assignment responsibility follows institutional evidence and incomplete histories remain reviewable. |
 | Treat missing parts as inconclusive | Wear can empty a slot without proving a worker installed the wrong part. |
 | Stop at ReadyToFile | Case identity, provenance validation and exactly-once personnel consequences need a separate service protocol. |
+
+## Replacement-chain outcome decisions (2026-10-29)
+
+A received replacement outcome also resolves ancestors linked by explicit
+replacement-attempt IDs for the same job. Ancestors reference the authentic
+descendant message in ReplacementResultMessageId and label WorkResolution with
+ByReplacementChain. Original-worker ResponseMessageId, attempt status and physical
+state remain unchanged. This fixes stale root incidents after a second replacement;
+an unrelated report for the same machine is not sufficient. Existing fields persist
+the result, so no snapshot schema change is needed.
 
 ## Personnel service decisions
 

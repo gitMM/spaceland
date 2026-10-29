@@ -6,7 +6,7 @@ using Station.Contracts;
 namespace Station.Core
 {
     public enum EscortDispatchStatus { AwaitingGuards, AwaitingReaders, TeamForming, Blocked, Expired, Detained, Released, Cancelled, NeedsAttention }
-    public enum GuardOrderStatus { AcknowledgmentPending, EquipmentPending, Rejected, Expired, AtRendezvous, WaitingTeam, Searching, TargetLocated, SearchExhausted, EscortInterrupted, TransferredToFacility, Revoked }
+    public enum GuardOrderStatus { AcknowledgmentPending, EquipmentPending, Rejected, Expired, AtRendezvous, WaitingTeam, Searching, TargetLocated, SearchExhausted, EscortInterrupted, TransferredToFacility, Revoked, SearchAbandoned }
     public sealed class EscortDispatchSnapshot
     {
         public long AuthorizationId { get; internal set; }

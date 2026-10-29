@@ -38,6 +38,7 @@ namespace Station.Core
             if (actor.Id.Value != local.Payload.Leader || escorts.ContainsKey(local.Payload.DispatchId)) return;
             if (!SpendPlanningRequest()) { RequestGuardDecision(local, checked(processingTick + 1)); return; }
             var plan = GuardSearchPlanning.Begin(ActorView(actor.Id), local.Payload, Information!.InspectTicks, planner.MaximumDepth, planner.NodeBudget);
+            if (plan.Outcome == PlanOutcome.NoPlan) { ReinspectGuardTarget(local); return; }
             ExecuteGuardPlan(actor, local, plan, "begin-escort/v1");
         }
         private FailureReason ValidateBeginEscort(Actor leader, ActiveAction action)
@@ -54,23 +55,55 @@ namespace Station.Core
                     copy.FormedTick != team.FormedTick || copy.SearchObservations.LastOrDefault()?.Found != true || copy.SearchObservations.Last().Tile != leader.Position) return FailureReason.UnknownRequiredFact;
                 if (guard.Position != leader.Position || guard.Action != null && guard.Action != action || resourceClaims.Any(c => c.Kind == ClaimKind.Staff && c.ResourceId == id)) return FailureReason.ActorBusy;
                 if (HasCriticalNeed(guard.Id) || EscortControls(guard.Id) || !PhysicallyEquipped(guard, p.Dispatch.RequiredEquipment)) return FailureReason.MissingTool;
+                // Each co-located participant may refuse the physical handoff
+                // based on their own journey readiness. This grants the leader
+                // no remote access to another guard's needs or planning state.
+                if (GuardJourneyNeedsRelief(guard.Id)) return FailureReason.UnknownRequiredFact;
             }
             var target = actors[new Id<ActorTag>(p.SubjectActorId)];
             if (target.Position != leader.Position || target.Action?.Kind == ActionKind.Move) return FailureReason.NotAtRequiredTile;
             if (target.Account.Value != p.SubjectAccountId || EscortControls(target.Id) || resourceClaims.Any(c => c.Kind == ClaimKind.Staff && c.ResourceId == target.Id.Value)) return FailureReason.ActorBusy;
             return FailureReason.None;
         }
+        private void RecheckFailedCustody(Actor leader, ActiveAction action, FailureReason failure)
+        {
+            if (!localGuardOrders.TryGetValue(action.GuardOrderId, out var order)) return;
+            foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
+                actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position))
+            {
+                var guard = actors[new Id<ActorTag>(local.ActorId)];
+                if (!GuardJourneyNeedsRelief(guard.Id)) continue;
+                local.Reason = "PreparingForEscort";
+                RequestNeedDecision(needAgents[local.ActorId], processingTick);
+            }
+            if (order.Reason == "PreparingForEscort") return;
+            if (failure == FailureReason.UnknownRequiredFact && order.Status == GuardOrderStatus.TargetLocated)
+            {
+                // A failed local handshake reports only that a precondition is
+                // unmet. Retain the leader's own observation and wait without
+                // reading or changing a remote partner's private search state.
+                RemoveGuardDecision(order); order.Reason = "AwaitingLocalHandoff";
+                RequestGuardDecision(order, Math.Min(checked(processingTick + order.Backoff), GuardTargetWaitDeadline(order)));
+                order.Backoff = NextWorkBackoff(order.Backoff); return;
+            }
+            if (failure != FailureReason.NotAtRequiredTile) return;
+            // The co-located team took part in this failed local handoff. Each
+            // guard must inspect again; no remote member or authority is updated.
+            foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
+                actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position)) ReinspectGuardTarget(local);
+        }
         private void StartBeginEscort(Actor actor, ActiveAction action)
         {
             var failure = ValidateBeginEscort(actor, action);
-            if (failure != FailureReason.None) { Fail(actor, action.Id, failure); return; }
+            if (failure != FailureReason.None) { RecheckFailedCustody(actor, action, failure); Fail(actor, action.Id, failure); return; }
+            localGuardOrders[action.GuardOrderId].Reason = "LocalHandoffInProgress";
             action.Completes = checked(processingTick + Information!.InspectTicks); actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
             Emit("ActionStarted", actor, action.Id, target: actor.Position, arrival: action.Completes, detail: "BeginEscort"); ScheduleCompletion(actor, action.Completes);
         }
         private void CompleteBeginEscort(Actor leader, ActiveAction action)
         {
             var failure = ValidateBeginEscort(leader, action);
-            if (failure != FailureReason.None) { leader.Action = null; Fail(leader, action.Id, failure); return; }
+            if (failure != FailureReason.None) { leader.Action = null; RecheckFailedCustody(leader, action, failure); Fail(leader, action.Id, failure); return; }
             var p = localGuardOrders[action.GuardOrderId].Payload;
             PathRequests++; var path = Topology.FindPath(leader.Position, p.Dispatch.Destination, Config.PathBudget); PathExpansions += path.Expansions;
             if (path.Outcome != PathOutcome.PathFound) { leader.Action = null; Fail(leader, action.Id, path.Outcome == PathOutcome.BudgetExhausted ? FailureReason.PathBudgetExhausted : FailureReason.NoRoute); return; }

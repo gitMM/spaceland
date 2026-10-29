@@ -138,7 +138,11 @@ namespace Station.Core
             if (!recoveryAgents.TryGetValue(actor.Id.Value, out var agent) || !agent.Pending) return;
             if (agent.ActiveActionId == action.Id.Value)
             {
-                agent.ActiveActionId = 0; agent.RetryAt = 0; agent.Backoff = planner.InitialBackoff;
+                agent.ActiveActionId = 0; agent.RetryAt = 0;
+                // Reaching another desk does not establish that recovery service
+                // works there. Preserve failure backoff across travel so a large
+                // station cannot turn an outage into a rapid tour of every desk.
+                if (action.Kind != ActionKind.Move) agent.Backoff = planner.InitialBackoff;
                 if (action.Kind == ActionKind.PostLostCard) { agent.PostedTick = processingTick; agent.RetryAt = checked(processingTick + 2 * Information!.LatencyTicks); agent.Reason = "AwaitingRecoveryReply"; }
                 if (action.Kind == ActionKind.ReadRecoveryInbox && agent.KnownCaseId == 0) { RetryRecovery(agent, "NoReadRecoveryAuthorization"); return; }
                 if (action.Kind == ActionKind.ReadInbox)

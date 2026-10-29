@@ -162,6 +162,8 @@ namespace Station.Core
             if (actor.Action != null) return;
             var need = NeedValues(actor.Id.Value).FirstOrDefault(n => n.Kind == agent.Goal && n.Band >= NeedBand.Seek);
             if (need == null || (need.Band >= NeedBand.Urgent ? need.Band != NeedBand.Critical && KnownUrgentOrder(actor.Id) : !LowerNeedMayStart(actor, agent.Goal))) { WakeNeed(actor); WakeAfterNeed(actor); return; }
+            if (GuardJourneyNeedsRelief(actor.Id))
+                foreach (var local in localGuardOrders.Values.Where(l => l.ActorId == actor.Id.Value && l.Status == GuardOrderStatus.TargetLocated)) local.Reason = "PreparingForEscort";
             agent.ActiveActionId = nextAction;
             Start(command.Intent, command.CauseId);
         }

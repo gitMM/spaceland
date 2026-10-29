@@ -95,15 +95,22 @@ namespace Station.Core
         {
             nextIncidentReview = -1;
             var view = AuthorityView(); long bucket = HourBucket(processingTick);
+            DispatchCandidate[]? available = null;
+            IEnumerable<DispatchCandidate> ReviewCandidates()
+            {
+                // Waiting cases share the same received evidence. Reuse the
+                // expensive commitment scan until this review posts an assignment.
+                foreach (var candidate in available ??= Candidates(view).ToArray()) yield return candidate;
+            }
             foreach (var incident in missingReports.Values.Where(NeedsIncidentResponse).OrderBy(i => i.OpenedTick).ThenBy(i => i.OpeningSequence).ToArray())
             {
                 if (NeedsWorkResponse(incident) && incident.ReplacementDepth >= Authority!.MaximumReplacementDepth)
                     SetIncidentResponse(incident, IncidentWorkResponse.DepthLimited, "MaximumReplacementDepth");
                 var job = jobs[incident.JobId];
-                long selected = !NeedsWorkResponse(incident) ? 0 : job.Kind == WorkKind.ConstructHabitat ? SelectConstructionWorker(view, job.ProjectId, incident.ActorId) : job.Kind == WorkKind.VerifyMachine ? SelectVerification(view, job.MachineId, incident.ActorId) : job.Kind == WorkKind.RepairMachine ? AuthorityDispatch.Replacement(view, job.MachineId, incident.ActorId, Candidates(view)) :
-                    AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), incident.ActorId, Candidates(view));
+                long selected = !NeedsWorkResponse(incident) ? 0 : job.Kind == WorkKind.ConstructHabitat ? SelectConstructionWorker(view, job.ProjectId, incident.ActorId) : job.Kind == WorkKind.VerifyMachine ? SelectVerification(view, job.MachineId, incident.ActorId) : job.Kind == WorkKind.RepairMachine ? AuthorityDispatch.Replacement(view, job.MachineId, incident.ActorId, ReviewCandidates()) :
+                    AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), incident.ActorId, ReviewCandidates());
                 var locations = PatrolCandidates(incident, view);
-                long guard = NeedsPatrolResponse(incident) ? SelectPatrol(incident, view, locations) : 0;
+                long guard = NeedsPatrolResponse(incident) ? SelectPatrol(incident, view, locations, ReviewCandidates()) : 0;
                 if (NeedsWorkResponse(incident) && selected == 0) SetIncidentResponse(incident, IncidentWorkResponse.NoEligibleResponder, "NoKnownQualifiedOnDutyUncommittedResponderWithLocation");
                 if (NeedsPatrolResponse(incident)) incident.PatrolReason = guard == 0 ? "NoKnownEligiblePatrolOrSearchLocation" : "";
                 if (selected == 0 && guard == 0) continue;
@@ -122,12 +129,13 @@ namespace Station.Core
                     var attempt = CreateWorkAttempt(processingTick, assignment);
                     incident.ReplacementAttemptId = attempt.Id;
                     DispatchWork(attempt.Id, incident.OpeningEventId); committed = true;
+                    available = null;
                     SetIncidentResponse(incident, IncidentWorkResponse.Dispatched, "ReplacementOrderPosted");
                 }
                 // Re-evaluate commitments after posting the replacement. A dual-role
                 // responder cannot be assigned both branches in the same decision.
-                guard = NeedsPatrolResponse(incident) ? SelectPatrol(incident, view, locations) : 0;
-                if (guard != 0) { DispatchPatrol(incident, guard, locations); committed = true; }
+                guard = NeedsPatrolResponse(incident) ? SelectPatrol(incident, view, locations, ReviewCandidates()) : 0;
+                if (guard != 0) { DispatchPatrol(incident, guard, locations); committed = true; available = null; }
                 if (committed && incident.AdmissionBucket < 0)
                 {
                     budget.Used = checked(budget.Used + 1); incident.AdmissionBucket = bucket; incident.AdmissionTick = processingTick;

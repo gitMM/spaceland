@@ -29,9 +29,7 @@ namespace Station.Core
                 PlansFound++; order.Backoff = planner.InitialBackoff;
                 if (result.Steps.Count == 0)
                 {
-                    order.Status = LocalOrderStatus.Completed; order.Reason = order.CleanedUnits == 0 ? "NoWorkNeeded" : "ReportedComplete";
-                    QueueOrderReport(order, MessageKind.WorkCompleted, order.Reason); UnpinOrder(actor, order.AttemptId); TriggerWorkCheckIn(actor.Id);
-                    Emit("CleanupGoalCompleted", actor, attemptId: order.AttemptId, messageId: order.OrderMessageId, detail: order.Reason); return;
+                    CompleteKnownCleanup(actor, order); return;
                 }
                 var first = result.Steps[0].Intent;
                 long cause = Emit("PlanSelected", actor, attemptId: order.AttemptId, messageId: order.OrderMessageId,
@@ -47,6 +45,14 @@ namespace Station.Core
             Emit("PlanUnavailable", actor, attemptId: order.AttemptId, detail: "clean-known-tile/v1; " + order.Reason);
             RequestOrderDecision(order, checked(processingTick + order.Backoff)); order.Backoff = NextWorkBackoff(order.Backoff);
         }
+        private void CompleteKnownCleanup(Actor actor, LocalWorkOrderSnapshot order)
+        {
+            order.Status = LocalOrderStatus.Completed; order.Reason = order.CleanedUnits == 0 ? "NoWorkNeeded" : "ReportedComplete";
+            foreach (var e in scheduled.ForActor(actor.Id.Value).Where(e => e.Kind == ScheduledKind.EvaluateWorkOrder && e.Value == order.AttemptId).ToArray()) scheduled.Remove(e);
+            order.NextDecision = -1;
+            QueueOrderReport(order, MessageKind.WorkCompleted, order.Reason); UnpinOrder(actor, order.AttemptId); TriggerWorkCheckIn(actor.Id);
+            Emit("CleanupGoalCompleted", actor, attemptId: order.AttemptId, messageId: order.OrderMessageId, detail: order.Reason);
+        }
         private void CleanupActionCompleted(Actor actor, ActiveAction action)
         {
             if (action.Kind == ActionKind.Move)
@@ -54,6 +60,11 @@ namespace Station.Core
             if (!(action.Kind is ActionKind.InspectTile or ActionKind.Clean) || !localOrders.TryGetValue(action.AttemptId, out var order) || order.Kind != WorkKind.CleanTile) return;
             var observed = actor.Knowledge.Entries.TryGetValue(new FactKey(SubjectKind.Tile, order.TileId, AttributeKind.Dirt), out var entry) ? entry.Fact : null;
             order.CleanupChecked = observed != null && observed.ObservedTick == processingTick;
+            // Preserve this completed local observation before another due goal
+            // moves the worker away. Posting still uses the ordinary report queue
+            // and terminal transport; no authority state is updated here.
+            if (order.Status == LocalOrderStatus.Working && order.ActorId == actor.Id.Value && order.Expires > processingTick &&
+                order.CleanupChecked && observed!.Value.Equals(FactValue.Integer(0))) CompleteKnownCleanup(actor, order);
         }
     }
 }

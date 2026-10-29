@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
@@ -58,19 +59,29 @@ namespace Station.Core
                     if (!patrolOrders.TryGetValue(i.PatrolOrderMessageId, out var patrol) || patrol.Payload.IncidentId != i.Id || i.PatrolResultMessageId != patrol.ResultMessageId ||
                         i.WorkerStatusResponse != (patrol.ResultMessageId > 0 ? patrol.Status : "PatrolPosted")) throw new ArgumentException("Invalid patrol branch evidence.");
                 }
-                else if (i.PatrolResultMessageId != 0 || i.WorkerStatusResponse != "PendingPatrol") throw new ArgumentException("Patrol resolution without order.");
+                else if (i.PatrolResultMessageId != 0 || !(i.WorkerStatusResponse == "PendingPatrol" || i.WorkerStatusResponse == "ResponseReceived" && i.ResponseMessageId > 0)) throw new ArgumentException("Patrol resolution without order.");
                 if (i.ReplacementAttemptId > 0 || i.PatrolOrderMessageId > 0)
                 {
                     long firstPosted = Math.Min(i.ReplacementAttemptId > 0 ? workAttempts[i.ReplacementAttemptId].DispatchTick : long.MaxValue, i.PatrolOrderMessageId > 0 ? messages[i.PatrolOrderMessageId].SubmittedTick : long.MaxValue);
                     if (i.AdmissionTick != firstPosted || i.AdmissionTick < i.OpenedTick || HourBucket(i.AdmissionTick) != i.AdmissionBucket || !admissionBuckets.ContainsKey((i.AdmissionBucket, i.Cohort))) throw new ArgumentException("Invalid first-response admission.");
                 }
                 else if (i.AdmissionBucket != -1 || i.AdmissionTick != -1) throw new ArgumentException("Admission token without committed response.");
+            }
+            // An ancestor can reference a later replacement. Read every branch
+            // before walking the chain used to authenticate its received outcome.
+            foreach (var i in missingReports.Values)
+            {
                 if (i.ReplacementResultMessageId == 0)
                 { if (i.WorkResolution != "Unverified") throw new ArgumentException("Work resolution lacks report evidence."); }
                 else
                 {
-                    if (!expectations.TryGetValue(i.ReplacementAttemptId, out var expectation) || expectation.ResultMessageId != i.ReplacementResultMessageId || !messages.TryGetValue(i.ReplacementResultMessageId, out var result)) throw new ArgumentException("Invalid replacement result evidence.");
+                    long descendant = i.ReplacementAttemptId;
+                    var visited = new SortedSet<long>();
+                    while (descendant > 0 && visited.Add(descendant) && expectations.TryGetValue(descendant, out var current) && current.ResultMessageId != i.ReplacementResultMessageId)
+                        descendant = missingReports.TryGetValue(descendant, out var child) ? child.ReplacementAttemptId : 0;
+                    if (!expectations.TryGetValue(descendant, out var expectation) || expectation.ResultMessageId != i.ReplacementResultMessageId || !messages.TryGetValue(i.ReplacementResultMessageId, out var result)) throw new ArgumentException("Invalid replacement result evidence.");
                     string resolution = result.Draft.Kind == MessageKind.WorkCompleted ? "ReportedComplete" : result.Draft.Kind == MessageKind.WorkBlocked ? "ReportedBlocked" : "ReportedUnableToContinue";
+                    if (descendant != i.ReplacementAttemptId) resolution += "ByReplacementChain";
                     if (i.WorkResolution != resolution) throw new ArgumentException("Replacement resolution disagrees with received claim.");
                 }
             }

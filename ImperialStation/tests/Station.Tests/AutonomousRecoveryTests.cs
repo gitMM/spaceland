@@ -102,6 +102,38 @@ public sealed class AutonomousRecoveryTests
     }
 
     [Fact]
+    public void TravelBetweenUnavailableRecoveryDesksPreservesBackoffAndEventuallyRecovers()
+    {
+        var w = Station(secondDesk: true, planner: new PlannerConfig(initialBackoff: 8, maximumBackoff: 128));
+        foreach (long terminal in new[] { 2L, 3L })
+        {
+            w.ScheduleTerminalChange(0, terminal, false, false);
+            w.ScheduleTerminalChange(300, terminal, true, true);
+        }
+        long firstFailure = -1, firstBackoff = 0;
+        bool sawSecondFailure = false;
+        for (long tick = 0; tick < 300; tick++)
+        {
+            w.AdvanceTo(tick);
+            if (!w.Trace.Any(e => e.Tick == tick && e.Type == "ActionFailed" && e.Detail == "RequiredServiceNotPresent")) continue;
+            var recovery = Assert.Single(w.InspectRecoveryAgents());
+            if (firstFailure < 0) { firstFailure = tick; firstBackoff = recovery.Backoff; continue; }
+            Assert.Contains(w.Trace, e => e.Tick > firstFailure && e.Tick < tick && e.Type == "ActionRequested" && e.Detail == "Move");
+            Assert.True(recovery.Backoff > firstBackoff, "Travel must not erase a failed recovery service's backoff.");
+            sawSecondFailure = true; break;
+        }
+        Assert.True(sawSecondFailure);
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(800); restored.AdvanceTo(800);
+        Assert.Equal(1, Assert.Single(w.InspectRecoveryAgents()).Completed);
+        Assert.True(Assert.Single(w.InspectMachines()).Operational);
+        w.AssertAccounting(); restored.AssertAccounting();
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+    }
+
+    [Fact]
     public void EveryRecoveryBoundaryRestoresAndReplaysIdentically()
     {
         for (int tick = 0; tick <= 50; tick++)

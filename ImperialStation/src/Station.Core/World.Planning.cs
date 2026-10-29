@@ -86,7 +86,7 @@ namespace Station.Core
             WakePatrol(actor);
             WakeRoutine(actor);
             WakeOrderDecisions(actor);
-            WakeAudits(actor);
+            WakeAudits(actor, completed: action);
             OnCheckInActionFinished(actor, action, false);
             OnRepairActionFinished(actor, false);
             if(!reportAgents.TryGetValue(actor.Id,out var agent))return;

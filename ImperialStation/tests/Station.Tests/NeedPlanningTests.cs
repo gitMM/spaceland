@@ -146,7 +146,7 @@ public sealed class NeedPlanningTests
         w.AdvanceTo(7); Assert.Equal(1, Agent(w).CompletedActivities); Assert.Equal(ActionKind.UseToilet, Assert.Single(w.InspectNeedActivities()).Kind);
         Assert.Equal(NeedBand.Critical, w.InspectOwnNeeds(new(1)).Single(n => n.Kind == NeedKind.Hunger).Band); Assert.True(w.PlannerExpansions <= w.PlannerRequests * 512); RoundTrip(w);
     }
-    private static World EscortWithNeeds(long actor, NeedKind kind, long q, NeedServiceKind serviceKind, long facility = 0)
+    private static World EscortWithNeeds(long actor, NeedKind kind, long q, NeedServiceKind serviceKind, long facility = 0, int needRate = 0)
     {
         var setup = LoadedScenario.Load(Path.Combine(Fixtures.Root, "scenarios", "detention_release.json"));
         var j = JsonNode.Parse(setup.ScenarioJson)!.AsObject(); j["assertions"] = new JsonArray(); j["scriptedActors"] = new JsonArray();
@@ -155,6 +155,13 @@ public sealed class NeedPlanningTests
         j["initialState"]!["needs"] = new JsonObject {
             ["initial"] = new JsonArray(new JsonObject { ["actorId"] = actor, ["kind"] = kind.ToString(), ["q"] = q }),
             ["services"] = new JsonArray(new JsonObject { ["id"] = 1, ["kind"] = serviceKind.ToString(), ["position"] = new JsonObject { ["x"] = 2, ["y"] = 0, ["z"] = 0 }, ["detentionFacilityId"] = facility, ["durationTicks"] = 5 }) };
+        if (needRate > 0)
+        {
+            j["initialState"]!["needs"]!["rules"] = JsonNode.Parse(JsonData.Write(new NeedConfig().Rules.Select(r =>
+                r.Kind == kind ? new NeedRule(r.Kind, needRate, needRate, needRate, needRate, r.Seek, r.Urgent, r.Critical) : r)));
+            j["initialState"]!["routines"]!["configuration"]!["dayTicks"] = 6000;
+            j["initialState"]!["routines"]!["configuration"]!["dutyTicks"] = 2000;
+        }
         var catalog = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.Root, "content", "escort.json")))!.AsObject(); catalog["resources"]!.AsArray().Add(new JsonObject { ["id"] = "meal" });
         var world = new LoadedScenario(j.ToJsonString(), catalog.ToJsonString(), "autonomous-custody-needs").CreateWorld(42, true);
         // Reuse the earlier physical misconduct setup (ticks 0..12). The subject's
@@ -170,6 +177,26 @@ public sealed class NeedPlanningTests
         var w = EscortWithNeeds(3, NeedKind.Hunger, 700 * H - 210 * 6000, NeedServiceKind.Cafeteria);
         w.AdvanceTo(734); Assert.Empty(w.InspectNeedActivities()); Assert.Equal(NeedBand.Urgent, w.InspectOwnNeeds(new(3)).Single(n => n.Kind == NeedKind.Hunger).Band); RoundTrip(w);
         w.AdvanceTo(950); Assert.Equal(1, w.MealsConsumed); Assert.Single(w.InspectNeedActivities(), a => a.ActorId == 3 && a.Status == NeedActivityStatus.Completed); Assert.Equal(DetentionStayStatus.Detained, Assert.Single(w.InspectDetentionStays()).Status); RoundTrip(w);
+    }
+    [Theory]
+    [InlineData(NeedKind.Hunger, NeedServiceKind.Cafeteria, 700, 20000)]
+    [InlineData(NeedKind.Bladder, NeedServiceKind.Toilet, 500, 40000)]
+    public void GuardRelievesPredictedCriticalNeedBeforeCommittingToCustody(NeedKind kind, NeedServiceKind service, int threshold, int rate)
+    {
+        // Hunger becomes urgent after order adoption and critical during the
+        // predicted journey/intake, so startup relief cannot satisfy this test.
+        var w = EscortWithNeeds(3, kind, threshold * H - 210L * rate * 100, service, needRate: rate);
+        w.AdvanceTo(400);
+        Assert.Empty(w.InspectEscorts());
+        var copy = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); copy.ClearRecordedTrace();
+        w.AdvanceTo(1800); copy.AdvanceTo(1800);
+        Assert.DoesNotContain(w.InspectEscorts(), e => e.Status == EscortStatus.Interrupted);
+        Assert.True(Assert.Single(w.InspectDetentionStays()).IntakeTick > 0);
+        Assert.Contains(w.InspectNeedActivities(), a => a.ActorId == 3 && a.Status == NeedActivityStatus.Completed && a.EndedTick < Assert.Single(w.InspectEscorts()).StartedTick);
+        Assert.DoesNotContain(w.Trace, e => e.Type == "NeedThresholdReached" && e.ActorId == 3 && e.Detail.StartsWith(kind + "/Critical") && e.Tick < Assert.Single(w.InspectDetentionStays()).IntakeTick);
+        Assert.Equal(w.Digest(), copy.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), copy.Trace.Select(Runs.EventJson));
     }
     [Fact]
     public void DetaineeAutonomouslyUsesOnlyItsLocalPermittedService()

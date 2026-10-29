@@ -31,19 +31,32 @@ namespace Station.Core
                     CancelRunning(actors[new Id<ActorTag>(stay.Status == DetentionStayStatus.Reserved ? stay.LeaderId : stay.ActorId)]);
                 if (stay.Status == DetentionStayStatus.Detained && stay.ReleaseDue <= processingTick) ScheduleDetentionRelease(stay, checked(processingTick + 1));
             }
-            foreach (var group in escorts.Values.Where(g => g.Status == EscortStatus.AwaitingIntake && EscortPayload(g).Dispatch.FacilityId == id))
-                RequestGuardDecision(localGuardOrders[group.Members.Single(m => m.ActorId == EscortPayload(group).Leader).OrderMessageId], checked(processingTick + 1));
+            WakeWaitingIntakes(id);
             Emit("DetentionServiceChanged", detail: "facility=" + id + "; powered=" + facility.Powered + "; connected=" + facility.Connected);
         }
         private void PlanDetentionIntake(Actor actor, LocalGuardOrderSnapshot local, EscortSnapshot group)
         {
             if (actor.Id.Value != local.Payload.Leader || group.Status != EscortStatus.AwaitingIntake) return;
+            // A local refusal remains known until this service changes. Routine
+            // wakeups must not turn a full facility into a two-tick retry loop.
+            if (local.Reason is "Intake/FacilityFull" or "Intake/ServiceBusy" or "Intake/NoPower" or "Intake/Disconnected") return;
             if (Detention == null || !Detention.Facilities.Any(f => f.Id == local.Payload.Dispatch.FacilityId)) { local.Reason = "DetentionServiceNotDeclared"; return; }
             if (!SpendPlanningRequest()) { RequestGuardDecision(local, checked(processingTick + 1)); return; }
             // The copied destination and facility identity choose the action; current
             // power, capacity and authorization are disclosed only by the local service.
             var plan = Station.Mind.GuardSearchPlanning.Intake(ActorView(actor.Id), local.Payload, planner.MaximumDepth, planner.NodeBudget);
             ExecuteGuardPlan(actor, local, plan, "register-intake/v1");
+        }
+        private void WakeWaitingIntakes(long facilityId)
+        {
+            foreach (var group in escorts.Values.Where(g => g.Status == EscortStatus.AwaitingIntake && EscortPayload(g).Dispatch.FacilityId == facilityId))
+            {
+                var leader = actors[new Id<ActorTag>(EscortPayload(group).Leader)];
+                if (leader.Position != detentionFacilities[facilityId].Definition.Position) continue;
+                var local = localGuardOrders[group.Members.Single(m => m.ActorId == leader.Id.Value).OrderMessageId];
+                local.Reason = "Intake/ServiceChanged";
+                RequestGuardDecision(local, checked(processingTick + 1));
+            }
         }
         private FailureReason ValidateIntake(Actor leader, ActiveAction action)
         {
@@ -95,6 +108,7 @@ namespace Station.Core
             if (failure != FailureReason.None) { stay.Status = DetentionStayStatus.Cancelled; stay.Reason = failure.ToString(); leader.Action = null; ObserveRevokedIntake(leader, action); Fail(leader, action.Id, failure); return; }
             long due = checked(processingTick + p.SentenceTicks);
             stay.Status = DetentionStayStatus.Detained; stay.IntakeTick = processingTick; stay.ReleaseDue = due; group.Status = EscortStatus.Detained;
+            WakeWaitingIntakes(stay.FacilityId);
             long cause = Emit("Detained", leader, action.Id, target: leader.Position, detail: "authorization=" + p.AuthorizationId + "; facility=" + stay.FacilityId, causeId: action.CauseId);
             stay.IntakeEventId = cause;
             foreach (var order in localOrders.Values.Where(o => o.ActorId == stay.ActorId && o.Status == LocalOrderStatus.Suspended)) order.Reason = "DetentionAwaitingCurrentOrders";
@@ -133,6 +147,7 @@ namespace Station.Core
             var f = detentionFacilities[stay.FacilityId];
             if (!f.Powered || !f.Connected || target.Position != f.Definition.Position) { CancelRunning(target); return; }
             stay.Status = DetentionStayStatus.Released; stay.ReleaseTick = processingTick; escorts.Values.Single(g => g.AuthorizationId == stay.AuthorizationId && g.Status == EscortStatus.Detained).Status = EscortStatus.Released;
+            WakeWaitingIntakes(stay.FacilityId);
             long cause = Emit("DetentionReleased", target, action.Id, target: target.Position, detail: "authorization=" + stay.AuthorizationId, causeId: action.CauseId);
             stay.ReleaseReceiptId = PostDetentionServiceMessage(stay, MessageKind.DetentionReleaseReceipt, RecipientKind.Authority, "Released", cause);
             stay.ReleaseNoticeId = PostDetentionServiceMessage(stay, MessageKind.DetentionReleaseNotice, RecipientKind.Account, "Released", cause);
@@ -141,11 +156,12 @@ namespace Station.Core
         private void CancelDetentionOperation(ActiveAction action)
         {
             if (action.Kind == ActionKind.RegisterIntake)
-            { var s = detentionStays.Values.Single(s => s.Status == DetentionStayStatus.Reserved && s.IntakeActionId == action.Id.Value); s.Status = DetentionStayStatus.Cancelled; s.Reason = "IntakeCancelled"; }
+            { var s = detentionStays.Values.Single(s => s.Status == DetentionStayStatus.Reserved && s.IntakeActionId == action.Id.Value); s.Status = DetentionStayStatus.Cancelled; s.Reason = "IntakeCancelled"; WakeWaitingIntakes(s.FacilityId); }
             else if (action.Kind == ActionKind.ReleaseDetention)
             {
                 var s = detentionStays.Values.Single(s => s.Status == DetentionStayStatus.Releasing && s.ReleaseActionId == action.Id.Value);
                 s.Status = DetentionStayStatus.Detained; s.ReleaseActionId = 0; s.ReleaseStarted = -1; s.Reason = "ReleaseCancelled"; ScheduleDetentionRelease(s, checked(processingTick + planner.InitialBackoff));
+                WakeWaitingIntakes(s.FacilityId);
             }
         }
         private long PostDetentionServiceMessage(DetentionStaySnapshot stay, MessageKind kind, RecipientKind recipient, string status, long parentCause)

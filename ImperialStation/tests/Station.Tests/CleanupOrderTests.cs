@@ -21,6 +21,35 @@ public sealed class CleanupOrderTests
     private static LocalWorkOrderSnapshot Local(World w, long actor) => Assert.Single(w.InspectLocalOrders(new(actor)));
 
     [Fact]
+    public void CompletedCleanupQueuesItsReportBeforeLeavingForAnOffDutyNeed()
+    {
+        var w = Load(j =>
+        {
+            var s = j["initialState"]!; s.AsObject().Remove("authority");
+            s["tiles"]![1]!["traversalOverride"] = 1;
+            s["routines"]!["configuration"]!["dayTicks"] = 60;
+            s["routines"]!["configuration"]!["dutyTicks"] = 20;
+            s["cleanliness"]!["cleanUnitTicks"] = 10;
+            s["cleanliness"]!["dirt"]![0]!["units"] = 1;
+            s["needs"] = new JsonObject {
+                ["initial"] = new JsonArray(new JsonObject { ["actorId"] = 1, ["kind"] = "Bladder", ["q"] = 500 * NeedAccumulator.HourMilliseconds - 22 * 10000 }),
+                ["services"] = new JsonArray(new JsonObject { ["id"] = 1, ["kind"] = "Toilet", ["position"] = new JsonObject { ["x"] = 0, ["y"] = 0, ["z"] = 0 }, ["durationTicks"] = 2 }) };
+        }).CreateWorld(42, true);
+        w.AdvanceTo(24);
+        Assert.Equal(0, w.InspectDirt()[0].Units);
+        Assert.Equal(LocalOrderStatus.Completed, Local(w, 1).Status);
+        var copy = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); copy.ClearRecordedTrace();
+        w.AdvanceTo(59); copy.AdvanceTo(59);
+        var report = Assert.Single(w.InspectMessages(), m => m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.AttemptId == 1);
+        Assert.True(report.DeliveryTick < 60);
+        Assert.Equal("WorkCompleted", Assert.Single(w.InspectJobs()).AuthorityStatus);
+        Assert.Equal(w.Digest(), copy.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), copy.Trace.Select(Runs.EventJson));
+        w.AssertAccounting();
+    }
+
+    [Fact]
     public void T19_AutonomousCleanupKeepsDeliveryAcceptancePhysicalWorkAndReportsSeparate()
     {
         var loaded = Load(); Assert.Empty(loaded.Scenario.ScriptedActors); var w = loaded.CreateWorld(42, true);
@@ -39,8 +68,8 @@ public sealed class CleanupOrderTests
         w.AdvanceTo(110); Assert.Equal(LocalOrderStatus.Completed, Local(w, 1).Status); Assert.Equal("NoWorkNeeded", Local(w, 1).Reason); Assert.Equal(0, Local(w, 1).CleanedUnits);
         Assert.DoesNotContain(w.Trace, e => e.ActorId == 1 && e.Type == "CleaningCompleted"); Assert.Equal(2, w.InspectDirt()[0].RemovedUnits);
         w.AdvanceTo(173); Assert.Equal("ReportedNotLocated", w.InspectMissingReports()[0].WorkerStatusResponse); long childResult = w.InspectMissingReports()[0].ReplacementResultMessageId;
-        w.AdvanceTo(218); Assert.Equal(LocalOrderStatus.Cancelled, Local(w, 1).Status); Assert.Equal(0, w.InspectMissingReports()[0].ResponseMessageId);
-        w.AdvanceTo(219); incident = w.InspectMissingReports()[0]; Assert.True(incident.ResponseMessageId > 0); Assert.Equal(childResult, incident.ReplacementResultMessageId);
+        w.AdvanceTo(217); Assert.Equal(0, w.InspectMissingReports()[0].ResponseMessageId);
+        w.AdvanceTo(218); Assert.Equal(LocalOrderStatus.Cancelled, Local(w, 1).Status); incident = w.InspectMissingReports()[0]; Assert.True(incident.ResponseMessageId > 0); Assert.Equal(childResult, incident.ReplacementResultMessageId);
         var originalResult = w.InspectMessages().Single(m => m.Id == incident.ResponseMessageId);
         Assert.Equal(1, originalResult.Draft.AttemptId); Assert.Equal("NoWorkNeeded", originalResult.Draft.Claim.Text); Assert.Equal(1, originalResult.TerminalId);
         Assert.Equal(2, w.InspectMessages().Single(m => m.Id == childResult).TerminalId);
@@ -153,16 +182,16 @@ public sealed class CleanupOrderTests
     {
         var w = Load(json => {
             json["initialState"]!["tiles"]![1]!["traversalOverride"] = 1;
-            json["initialState"]!["routines"]!["configuration"]!["dayTicks"] = 60;
+            json["initialState"]!["routines"]!["configuration"]!["dayTicks"] = 120;
             json["initialState"]!["routines"]!["configuration"]!["dutyTicks"] = 20;
             json["initialState"]!["cleanliness"]!["cleanUnitTicks"] = 10;
             json["initialState"]!["authority"]!["graceTicks"] = 70;
         }).CreateWorld(42, true);
         w.AdvanceTo(30); Assert.Equal(1, w.InspectDirt()[0].Units); Assert.Equal(LocalOrderStatus.Working, Local(w, 1).Status);
-        var e = Assert.Single(w.InspectExpectations()); Assert.Equal(110, e.BaseDeadline); Assert.Equal(41, e.OffDutyExtension); Assert.Equal(151, e.Deadline);
-        var copy = World.Restore(w.Serialize()); w.AdvanceTo(137); copy.AdvanceTo(137); Assert.Equal(w.Serialize(), copy.Serialize());
+        var e = Assert.Single(w.InspectExpectations()); Assert.Equal(110, e.BaseDeadline); Assert.Equal(101, e.OffDutyExtension); Assert.Equal(211, e.Deadline);
+        var copy = World.Restore(w.Serialize()); w.AdvanceTo(200); copy.AdvanceTo(200); Assert.Equal(w.Serialize(), copy.Serialize());
         e = Assert.Single(w.InspectExpectations()); Assert.Equal(ExpectationStatus.Satisfied, e.Status); Assert.True(e.ResultTick > e.BaseDeadline && e.ResultTick < e.Deadline);
-        Assert.Empty(w.InspectMissingReports()); Assert.DoesNotContain(w.Trace, t => t.Type == "ActionStarted" && t.ActorId == 1 && t.Detail == "Clean" && t.Tick >= 20 && t.Tick < 60);
+        Assert.Empty(w.InspectMissingReports()); Assert.DoesNotContain(w.Trace, t => t.Type == "ActionStarted" && t.ActorId == 1 && t.Detail == "Clean" && t.Tick >= 20 && t.Tick < 120);
     }
 
     [Fact]

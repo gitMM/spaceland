@@ -48,11 +48,16 @@ namespace Station.Core
             var q = qualityChecks[attempt]; if (q.Status != QualityAssuranceStatus.Scheduled) return;
             q.Status = QualityAssuranceStatus.PendingSupervisor; RequestQualityReview(processingTick);
         }
-        private long SelectVerification(IAuthorityView view, long machine, long excludedActor)
+        private IEnumerable<DispatchCandidate> VerificationCandidates(IAuthorityView view) => view.Personnel
+            .Where(p => p.Role == (QualityAssurance?.SupervisorRole ?? "supervisor") && p.Roster != null && p.Roster.OnDuty(view.Tick))
+            .Select(Candidate).Where(c => !c.Committed && c.KnownOrigin.HasValue);
+        private long SelectVerification(IAuthorityView view, long machine, long excludedActor, IEnumerable<DispatchCandidate>? available = null)
         {
             var target = view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == machine); if (target == null) return 0;
-            return view.Personnel.Select(Candidate).Where(c => c.Person.ActorId != excludedActor && c.Person.Role == (QualityAssurance?.SupervisorRole ?? "supervisor") &&
-                    c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && !c.Committed && c.KnownOrigin.HasValue)
+            // Reject ineligible roles/rosters before evaluating their commitments.
+            // Candidate reads the work history; scanning it for every citizen for
+            // every pending verification made concurrent QA quadratic in population.
+            return (available ?? VerificationCandidates(view)).Where(c => c.Person.ActorId != excludedActor)
                 .OrderBy(c => TravelEstimates.Authority(c.KnownOrigin!.Value, target.Position, view.NominalTravelTicks)).ThenBy(c => c.Person.ActorId).Select(c => c.Person.ActorId).FirstOrDefault();
         }
         private void RequestQualityReview(long tick)
@@ -66,14 +71,16 @@ namespace Station.Core
         private void ReviewQuality()
         {
             nextQualityReview = -1; var view = AuthorityView();
+            var available = VerificationCandidates(view).ToList();
             foreach (var q in qualityChecks.Values.Where(q => q.Status == QualityAssuranceStatus.PendingSupervisor).OrderBy(q => q.DueTick).ThenBy(q => q.RepairAttemptId))
             {
-                long supervisor = SelectVerification(view, q.MachineId, workAttempts[q.RepairAttemptId].ActorId);
+                long supervisor = SelectVerification(view, q.MachineId, workAttempts[q.RepairAttemptId].ActorId, available);
                 if (supervisor == 0) { q.Reason = "NoKnownOnDutyUncommittedSupervisor"; continue; }
                 long id = nextJob; nextJob = checked(nextJob + 1); jobs.Add(id, new JobSnapshot { Id = id, Kind = WorkKind.VerifyMachine, MachineId = q.MachineId });
                 var attempt = CreateWorkAttempt(processingTick, new AssignmentSeed("qa/" + q.RepairAttemptId, id, new Id<ActorTag>(supervisor), checked(processingTick + QualityAssurance!.OrderTicks)));
                 q.VerificationJobId = id; q.VerificationAttemptId = attempt.Id; q.Status = QualityAssuranceStatus.Assigned; q.Reason = "VerificationOrderPosted";
                 DispatchWork(attempt.Id, q.CauseId);
+                available.RemoveAll(c => c.Person.ActorId == supervisor);
             }
             if (!qualityChecks.Values.Any(q => q.Status == QualityAssuranceStatus.PendingSupervisor)) return;
             long next = NextHourTick(HourBucket(processingTick));

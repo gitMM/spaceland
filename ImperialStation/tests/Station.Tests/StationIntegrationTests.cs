@@ -50,9 +50,9 @@ public sealed class StationIntegrationTests
         var measured = StationBaseline.Execute(StationBaseline.Create(128, days: 1), requireDaily: false);
         Assert.Equal("completed", measured.Status); Assert.Equal(128, measured.ActiveWorkers);
         Assert.Equal(0, measured.ScheduledRestsOverdue); Assert.Equal(128, measured.ScheduledRestsCompleted);
-        // Schema 43 includes machine query scope and escort dispatch identities;
-        // idle off-duty citizens may also accept another citizen's invitation.
-        Assert.Equal("4fbf9a8fb937cf2bd52242ebeec345c14f46d2fda55b98dec33305ba7774a25f", measured.Digest);
+        // Schema 45 changes the validated guard search deadline to a full roster
+        // cycle. This no-escort control differs only in its encoded schema byte.
+        Assert.Equal("2d8a319bf9682e9a394c84f678e0d06553bc17280b68ce39954dceef7f9bf67d", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

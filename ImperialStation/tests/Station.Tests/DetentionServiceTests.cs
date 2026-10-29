@@ -161,6 +161,24 @@ public sealed class DetentionServiceTests
         if (capacity == 1) { var stays = w.InspectDetentionStays().OrderBy(s => s.IntakeTick).ToArray(); Assert.True(stays[1].IntakeStarted >= stays[0].ReleaseTick); }
     }
     [Fact]
+    public void FullIntakeWaitsForLocalCapacityChangeAndSurvivesCheckpoint()
+    {
+        var scenario = TwoSubjects(1, 1);
+        scenario["initialState"]!["detention"]!["sentenceTicks"] = 2000;
+        var w = Loaded(scenario).CreateWorld(42, true);
+        w.AdvanceTo(1000);
+        Assert.Contains(w.InspectEscorts(), e => e.Status == EscortStatus.AwaitingIntake);
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(6000); restored.AdvanceTo(6000);
+        Assert.All(w.InspectDetentionStays(), s => Assert.Equal(DetentionStayStatus.Released, s.Status));
+        Assert.Equal(2, w.InspectDetentionStays().Count);
+        Assert.InRange(w.Trace.Count(e => e.Type == "ActionFailed" && e.Detail == "ServiceBusy"), 0, 4);
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+        w.AssertAccounting();
+    }
+    [Fact]
     public void ReleasedWorkerMustReadCurrentOrdersBeforeSuspendedWorkCanResume()
     {
         var w = Load(j => { j["initialState"]!["detention"]!["sentenceTicks"] = 100; j["initialState"]!["jobSystem"]!["jobs"]!.AsArray().Add(new JsonObject { ["id"] = 100, ["machineId"] = 1 }); foreach (var a in j["initialState"]!["jobSystem"]!["assignments"]!.AsArray()) a!["expires"] = 10000; }).CreateWorld(42);

@@ -21,6 +21,25 @@ public sealed class EscortMovementTests
         var w = Load(change).CreateWorld(42, true); w.ScheduleTraversalChange(484, new(2, 0, 0), 20); w.AdvanceTo(494); return w;
     }
     [Fact]
+    public void GuardWhoLeavesBeforeCustodyReturnsAndReinspectsTheTarget()
+    {
+        var w = Load().CreateWorld(42, true); w.AdvanceTo(394);
+        Assert.Equal(ActionKind.BeginEscort, w.InspectActor(new(3)).Action);
+        w.Submit(395, new(new(3), ActionKind.Cancel, new(1, 0, 0)));
+        w.Submit(395, new(new(3), ActionKind.Move, new(2, 0, 0)));
+        w.AdvanceTo(395);
+        Assert.Equal(GuardOrderStatus.Searching, Assert.Single(w.InspectLocalGuardOrders(new(3))).Status);
+        Assert.Empty(w.InspectEscorts());
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(900); restored.AdvanceTo(900);
+        Assert.Contains(w.Trace, e => e.Type == "GuardSearchCandidateInspected" && e.ActorId == 3 && e.Detail == "FoundHere");
+        Assert.Single(w.InspectEscorts());
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+        RoundTrip(w);
+    }
+    [Fact]
     public void FiniteLocalBeginPrecedesCustodyAndSharedDeparture()
     {
         var w = Load().CreateWorld(42, true); w.AdvanceTo(394);
@@ -32,6 +51,82 @@ public sealed class EscortMovementTests
         w.AdvanceTo(495); Assert.Equal(EscortStatus.AwaitingIntake, Group(w).Status);
         foreach (long id in new long[] { 1, 3, 4 }) Assert.Equal(new Coord(2, 0, 0), w.ActorView(new(id)).CurrentTile);
         Assert.DoesNotContain(w.Trace, e => e.Type == "Detained"); Assert.Equal(0, w.ActionsFailed); RoundTrip(w);
+    }
+    [Fact]
+    public void IncompletePartnerInspectionBacksOffWithoutLosingLocalSearchProgress()
+    {
+        var w = Load(j =>
+        {
+            j["initialState"]!["routines"]!["configuration"]!["dayTicks"] = 15000;
+            j["initialState"]!["routines"]!["configuration"]!["dutyTicks"] = 5000;
+            j["initialState"]!["detention"]!["orderTicks"] = 6000;
+        }).CreateWorld(42, true);
+        w.AdvanceTo(394);
+        w.ScheduleTraversalChange(395, new(2, 0, 0), 800);
+        w.Submit(395, new(new(4), ActionKind.Move, new(2, 0, 0)));
+        w.AdvanceTo(1100);
+        var failures = w.Trace.Where(e => e.ActorId == 3 && e.Type == "ActionFailed" && e.Detail == "UnknownRequiredFact").ToArray();
+        Assert.InRange(failures.Length, 2, 5);
+        Assert.Empty(w.InspectEscorts());
+        Assert.Equal(GuardOrderStatus.TargetLocated, Assert.Single(w.InspectLocalGuardOrders(new(3))).Status);
+        Assert.True(Assert.Single(w.InspectLocalGuardOrders(new(3))).Backoff > 50);
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(4500); restored.AdvanceTo(4500);
+        Assert.True(w.InspectEscorts().Count == 1, JsonData.Write(w.InspectLocalGuardOrders(new(3)).Concat(w.InspectLocalGuardOrders(new(4)))));
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+        RoundTrip(w);
+    }
+
+    [Fact]
+    public void LateShiftTeamRetainsSearchAcrossSleepAndCompletesOnNextDuty()
+    {
+        var w = Load(j =>
+        {
+            j["initialState"]!["routines"]!["configuration"]!["dutyTicks"] = 350;
+            j["initialState"]!["detention"]!["orderTicks"] = 6000;
+        }).CreateWorld(42, true);
+        w.AdvanceTo(900);
+        Assert.Single(w.InspectLocalGuardTeams());
+        Assert.Empty(w.InspectEscorts());
+        Assert.DoesNotContain(w.InspectGuardOutcomes(), o => o.Outcome == "TeamNotReady");
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(3400); restored.AdvanceTo(3400);
+        Assert.Single(w.InspectEscorts());
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+    }
+
+    [Fact]
+    public void SplitSearchHasABoundedLocalWaitWithoutInventingPartnerKnowledge()
+    {
+        var w = Load(j =>
+        {
+            j["initialState"]!["routines"]!["assignments"]![2]!["restTile"]!["x"] = 1;
+            j["initialState"]!["detention"]!["orderTicks"] = 6000;
+        }).CreateWorld(42, true); w.AdvanceTo(394);
+        w.Submit(395, new(new(3), ActionKind.Cancel, new(1, 0, 0)));
+        w.Submit(395, new(new(3), ActionKind.Move, new(2, 0, 0)));
+        w.Submit(396, new(new(1), ActionKind.Move, new(2, 0, 0)));
+        w.AdvanceTo(900);
+        Assert.Equal(GuardOrderStatus.SearchExhausted, Assert.Single(w.InspectLocalGuardOrders(new(3))).Status);
+        Assert.Equal(GuardOrderStatus.TargetLocated, Assert.Single(w.InspectLocalGuardOrders(new(4))).Status);
+        // Return after the leader's negative search. The other guard can still
+        // identify the target, but must eventually report the split team's limit.
+        w.Submit(901, new(new(1), ActionKind.Move, new(1, 0, 0)));
+        var copy = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); copy.ClearRecordedTrace();
+        w.AdvanceTo(3600); copy.AdvanceTo(3600);
+        var waiting = Assert.Single(w.InspectLocalGuardOrders(new(4)));
+        Assert.Equal(GuardOrderStatus.SearchAbandoned, waiting.Status);
+        Assert.DoesNotContain(w.InspectGuardOutcomes(), o => o.ActorId == 4 && o.Outcome == "TargetNotLocated");
+        Assert.Contains(w.InspectGuardOutcomes(true), o => o.ActorId == 4 && o.Outcome == "TeamNotReady");
+        Assert.Equal(EscortDispatchStatus.AwaitingGuards, Assert.Single(w.InspectEscortDispatches()).Status);
+        Assert.Equal(w.Digest(), copy.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), copy.Trace.Select(Runs.EventJson));
+        RoundTrip(w);
     }
     [Fact]
     public void FrozenEdgeTimingSurvivesTraversalChangesForEveryMember()
@@ -73,6 +168,11 @@ public sealed class EscortMovementTests
     {
         var w = Load().CreateWorld(42); w.AdvanceTo(394); w.Submit(395, new(new(1), ActionKind.Move, new(2, 0, 0))); w.AdvanceTo(494);
         Assert.Empty(w.InspectEscorts()); Assert.Equal(FailureReason.NotAtRequiredTile, w.InspectActor(new(3)).LastFailure); Assert.Equal(new Coord(2, 0, 0), w.ActorView(new(1)).CurrentTile); RoundTrip(w);
+        var copy = World.Restore(w.Serialize()); w.AdvanceTo(1000); copy.AdvanceTo(1000);
+        Assert.All(w.InspectLocalGuardOrders(new(3)).Concat(w.InspectLocalGuardOrders(new(4))), l => Assert.Equal(GuardOrderStatus.SearchExhausted, l.Status));
+        Assert.Equal(2, w.InspectGuardOutcomes(true).Count(o => o.Outcome == "TargetNotLocated"));
+        Assert.Equal(1, w.ActionsFailed);
+        Assert.Equal(w.Serialize(), copy.Serialize());
     }
     [Fact]
     public void PartnerLosingEquipmentDuringBeginPreventsCustody()

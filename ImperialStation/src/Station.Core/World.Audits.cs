@@ -40,10 +40,16 @@ namespace Station.Core
             if (processingPhase >= EventPhase.Decision && tick <= processingTick) tick = checked(processingTick + 1);
             audit.NextDecision = tick; Schedule(new ScheduledEvent { Tick = tick, Phase = EventPhase.Decision, Kind = ScheduledKind.EvaluateAudit, Value = audit.VerificationAttemptId });
         }
-        private void WakeAudits(Actor actor, bool failed = false)
+        private void WakeAudits(Actor actor, bool failed = false, ActiveAction? completed = null)
         {
             if (actor.Action != null) return;
-            foreach (var audit in audits.Values.Where(a => a.ActorId == actor.Id.Value && a.Pending)) RequestAudit(audit, failed ? checked(processingTick + audit.Backoff) : processingTick);
+            foreach (var audit in audits.Values.Where(a => a.ActorId == actor.Id.Value && a.Pending))
+            {
+                if (completed != null && completed.ServiceId == audit.TerminalId && completed.Kind is ActionKind.Login or ActionKind.QueryRecords)
+                    audit.Backoff = planner.InitialBackoff;
+                RequestAudit(audit, failed ? checked(processingTick + audit.Backoff) : processingTick);
+                if (failed) audit.Backoff = NextWorkBackoff(audit.Backoff);
+            }
         }
         private RecordQuery AuditQuery(AuditSnapshot audit) => new RecordQuery(audit.Status == AuditStatus.QueryingAttempts ? RecordKind.WorkAttempt : RecordKind.WorkReport, after: audit.Cursor, limit: 1, history: true, machineId: verificationInspections[audit.VerificationAttemptId].MachineId);
         private void EvaluateAudit(long id)
@@ -58,7 +64,9 @@ namespace Station.Core
             PlannerExpansions += plan.Expansions;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
-                PlansFound++; audit.Backoff = planner.InitialBackoff; audit.Reason = "";
+                // Finding the same plan is not evidence that an offline service
+                // recovered. Reset the retry delay only after physical progress.
+                PlansFound++; audit.Reason = "";
                 long cause = Emit("PlanSelected", actor, attemptId: id, terminalId: audit.TerminalId, detail: "audit-records/v1; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, Value = DecisionSource(actor, DueSource.None), Intent = plan.Steps[0].Intent, CauseId = cause }); return;
             }

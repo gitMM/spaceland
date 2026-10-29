@@ -94,7 +94,7 @@ namespace Station.Core
                 !detentionFacilities.TryGetValue(action.ServiceId, out var facility) || !facility.Powered || !facility.Connected || actor.Position != facility.Definition.Position || action.ServiceId != local.Payload.Dispatch.FacilityId) return;
             LearnGuardRevocation(local, 0, action.Id.Value, action.ServiceId); ApplyLearnedGuardRevocation(actor);
         }
-        private static bool GuardOutcomeTerminal(string outcome) => outcome is "TargetNotLocated" or "EscortInterrupted" or "KnownOrderExpired" or "AuthorizationRevoked";
+        private static bool GuardOutcomeTerminal(string outcome) => outcome is "TargetNotLocated" or "EscortInterrupted" or "KnownOrderExpired" or "AuthorizationRevoked" or "TeamNotReady";
         private static bool ValidGuardOutcome(string outcome) => GuardOutcomeTerminal(outcome) || outcome is "EquipmentUnavailable" or "RendezvousUnreachable" or "SearchUnreachable";
         private void QueueGuardOutcome(LocalGuardOrderSnapshot local, string outcome, long observed)
         {
@@ -139,7 +139,7 @@ namespace Station.Core
             }
             RequestIncidentReview(processingTick); return false;
         }
-        private bool GuardReportedFinished(long actor, long authorization, long tick) => records.History.Values.Any(e => e.Kind == RecordKind.GuardOutcome && e.Tick <= tick &&
+        private bool GuardReportedFinished(long actor, long authorization, long tick) => records.HistoryOf(RecordKind.GuardOutcome).Any(e => e.Tick <= tick &&
             RecordNumber(e, AttributeKind.ActorId) == actor && RecordNumber(e, AttributeKind.AuthorizationId) == authorization && GuardOutcomeTerminal(RecordText(e, AttributeKind.WorkStatus)));
         private static bool ValidGuardOutcomeDraft(MessageDraft d)
         {

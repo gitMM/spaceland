@@ -1,10 +1,28 @@
 # Imperial Station Simulation — Implementation Handoff
 
-**Document version:** 1.2.1
+**Document version:** 1.2.2
 **Date:** 2026-10-28
 **Supersedes:** 1.2
 **Audience:** an LLM coding agent implementing the simulation and tools, and a human reviewer who gates each handoff
 **Companion file (non-normative):** `imperial_station_infiltration_roadmap.md` (former §23)
+
+## Fixed-station scope amendment — 2026-10-29
+
+The user has removed station expansion from the first-release scope. The release
+uses a fixed initial layout and population. This amendment takes precedence over
+the historical construction requirements and handoff lists below: R-AUT-01..08,
+T11, dynamic tile construction in R-TIL-05, construction-specific layout updates
+in R-MOV-12, and construction generator/acceptance clauses are deferred. Existing
+construction code and historical evidence may remain, but are not release gates.
+Existing beds, allocation, occupancy, shortages and finite resources remain in scope.
+General dispatch, reporting, blocked-work recovery and resource accounting remain required.
+
+The next milestone combines finite recovery and concurrent institutional chains
+in one fixed station: competing repairs, lost credentials and disciplinary cases,
+shared personnel and terminals, continued meals/sleep/shifts, explained blocked work,
+bounded retries, and drained backlogs after disruptions stop. Prove the same
+multiday workload at 32 then 2,048 citizens, with conservation and exact checkpoint
+continuation. This milestone does not silently close other release gates.
 
 ## Implementation status — 2026-10-29
 
@@ -90,10 +108,8 @@ CLI runner and tests are separate projects.
 
 ### Remaining first-release work
 
-- Identify initial completed capacity by berth/tile records instead of the current
-  aggregate seed; finish construction rejection/blocked-work follow-up, autonomous
-  survey dispatch and communication of new layout to other workers. R-AUT-01 and
-  R-AUT-06 are not fully closed by project reconciliation alone.
+- Expansion work (R-AUT-01..08 and T11) is deferred by the fixed-station scope
+  amendment. Existing bed allocation and occupancy remain required.
 - Complete the remaining work domains and nested recipe cases, and verify the full
   priority policy across needs, reports, routines, recovery and institutional work.
 - Audit the remaining negative patrol/escort outcomes and reassignment variants.

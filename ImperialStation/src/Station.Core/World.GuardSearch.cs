@@ -104,7 +104,9 @@ namespace Station.Core
                 RequestGuardDecision(local, checked(processingTick + local.Backoff)); local.Backoff = NextWorkBackoff(local.Backoff);
                 if (checkIns.TryGetValue(actor.Id, out var checkIn)) RequestCheckInDecision(checkIn, processingTick); return;
             }
-            PlansFound++; local.Backoff = planner.InitialBackoff; if (local.Status != GuardOrderStatus.TargetLocated) local.Reason = policy; var step = plan.Steps[0].Intent;
+            PlansFound++; var step = plan.Steps[0].Intent;
+            if (step.Kind != ActionKind.BeginEscort) local.Backoff = planner.InitialBackoff;
+            if (local.Status != GuardOrderStatus.TargetLocated) local.Reason = policy;
             long cause = Emit("PlanSelected", actor, messageId: local.OrderMessageId, detail: policy + "; candidate=" + local.CandidateIndex + "; cost=" + plan.Cost);
             Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, CauseId = cause,
                 Intent = new ActionIntent(actor.Id, step.Kind, step.Target, step.Item, serviceId: step.ServiceId, targetActor: step.TargetActor, guardOrderId: local.OrderMessageId) });

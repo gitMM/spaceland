@@ -97,6 +97,7 @@ namespace Station.Core
                         if (posted == null && (!reportAgents.TryGetValue(new Id<ActorTag>(o.ActorId), out var agent) || !agent.Pending.Any(d => d.Kind == MessageKind.EscortOutcome && ValidDraft(d) && d.RelatedMessageId == o.OrderMessageId && d.Claim.Text == o.Outcome && d.ObservedTick == o.ObservedTick))) throw new ArgumentException("Missing queued guard report.");
                         if (o.Outcome == "AuthorizationRevoked" && (!knownGuardRevocations.TryGetValue(o.OrderMessageId, out var known) || known.LearnedTick != o.ObservedTick) ||
                             o.Outcome == "KnownOrderExpired" && o.ObservedTick != Math.Max(local.ReadTick, local.Payload.Expires) ||
+                            o.Outcome == "TeamNotReady" && (local.FormedTick < 0 || o.ObservedTick < GuardTargetWaitDeadline(local)) ||
                             o.Outcome == "TargetNotLocated" && (local.SearchObservations.Count != local.Payload.Candidates.Count || local.SearchObservations.Any(s => s.Found) || local.SearchObservations.Last().Tick != o.ObservedTick) ||
                             o.Outcome == "EscortInterrupted" && (!escorts.TryGetValue(local.Payload.DispatchId, out var escort) || escort.Status != EscortStatus.Interrupted || escort.BoundaryTick != o.ObservedTick)) throw new ArgumentException("Private guard report contradicts its local evidence.");
                     }

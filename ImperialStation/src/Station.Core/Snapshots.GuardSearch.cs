@@ -45,6 +45,7 @@ namespace Station.Core
                     l.Status == GuardOrderStatus.AtRendezvous && (l.JoinTick >= 0 || l.FormedTick >= 0) ||
                     l.Status == GuardOrderStatus.Searching && (l.FormedTick < 0 || found || l.CandidateIndex >= l.Payload.Candidates.Count) ||
                     l.Status == GuardOrderStatus.TargetLocated && !found ||
+                    l.Status == GuardOrderStatus.SearchAbandoned && (l.FormedTick < 0 || l.Reason != "TeamNotReady" || LastProcessedTick < GuardTargetWaitDeadline(l)) ||
                     l.Status == GuardOrderStatus.SearchExhausted && (found || l.CandidateIndex != l.Payload.Candidates.Count || l.Reason != "TargetNotLocated")) throw new ArgumentException("Invalid local search progress.");
             }
             count = Count(r);

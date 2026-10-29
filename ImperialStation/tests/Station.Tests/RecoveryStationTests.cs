@@ -8,7 +8,6 @@ public sealed class RecoveryStationTests
 {
     [Theory]
     [InlineData(42UL)]
-    [InlineData(7UL)]
     public void FiniteDisruptionsRecoverThroughOrdinaryActionsAndDailyLifeContinues(ulong seed)
     {
         var scenario = RecoveryStation.Create(32, seed);
@@ -19,7 +18,9 @@ public sealed class RecoveryStationTests
         Assert.True(result.CheckpointMatches);
         Assert.Equal(32, result.Participation.ActiveWorkers);
         Assert.Equal(4, result.Events["CredentialRecoveryCompleted"]);
-        Assert.True(result.Events["PatrolResultReceived"] > 0);
+        // An authenticated original reply can now close an unposted search.
+        // The gate requires either that reply or the dispatched patrol's result.
+        Assert.Equal(result.Phases[^1].MissingReports, result.Phases[^1].ResolvedReports);
         Assert.Equal(0, result.Participation.ExternalActions);
     }
 
@@ -35,10 +36,15 @@ public sealed class RecoveryStationTests
         Assert.Equal(3, Assert.Single(w.InspectCredentialRecoveryCases()).IssueTerminalId);
     }
 
-    [Fact]
-    public void RecoveryGateRejectsASeedThatDoesNotExerciseOverdueReports()
+    [Theory]
+    [InlineData(7UL)]
+    [InlineData(91UL)]
+    public void RecoveryGateRejectsASeedThatDoesNotExerciseOverdueReports(ulong seed)
     {
-        var result = RecoveryStation.Execute(RecoveryStation.Create(32, 91));
+        // Immediate local cleanup completion lets seed 7 report before its
+        // deadline too. Keep the scenario coverage requirement: a run that
+        // never exercises an overdue report is not a passing recovery proof.
+        var result = RecoveryStation.Execute(RecoveryStation.Create(32, seed));
         Assert.Equal("assertion_failed", result.Status);
         Assert.Equal("No overdue work reports were exercised.", Assert.Single(result.Failures));
         Assert.True(result.CheckpointMatches);

@@ -143,7 +143,7 @@ public static partial class StationBaseline
         }
         if (requireDaily && result.ScheduledRestsOverdue > 0) result.Failures.Add("Scheduled rests remained overdue despite adequate services.");
         if (result.Failures.Count > 0) result.Status = "assertion_failed";
-        if (output != null) { File.WriteAllText(Path.Combine(output, "result.json"), JsonData.Write(result)); File.WriteAllText(Path.Combine(output, "checkpoint.json"), JsonData.Write(Checkpoint.Capture(w))); }
+        if (output != null) { File.WriteAllText(Path.Combine(output, "result.json"), JsonData.Write(result)); Checkpoint.SaveBinary(w, Path.Combine(output, "checkpoint.json")); }
         return result;
     }
 }

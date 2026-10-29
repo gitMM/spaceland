@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Station.Contracts;
 using Station.Core;
 using Station.Runner;
 using Xunit;
@@ -7,6 +8,41 @@ namespace Station.Tests;
 
 public sealed class RunnerTests
 {
+    [Fact]
+    public void BinaryCheckpointPreservesFullStateAndContinuation()
+    {
+        var world = Fixtures.Line();
+        world.Submit(0, new(Fixtures.Actor, ActionKind.Move, Fixtures.C));
+        world.Submit(13, new(Fixtures.Actor, ActionKind.PickUp, Fixtures.C, item: new(1)));
+        world.AdvanceTo(4); Assert.True(world.InspectActor(Fixtures.Actor).InTransit);
+        string directory = Path.Combine(Fixtures.Root, "artifacts", "test-binary-checkpoint");
+        string path = Path.Combine(directory, "checkpoint.json"); Checkpoint.SaveBinary(world, path);
+        var checkpoint = JsonData.Read<Checkpoint>(File.ReadAllText(path), path);
+        Assert.Equal(2, checkpoint.SchemaVersion); Assert.Empty(checkpoint.State);
+        var restored = checkpoint.Restore(true, directory);
+        Assert.Equal(world.Serialize(), restored.Serialize());
+        world.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        world.AdvanceTo(20); restored.AdvanceTo(20);
+        Assert.Equal(Fixtures.C, world.InspectActor(Fixtures.Actor).Position); Assert.NotEmpty(world.Trace);
+        world.AssertAccounting(); restored.AssertAccounting();
+        Assert.Equal(world.Digest(), restored.Digest());
+        Assert.Equal(world.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+    }
+
+    [Fact]
+    public void BinaryCheckpointRejectsCorruptPayloadAndPathsOutsideItsDirectory()
+    {
+        var world = Fixtures.Line(); world.AdvanceTo(4);
+        string directory = Path.Combine(Fixtures.Root, "artifacts", "test-binary-checkpoint-integrity");
+        string path = Path.Combine(directory, "checkpoint.json"); Checkpoint.SaveBinary(world, path);
+        var checkpoint = JsonData.Read<Checkpoint>(File.ReadAllText(path), path);
+        string binary = Path.Combine(directory, checkpoint.StateFile!); byte[] bytes = File.ReadAllBytes(binary);
+        bytes[0] ^= 1; File.WriteAllBytes(binary, bytes);
+        Assert.Contains("payload hash", Assert.Throws<ArgumentException>(() => checkpoint.Restore(directory: directory)).Message);
+        checkpoint.StateFile = "../outside.bin";
+        Assert.Contains("sibling state file", Assert.Throws<ArgumentException>(() => checkpoint.Restore(directory: directory)).Message);
+    }
+
     [Fact]
     public void AutonomousReportScenarioAndFocusedCausalTraceHaveRealTransitions()
     {

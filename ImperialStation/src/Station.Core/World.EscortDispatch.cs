@@ -38,18 +38,34 @@ namespace Station.Core
                 if (authorization.Status != DetentionAuthorizationStatus.Authorized || authorization.Expires <= processingTick) continue;
                 var subject = view.Personnel.Single(p => p.ActorId == authorization.ActorId);
                 var candidates = new List<Coord>(); var origin = Candidate(subject).KnownOrigin;
-                if (origin.HasValue) candidates.Add(origin.Value);
-                foreach (var attempt in workAttempts.Values.Where(a => a.ActorId == subject.ActorId && a.Expires > processingTick).OrderByDescending(a => a.Id))
+                bool searchedSinceVisit = origin.HasValue && latestAuthorityVisit.TryGetValue(subject.AccountId, out var visit) &&
+                    receivedGuardOutcomes.Values.Any(o => o.Outcome == "TargetNotLocated" && o.ObservedTick >= visit.SubmittedTick &&
+                        messages[o.OrderMessageId].Draft.EscortOrder is EscortOrderPayload old && old.SubjectActorId == subject.ActorId && old.Candidates.Contains(origin.Value));
+                if (origin.HasValue && !searchedSinceVisit) candidates.Add(origin.Value);
+                // Received terminal outcomes and administrative cancellation mean
+                // an old assignment is no longer a current work destination.
+                // The last reported terminal visit remains independent evidence.
+                foreach (var attempt in workAttempts.Values.Where(a => a.ActorId == subject.ActorId && a.Expires > processingTick &&
+                    a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected")).OrderByDescending(a => a.Id))
                 {
                     var job = jobs[attempt.JobId]; Coord? site = job.Kind == WorkKind.ConstructHabitat ? ConstructionSpecification(job.ProjectId).Site : job.Kind == WorkKind.CleanTile ? view.Publication.Work?.Cleanable.SingleOrDefault(c => c.Tile.Value == job.TileId)?.Position : view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == job.MachineId)?.Position;
                     if (site.HasValue) candidates.Add(site.Value);
                 }
                 if (subject.Roster?.RestTile is Coord rest) candidates.Add(rest);
+                // A received negative search lowers an older terminal clue's
+                // priority. Keep it as a possibility; absence was only local.
+                // A newer authenticated visit restores its original priority.
+                if (origin.HasValue && searchedSinceVisit) candidates.Add(origin.Value);
                 var sites = candidates.Distinct().Take(8).ToArray();
                 if (sites.Length == 0) { dispatch.Reason = "NoKnownSubjectSearchLocation"; continue; }
                 // An interrupted team is not silently reused. Received terminal outcomes
                 // release its commitments; a replacement uses other registered guards.
-                var guards = AuthorityDispatch.EscortTeam(view, subject.ActorId, policy, view.Personnel.Where(p => !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId)).Select(Candidate));
+                // Match the policy's cheap eligibility filters before reading work
+                // commitments. Pending cases otherwise rescan every citizen's work
+                // history even when the entire guard roster is off duty.
+                var guards = AuthorityDispatch.EscortTeam(view, subject.ActorId, policy, view.Personnel.Where(p =>
+                    p.ActorId != subject.ActorId && p.Role == policy.GuardRole && p.Roster != null && p.Roster.OnDuty(view.Tick) &&
+                    !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId)).Select(Candidate));
                 if (guards.Count != policy.GuardCount) { dispatch.Reason = "InsufficientKnownOnDutyUncommittedGuards"; continue; }
                 var payload = new EscortOrderPayload(authorization.Id, authorization.AccountId, authorization.ActorId, authorization.Expires, authorization.SentenceTicks, policy, authorization.JustifyingCases, guards, sites, nextMessage);
                 var orders = new List<long>();
@@ -75,7 +91,8 @@ namespace Station.Core
             foreach (var a in detentionAuthorizations.Values.Where(a => a.Expires > processingTick)) next = Math.Min(next, a.Expires);
             RequestEscortReview(next);
         }
-        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && detentionAuthorizations[a.AuthorizationId].Expires > processingTick && !GuardReportedFinished(actor, a.AuthorizationId, processingTick) && !(escortDispatches[a.AuthorizationId].Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released));
+        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
+            !(escortDispatches[a.AuthorizationId].Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released) && !GuardReportedFinished(actor, a.AuthorizationId, processingTick));
         private void ReadGuardOrder(Actor actor, MessageSnapshot message)
         {
             var payload = message.Draft.EscortOrder;

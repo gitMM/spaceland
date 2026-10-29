@@ -1,6 +1,13 @@
 # Imperial Station
 
-Independent headless station simulation, based on build specification **1.2.1**.
+First-release scope now uses a **fixed layout and population**. Expansion and
+construction acceptance are deferred; existing beds, allocation and occupancy stay
+in scope. The active milestone is [a fixed station under sustained pressure](docs/pressure-station.md).
+Run it with `dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32`;
+use `--count 2048` for the population workload. Its acceptance result is
+`pressure-result.json`, including exact state and event continuation checks.
+
+Independent headless station simulation, based on build specification **1.2.2** (fixed-station scope amendment).
 Current requirement status: [acceptance matrix](docs/acceptance-current.md).
 Current integration work and measurements: [daily/population baseline](docs/integration-baseline.md).
 Current institutional milestone: [specialized station and recovery controls](docs/institutional-station.md).
@@ -16,7 +23,7 @@ its `--variant` controls and population command are documented in the institutio
 The measured complete small institutional command takes **3.309 seconds**; the
 2,048-citizen command takes **213.815 seconds** including checkpoint continuation,
 excluding compilation. Use the small command for iteration and population runs at
-verification boundaries. The [next verification priorities](docs/acceptance-current.md#recommended-next-verification)
+verification boundaries. The [next verification priorities](docs/acceptance-current.md#remaining-daily-life-verification)
 are missed ordinary routine windows and the remaining daily-life priority/roster
 checks, followed by broader concurrent institutional load.
 Older increment reports describe their verification date, not the current backlog.
@@ -24,7 +31,7 @@ This folder is a standalone .NET solution: it has no dependency on spaceland,
 DeathStar assets, Unity, an editor process, rendering, or network services at runtime.
 It can be copied out of this repository and built on its own.
 
-Current status (2026-10-29): **816 tests passed; first release still incomplete**. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
+Current status (2026-10-29): **843 tests passed; first release still incomplete**. The combined nine-day pressure gate and exact checkpoint replay pass at 32 and 512 citizens. The latest completed 2,048-citizen trial released every qualifying subject but cleared its last report too late for the required full observation day; the unchanged gate is being rerun after fixing retention of locally completed cleanup. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
 
 **Implemented:** the H1 foundation plus parts of H2, H3 and H4: bounded GOAP search, knowledge,
 local sensing, physical terminal sessions, delayed messages, authority beliefs and
@@ -186,16 +193,16 @@ Export a timeline first; it runs the ordinary simulation and samples it, and its
 `finalDigest` matches an ordinary run of the same scenario and seed:
 
 ```powershell
-dotnet run --project src/Station.Runner -c Release --no-build -- timeline recovery --count 32 --out artifacts/timeline-recovery-32
+dotnet run --project src/Station.Runner -c Release --no-build -- timeline pressure --count 32 --out artifacts/timeline-pressure-32
 dotnet run --project src/Station.Runner -c Release --no-build -- timeline scenarios/roster_routines.json --every 100 --out artifacts/timeline-roster
 ```
 
-`timeline` accepts a scenario file or the `recovery`, `institutional` and `daily`
-generators (`--count`, `--seed`, `--variant`); `--every` sets the sample
-interval (default 300 ticks). The five-day, 32-citizen recovery run exports in about
-5 seconds to 0.7 MB. Open `tools/viewer/index.html` and drop in `timeline.json.gz`, or serve
+`timeline` accepts a scenario file or the `pressure`, `recovery`, `institutional`
+and `daily` generators (`--count`, `--seed`, `--variant`); `--every` sets the sample
+interval (default 300 ticks). The 32-citizen pressure run exports in about 9 seconds
+to 1.3 MB. Open `tools/viewer/index.html` and drop in `timeline.json.gz`, or serve
 this folder (`python -m http.server 8765 --bind 127.0.0.1`) and open
-`http://127.0.0.1:8765/tools/viewer/?timeline=../../artifacts/timeline-recovery-32/timeline.json.gz`.
+`http://127.0.0.1:8765/tools/viewer/?timeline=../../artifacts/timeline-pressure-32/timeline.json.gz`.
 Space plays, arrows step (Shift for a station minute), `[`/`]` jump between the
 selected citizen's events, the wheel zooms and dragging pans. The format is in
 [docs/formats.md](docs/formats.md#station-timeline). Population-scale timelines are
@@ -223,5 +230,6 @@ artifacts/            Generated files, excluded from version control
 ```
 
 The source documents are preserved under `docs/reference/`. Their future infiltration
-roadmap is background design, not implemented functionality. Next: remaining planning/work
-domains, H2 requirement/gate verification and the authority/institution/daily-life systems.
+roadmap is background design, not implemented functionality. Expansion is deferred.
+Finish the combined population pressure proof, then classify missed routine windows
+and verify roster/check-in priorities as described in the current acceptance matrix.

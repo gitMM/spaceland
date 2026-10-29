@@ -41,6 +41,26 @@ public sealed class EscortDispatchTests
     }
 
     [Fact]
+    public void CancelledWorkDoesNotRemainACurrentSubjectSearchDestination()
+    {
+        var w = Load(j =>
+        {
+            var s = j["initialState"]!;
+            var machine = s["work"]!["machines"]![0]!.DeepClone();
+            machine["id"] = 3; machine["position"]!["x"] = 2;
+            s["work"]!["machines"]!.AsArray().Add(machine);
+            s["jobSystem"]!["jobs"]!.AsArray().Add(new JsonObject { ["id"] = 3, ["machineId"] = 3 });
+            s["jobSystem"]!["assignments"]!.AsArray().Add(new JsonObject { ["key"] = "obsolete-work", ["jobId"] = 3, ["actorId"] = 1, ["expires"] = 10000 });
+        }).CreateWorld(42, true);
+        w.ScheduleWorkCancellation(20, 3, "cancelled-site");
+        w.AdvanceTo(113);
+        Assert.Equal(AssignmentStatus.Cancelled, Assert.Single(w.InspectWorkAttempts(), a => a.JobId == 3).Assignment);
+        Assert.DoesNotContain(new Coord(2, 0, 0), Dispatch(w).Payload!.Candidates);
+        Assert.Contains(new Coord(1, 0, 0), Dispatch(w).Payload!.Candidates);
+        RoundTrip(w);
+    }
+
+    [Fact]
     public void SelectedTeamDoesNotFreezeOrMoveTheTargetOrInventEquipment()
     {
         var w = Load().CreateWorld(42); w.AdvanceTo(139);

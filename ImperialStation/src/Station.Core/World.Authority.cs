@@ -90,12 +90,20 @@ namespace Station.Core
             learnedDurations.TryGetValue(key, out var learned);
             long ratio = expectation.UnscaledEstimate > 0 ? AuthorityEstimates.Learn(learned?.Ratio ?? 1000, expectation.AcknowledgmentTick, processingTick, expectation.UnscaledEstimate, Authority) : 0;
             expectation.ResultMessageId = message.Id; expectation.ResultTick = processingTick;
-            var parentIncident = missingReports.Values.SingleOrDefault(i => i.ReplacementAttemptId == attempt.Id);
-            if (parentIncident != null)
+            long resolvedAttempt = attempt.Id;
+            var ancestry = new SortedSet<long>();
+            // A replacement can itself need a replacement. Carry the received outcome
+            // up that explicit assignment chain without inventing a reply from any
+            // superseded worker or changing the physical work state.
+            while (ancestry.Add(resolvedAttempt))
             {
+                var parentIncident = missingReports.Values.SingleOrDefault(i => i.ReplacementAttemptId == resolvedAttempt);
+                if (parentIncident == null || parentIncident.JobId != attempt.JobId) break;
                 parentIncident.ReplacementResultMessageId = message.Id;
                 parentIncident.WorkResolution = kind == MessageKind.WorkCompleted ? "ReportedComplete" : kind == MessageKind.WorkBlocked ? "ReportedBlocked" : "ReportedUnableToContinue";
+                if (resolvedAttempt != attempt.Id) parentIncident.WorkResolution += "ByReplacementChain";
                 RecordIncidentResponse(parentIncident);
+                resolvedAttempt = parentIncident.AttemptId;
             }
             if (expectation.Status != ExpectationStatus.Cancelled) expectation.Status = ExpectationStatus.Satisfied;
             RemoveAuthorityEvent(ScheduledKind.ReportExpectationDue, attempt.Id);
@@ -105,7 +113,16 @@ namespace Station.Core
                 learned.Ratio = ratio; learned.Samples = checked(learned.Samples + 1);
                 Emit("AuthorityDurationLearned", attemptId: attempt.Id, messageId: message.Id, detail: "ratio=" + ratio + "; role=" + key.Role + "; task=" + key.TaskKind);
             }
-            if (missingReports.TryGetValue(attempt.Id, out var incident)) { incident.ResponseMessageId = message.Id; RecordMissingReport(incident); }
+            if (missingReports.TryGetValue(attempt.Id, out var incident))
+            {
+                incident.ResponseMessageId = message.Id; RecordMissingReport(incident);
+                // Received replies close unposted searches, and completion removes
+                // the need for an unposted replacement. Issued orders stay independent.
+                if (incident.PatrolOrderMessageId == 0) incident.WorkerStatusResponse = "ResponseReceived";
+                if (kind == MessageKind.WorkCompleted && NeedsWorkResponse(incident))
+                    SetIncidentResponse(incident, IncidentWorkResponse.Cancelled, "OriginalCompletionReceived");
+                RecordIncidentResponse(incident);
+            }
             RecordExpectation(expectation);
             Emit("ReportExpectationSatisfied", attemptId: attempt.Id, messageId: message.Id, detail: kind + "; late=" + (expectation.Deadline >= 0 && processingTick > expectation.Deadline));
         }

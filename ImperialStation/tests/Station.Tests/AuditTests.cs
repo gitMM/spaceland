@@ -21,6 +21,24 @@ public sealed class AuditTests
     { var w = Load().CreateWorld(42, true); w.AdvanceTo(300); return w; }
 
     [Fact]
+    public void OfflineAuditDeskBacksOffUntilRealProgressAndRestoresExactly()
+    {
+        var w = Load().CreateWorld(42, true);
+        w.ScheduleTerminalChange(30, 2, false, false);
+        w.ScheduleTerminalChange(4030, 2, true, true);
+        w.AdvanceTo(2000);
+        Assert.True(Audit(w).Status is AuditStatus.QueryingAttempts or AuditStatus.QueryingReports);
+        Assert.InRange(w.Trace.Count(e => e.ActorId == 2 && e.Type == "ActionFailed" && e.Detail == "RequiredServiceNotPresent"), 1, 20);
+        var restored = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); restored.ClearRecordedTrace();
+        w.AdvanceTo(8000); restored.AdvanceTo(8000);
+        Assert.Equal(AuditStatus.ReadyToFile, Audit(w).Status);
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), restored.Trace.Select(Runs.EventJson));
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    [Fact]
     public void UnrelatedMachineHistoryCannotExhaustTheAuditPageBudget()
     {
         var w = Load(j => {

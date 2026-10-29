@@ -1,7 +1,7 @@
 # Current acceptance matrix
 
 Updated 2026-10-29. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
-Latest regression: **816 passed, zero failed, zero skipped**;
+Prior institutional regression: **816 passed, zero failed, zero skipped**;
 `artifacts/institutional-tests/institutional-verified.trx`. All 230 normative requirement
 IDs are present. The two-day station passes its declared participation and causal
 checks; the 2,048-citizen workload completes its work/needs baseline. Open full-gate
@@ -14,10 +14,34 @@ audit/detention/escort/release chain with daily life at 32 and 2,048 citizens. E
 small controls include two real occupants competing for one slot and a replacement
 guard team after interruption. Full release gates remain partial.
 
-## Recommended next verification
+## Active verification — fixed station under pressure
 
-Prioritize T22: classify the 48 missed ordinary routine windows in the normal
-32-citizen run and 2,887 in the population run, then prove unread-roster and
+The [combined pressure workload](pressure-station.md) now passes at 32 citizens:
+overlapping recovery and disciplinary chains, shared guards, all daily meals/sleep,
+drained work and service queues, conservation and exact state/event continuation.
+Earlier 2,048-citizen trials exposed institutional backlogs and the inline checkpoint
+export limit; those defects are fixed, but population acceptance remains pending. Expansion
+is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`, with
+a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
+The latest complete suite passes **843 tests**, zero failures or skips, in
+`artifacts/pressure-tests/pressure-all-completion.trx`. Authenticated original replies
+now close unposted searches without generating unnecessary patrol work. See the pressure report for
+the current fixture, finite guard searches, audit retry backoff, intake waiting,
+reply handling, and checkpoint fixes. Snapshot schema is 45. Explicit evidence-based
+review outcomes are acceptable per the user's clarification; unfinished audits,
+unread decisions, and open escorts remain failures.
+The roster-search population trial reached 59 of 63 required releases; its remaining
+escort histories show stale search priorities and predictable critical needs during
+long journeys. The subsequent `pressure-2048-ready` trial completes every required
+release and exact state/event replay, but leaves only 30,000 clear ticks versus the
+required 36,000. Its last cleaner lost a fresh completion observation when leaving
+for a need break. The corrected population proof is running in
+`artifacts/pressure-2048-completion/` with the same nine-day horizon and all gates.
+
+## Remaining daily-life verification
+
+Prioritize T22: classify the 46 missed ordinary routine windows in the current normal
+32-citizen run and revisit the historical 2,887 in the population run, then prove unread-roster and
 routine/check-in priority behavior under sustained work. These counts are distinct
 from overdue scheduled rests, which are zero in both runs; a missed window needs
 an explanation before it can be classified as an allowed delay or a defect.
@@ -27,7 +51,28 @@ then the complete suite and population workload at the increment boundary.
 Broader concurrent institutional load and seed coverage follow; no full acceptance
 gate is closed by this recommended order alone.
 
+Current-build timing triage: `artifacts/routine-32-completion/` passes the two-day
+32-person participation gate, with all 64 scheduled rests complete and 46 ordinary
+windows missed. Its detailed trace reproduces the benchmark state exactly. Of these
+misses, 25 pre-duty meal windows close during committed sleep, 19 sleep goals end
+with a same-tick critical interruption (10 hunger, nine bladder), and two duty meals
+close during cleaning begun before hunger reaches seek. This replaces the old
+48-window count for this build, without changing historical results. The nine-day
+small pressure run has 189 misses: 108 pre-duty meals during sleep, 69 sleeps
+interrupted by critical needs (eight hunger, 61 bladder), four meals during committed
+cleaning, and eight remaining meal cases involving custody, threshold/window edges
+or travel across closure. Detailed event references are in each run's
+`routine-window-detail.json`. These explain observed timing; they do not close T22's
+calibration, goal-retention or integrated unread-roster/priority obligations.
+
 ## Acceptance gates
+
+Scope amendment (2026-10-29): first release now has a fixed layout and population.
+T11 and R-AUT-01..08 are deferred, as are construction-specific parts of R-TIL-05,
+R-MOV-12 and generated construction acceptance. Historical rows below retain their
+evidence but are not outstanding expansion obligations. Beds, occupancy, allocation,
+shortages, ordinary dispatch and material conservation remain required.
+The active combined pressure milestone is specified in [pressure-station.md](pressure-station.md).
 
 `pass` below names the demonstrated test scope; `partial` means some required
 variants or integrated clauses remain open. Passing the suite is not proof that
@@ -42,7 +87,7 @@ family-level audit limits even where these specific tests pass.
 | T08 | PlanningTests and feature isolation tests | partial: tested citizen/authority boundaries pass; complete decision-code audit open |
 | T09 | WorkTests; StackTests; arbitration tests | partial: physical claims/accounting covered; full acceptance inventory audit open |
 | T10 | RepairPlanningTests | partial: existing component/fabrication alternatives pass; nested production domains open |
-| T11 | ConstructionTests; ConstructionOrderTests; ConstructionGeneratorTests; ConstructionSurveyTests | partial: autonomous construction and correction pass; initial identified capacity/follow-up open |
+| T11 | Historical construction tests and reports | deferred: expansion removed from first-release scope |
 | T12–T14 | ReproducibilityTests; feature snapshots; StationIntegrationTests | pass for implemented states: checkpoints, chunking, concurrent worlds and pure inspection |
 | T15 | population/recovery/institutional benchmarks; StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests | partial: finite recovery plus an audit-to-release chain with 2,048 real citizens pass; many simultaneous institutional chains, calibration and full gate inventory remain open |
 | T16 | PlanningTests budget exhaustion | pass: bounded failure/backoff and continuation |
@@ -184,14 +229,14 @@ family-level audit limits even where these specific tests pass.
 | R-INS-06 | RecordStore; Personnel; Detention | RecordTests; PersonnelTests; DetentionTests | partial: component protocols pass; full institutional chain audit outstanding |
 | R-INS-07 | RecordStore; Personnel; Detention | RecordTests; PersonnelTests; DetentionTests | partial: component protocols pass; full institutional chain audit outstanding |
 | R-INS-08 | RecordStore; Personnel; Detention | RecordTests; PersonnelTests; DetentionTests | partial: component protocols pass; full institutional chain audit outstanding |
-| R-AUT-01 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-02 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-03 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-04 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-05 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-06 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-07 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
-| R-AUT-08 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
+| R-AUT-01 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-02 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-03 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-04 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-05 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-06 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-07 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
+| R-AUT-08 | Historical growth/construction implementation | Historical construction tests | deferred: fixed-station first release excludes expansion |
 | R-AUT-09 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
 | R-AUT-10 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |
 | R-AUT-11 | Authority; Growth; IncidentResponse | AuthorityTests; GrowthTests; ConstructionGeneratorTests | partial: capacity identification, recovery and T26 outstanding |

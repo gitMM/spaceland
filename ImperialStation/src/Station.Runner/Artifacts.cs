@@ -10,11 +10,33 @@ public sealed class Checkpoint
     public int SchemaVersion { get; set; } = 1;
     public string Digest { get; set; } = "";
     public string State { get; set; } = "";
+    public string? StateFile { get; set; }
+    public string? StateSha256 { get; set; }
     public static Checkpoint Capture(World world) => new() { Digest = world.Digest(), State = Convert.ToBase64String(world.Serialize()) };
-    public World Restore(bool trace = false)
+    public static void SaveBinary(World world, string manifestPath)
     {
-        if (SchemaVersion != 1) throw new ArgumentException("Unsupported checkpoint schema.");
-        var world = World.Restore(Convert.FromBase64String(State), trace);
+        string directory = Path.GetDirectoryName(Path.GetFullPath(manifestPath))!;
+        Directory.CreateDirectory(directory);
+        string file = Path.GetFileNameWithoutExtension(manifestPath) + ".bin";
+        byte[] state = world.Serialize();
+        File.WriteAllBytes(Path.Combine(directory, file), state);
+        var checkpoint = new Checkpoint { SchemaVersion = 2, Digest = world.Digest(), StateFile = file, StateSha256 = World.Hash(state) };
+        File.WriteAllText(manifestPath, JsonData.Write(checkpoint));
+    }
+    public World Restore(bool trace = false, string? directory = null)
+    {
+        byte[] state;
+        if (SchemaVersion == 1 && StateFile == null && StateSha256 == null) state = Convert.FromBase64String(State);
+        else if (SchemaVersion == 2)
+        {
+            if (string.IsNullOrEmpty(directory) || State.Length != 0 || string.IsNullOrEmpty(StateFile) || string.IsNullOrEmpty(StateSha256) ||
+                Path.IsPathRooted(StateFile) || StateFile.IndexOfAny(new[] { '/', '\\' }) >= 0 || StateFile is "." or "..")
+                throw new ArgumentException("Binary checkpoint requires a directory and a sibling state file.");
+            state = File.ReadAllBytes(Path.Combine(directory, StateFile));
+            if (World.Hash(state) != StateSha256) throw new ArgumentException("Checkpoint payload hash mismatch.");
+        }
+        else throw new ArgumentException("Unsupported checkpoint schema.");
+        var world = World.Restore(state, trace);
         if (world.Digest() != Digest) throw new ArgumentException("Checkpoint digest mismatch."); return world;
     }
 }

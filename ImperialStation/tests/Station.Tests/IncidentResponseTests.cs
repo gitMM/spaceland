@@ -8,7 +8,7 @@ namespace Station.Tests;
 public sealed class IncidentResponseTests
 {
     private static World Make(int originals = 3, int reserves = 3, int reserveCohort = 0, int tickMs = 60000,
-        long cap = 50, int depth = 2, ulong seed = 42, bool trace = true, bool hiddenInstalled = false, long hiddenTravel = 1, bool isolatedFirst = false)
+        long cap = 50, int depth = 2, ulong seed = 42, bool trace = true, bool hiddenInstalled = false, long hiddenTravel = 1, bool isolatedFirst = false, string patrolRole = "guard")
     {
         int population = originals + reserves;
         var people = Enumerable.Range(1, population).Select(i => new ActorSeed(new(i), "Worker " + i, isolatedFirst && i == 1 ? "specialist" : "worker", Fixtures.A)).ToArray();
@@ -28,7 +28,7 @@ public sealed class IncidentResponseTests
             new WorkSeed(resources, Array.Empty<RecipeDefinition>(), Array.Empty<WorkstationDefinition>(), machineDefinitions),
             new JobSystemSeed(machineDefinitions.Select(m => new JobSeed(m.Id, m.Id)), machineDefinitions.Select(m => new AssignmentSeed("initial/" + m.Id, m.Id, new(m.Id), 2000))),
             new RoutineSeed(new RoutineConfig(900, 3, 300, 1, 100), people.Select(a => new RosterAssignmentSeed(a.Id, a.Id.Value <= originals ? 0 : reserveCohort, Fixtures.A))),
-            new AuthorityConfig(1000, 0, 4000, 0, 1, 2, 30, cap, depth, 2000));
+            new AuthorityConfig(1000, 0, 4000, 0, 1, 2, 30, cap, depth, 2000, patrolRole));
         for (int i = 1; i <= originals; i++) Claim(world, isolatedFirst && i == 1 ? 4 : 5, i, i, i, i, MessageKind.OrderAccepted);
         return world;
     }
@@ -63,6 +63,23 @@ public sealed class IncidentResponseTests
     }
 
     [Fact]
+    public void ConcurrentIncidentsDoNotReuseRespondersAcrossReplacementAndPatrolBranches()
+    {
+        var w = Make(reserves: 6, cap: 1000, patrolRole: "worker");
+        w.AdvanceTo(14); var restored = World.Restore(w.Serialize());
+        w.AdvanceTo(15); restored.AdvanceTo(15);
+        var incidents = Queue(w); Assert.Equal(3, incidents.Length);
+        Assert.All(incidents, i => Assert.Equal(IncidentWorkResponse.Dispatched, i.WorkResponse));
+        var replacements = incidents.Select(i => w.InspectWorkAttempts().Single(a => a.Id == i.ReplacementAttemptId)).ToArray();
+        var patrols = w.InspectPatrolOrders(); Assert.Equal(3, patrols.Count);
+        Assert.All(replacements, a => Assert.Equal(15, a.DispatchTick));
+        Assert.Equal(6, replacements.Select(a => a.ActorId).Concat(patrols.Select(p => p.ActorId)).Distinct().Count());
+        Assert.Equal(3, w.InspectAdmissionBuckets().Sum(b => b.Used));
+        Assert.Equal(w.Digest(), restored.Digest());
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    [Fact]
     public void IneligibleQueueSpendsNothingAndRosterPublicationWakesItWithoutChangingCurrentBudget()
     {
         var w = Make(originals: 1, reserves: 1, reserveCohort: 1, cap: 1000); w.AdvanceTo(15);
@@ -93,6 +110,56 @@ public sealed class IncidentResponseTests
         Assert.Equal(2, last.ReplacementDepth); Assert.Equal(IncidentWorkResponse.DepthLimited, last.WorkResponse); Assert.Equal(0, last.ReplacementAttemptId);
         Assert.Equal(3, w.InspectWorkAttempts().Count); Assert.Equal(2, w.InspectAdmissionBuckets().Sum(b => b.Used));
         Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    [Fact]
+    public void ReceivedGrandchildOutcomeResolvesTheReplacementChainWithoutInventingOriginalReplies()
+    {
+        var w = Make(originals: 1, reserves: 2, cap: 1000); w.AdvanceTo(15);
+        var first = Assert.Single(w.InspectMissingReports());
+        var child = w.InspectWorkAttempts().Single(a => a.Id == first.ReplacementAttemptId);
+        Claim(w, 20, child.ActorId, child.Id, 1, child.OrderMessageId, MessageKind.OrderAccepted);
+        w.AdvanceTo(30);
+        var second = w.InspectMissingReports().Single(i => i.AttemptId == child.Id);
+        var grandchild = w.InspectWorkAttempts().Single(a => a.Id == second.ReplacementAttemptId);
+        Claim(w, 35, grandchild.ActorId, grandchild.Id, 1, grandchild.OrderMessageId, MessageKind.OrderAccepted);
+        Claim(w, 39, grandchild.ActorId, grandchild.Id, 1, grandchild.OrderMessageId, MessageKind.WorkCompleted);
+        w.AdvanceTo(38);
+        Assert.All(w.InspectMissingReports(), i => Assert.Equal(0, i.ReplacementResultMessageId));
+        var copy = World.Restore(w.Serialize());
+        w.AdvanceTo(39); copy.AdvanceTo(39);
+        Assert.Equal(w.Serialize(), copy.Serialize());
+        var chain = w.InspectMissingReports().OrderBy(i => i.ReplacementDepth).ToArray();
+        Assert.Equal("ReportedCompleteByReplacementChain", chain[0].WorkResolution);
+        Assert.Equal("ReportedComplete", chain[1].WorkResolution);
+        Assert.True(chain[0].ReplacementResultMessageId > 0);
+        Assert.Equal(chain[0].ReplacementResultMessageId, chain[1].ReplacementResultMessageId);
+        Assert.All(chain, i => Assert.Equal(0, i.ResponseMessageId));
+        Assert.False(w.InspectMachines()[0].Operational);
+        Assert.Equal("Accepted", w.InspectWorkAttempts().Single(a => a.Id == child.Id).AuthorityStatus);
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    [Fact]
+    public void LateOriginalCompletionCancelsUnpostedBranchesWithoutSpendingAdmission()
+    {
+        var w = Make(originals: 1, reserves: 1, reserveCohort: 1, cap: 1000);
+        w.AdvanceTo(15);
+        Assert.Equal(IncidentWorkResponse.NoEligibleResponder, Assert.Single(w.InspectMissingReports()).WorkResponse);
+        Claim(w, 24, 1, 1, 1, 1, MessageKind.WorkCompleted);
+        w.AdvanceTo(24);
+        var incident = Assert.Single(w.InspectMissingReports());
+        Assert.Equal(IncidentWorkResponse.Cancelled, incident.WorkResponse);
+        Assert.Equal("ResponseReceived", incident.WorkerStatusResponse);
+        Assert.True(incident.ResponseMessageId > 0);
+        Assert.Equal(0, incident.ReplacementAttemptId);
+        Assert.Equal(0, incident.PatrolOrderMessageId);
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+        w.ScheduleRosterChange(30, new(new(2), 0, Fixtures.A), "available-after-completion");
+        w.AdvanceTo(60);
+        Assert.Single(w.InspectWorkAttempts());
+        Assert.All(w.InspectAdmissionBuckets(), b => Assert.Equal(0, b.Used));
+        Assert.False(w.InspectMachines()[0].Operational);
     }
 
     [Fact]

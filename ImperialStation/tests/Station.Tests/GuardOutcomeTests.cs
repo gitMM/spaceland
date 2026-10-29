@@ -22,6 +22,60 @@ public sealed class GuardOutcomeTests
         return new(j.ToJsonString(), File.ReadAllText(Path.Combine(Fixtures.Root, "content", "escort.json")), "guard-outcome-test");
     }
     private static LocalGuardOrderSnapshot Local(World w, long actor = 3) => Assert.Single(w.InspectLocalGuardOrders(new(actor)));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReplacementSearchUsesReceivedNegativeEvidenceUntilANewerVisit(bool freshVisit)
+    {
+        var w = Load(j =>
+        {
+            var s = j["initialState"]!;
+            JsonObject At(int x) => new() { ["x"] = x, ["y"] = 0, ["z"] = 0 };
+            s["routines"]!["assignments"]!.AsArray().Add(new JsonObject { ["actorId"] = 1, ["cohort"] = 0, ["restTile"] = At(2) });
+            foreach (var command in j["scriptedActors"]![0]!["commands"]!.AsArray().Where(c => c!["tick"]!.GetValue<long>() >= 7))
+            {
+                command!["tick"] = command["tick"]!.GetValue<long>() - 1;
+                if (command["message"] is JsonNode message) message["observedTick"] = message["observedTick"]!.GetValue<long>() - 1;
+            }
+            foreach (long id in new long[] { 5, 6 })
+            {
+                s["actors"]!.AsArray().Add(new JsonObject { ["id"] = id, ["name"] = "Replacement " + id, ["role"] = "guard", ["position"] = At(0), ["scripted"] = true });
+                s["items"]!.AsArray().Add(new JsonObject { ["id"] = 100 + id, ["resource"] = "card", ["quantity"] = 1, ["locationKind"] = "ActorInventory", ["owner"] = id });
+                s["information"]!["credentials"]!.AsArray().Add(new JsonObject { ["id"] = id, ["holder"] = id, ["account"] = id, ["cardItem"] = 100 + id });
+                s["routines"]!["assignments"]!.AsArray().Add(new JsonObject { ["actorId"] = id, ["cohort"] = 1, ["restTile"] = At(0) });
+            }
+        }).CreateWorld(42, true);
+        for (long tick = 0; tick < 500 && w.InspectEscortDispatches().Count == 0; tick++) w.AdvanceTo(tick);
+        long opened = w.LastProcessedTick;
+        Assert.Equal(new Coord(1, 0, 0), Assert.Single(w.InspectEscortDispatches()).Payload!.Candidates[0]);
+        foreach (var assignment in w.InspectGuardAssignments())
+        {
+            long guard = assignment.ActorId, order = assignment.OrderMessageId;
+            w.Submit(opened + 1, new(new(guard), ActionKind.Login, new(0, 0, 0), serviceId: guard));
+            w.Submit(opened + 2, new(new(guard), ActionKind.PostMessage, new(0, 0, 0), serviceId: guard,
+                message: new(MessageKind.EscortOutcome, RecipientKind.Authority, default, new(SubjectKind.Order, order, AttributeKind.DetentionStatus),
+                    new(FactValueKind.Text, text: "TargetNotLocated"), opened, relatedMessageId: order, operationKey: "escort-result/" + order + "/TargetNotLocated")));
+        }
+        w.AdvanceTo(opened + 4);
+        Assert.Equal(2, w.InspectGuardOutcomes(true).Count);
+        w.ScheduleTerminalChange(opened + 5, 3, false, false);
+        w.ScheduleTerminalChange(opened + 5, 4, false, false);
+        if (freshVisit)
+        {
+            w.Submit(opened + 5, new(new(1), ActionKind.Login, new(1, 0, 0), serviceId: 1));
+            w.Submit(opened + 6, new(new(1), ActionKind.PostMessage, new(1, 0, 0), serviceId: 1,
+                message: new(MessageKind.Observation, RecipientKind.Authority, default, new(SubjectKind.Actor, 1, AttributeKind.Location), FactValue.At(new(1, 0, 0)), opened + 6)));
+        }
+        w.AdvanceTo(opened + 9); var copy = World.Restore(w.Serialize(), true);
+        w.ClearRecordedTrace(); copy.ClearRecordedTrace();
+        w.AdvanceTo(1000); copy.AdvanceTo(1000);
+        var dispatch = Assert.Single(w.InspectEscortDispatches());
+        Assert.Equal(new long[] { 5, 6 }, dispatch.Payload!.Guards);
+        Assert.Equal(new Coord(freshVisit ? 1 : 2, 0, 0), dispatch.Payload.Candidates[0]);
+        Assert.Contains(new Coord(1, 0, 0), dispatch.Payload.Candidates);
+        Assert.Equal(w.Digest(), copy.Digest());
+        Assert.Equal(w.Trace.Select(Runs.EventJson), copy.Trace.Select(Runs.EventJson));
+    }
     [Fact]
     public void LateAcknowledgmentsCannotCancelAReplacementWaitEstablishedByReceivedReports()
     {

@@ -7,6 +7,11 @@ Nothing here is a requirement for H1–H4. Implementing agents MUST NOT build th
 
 ## Implementation status — 2026-10-29
 
+Scope update: the user has deferred station expansion. First release now has a
+fixed layout and population; construction acceptance is historical, not a release
+blocker. The active milestone combines recovery and concurrent institutions under
+sustained pressure; see [the pressure workload](../../../ImperialStation/docs/pressure-station.md).
+
 The required simulation foundation is being implemented independently in
 [`ImperialStation/`](../../../ImperialStation/README.md), outside Unity's `Assets`
 tree. The first release is **not yet complete**. This roadmap's proposed infiltration

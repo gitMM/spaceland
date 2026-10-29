@@ -23,9 +23,9 @@ namespace Station.Core
             if (person.Roster?.RestTile is Coord rest) result.Add(rest);
             return result.Distinct().Take(8).ToArray();
         }
-        private long SelectPatrol(MissingReportIncident incident, IAuthorityView view, IReadOnlyList<Coord> candidates)
+        private long SelectPatrol(MissingReportIncident incident, IAuthorityView view, IReadOnlyList<Coord> candidates, IEnumerable<DispatchCandidate>? available = null)
         {
-            return AuthorityDispatch.Patrol(view, incident.ActorId, Authority!.PatrolRole, candidates, Candidates(view));
+            return AuthorityDispatch.Patrol(view, incident.ActorId, Authority!.PatrolRole, candidates, available ?? Candidates(view));
         }
         private void DispatchPatrol(MissingReportIncident incident, long actor, IReadOnlyList<Coord> candidates)
         {

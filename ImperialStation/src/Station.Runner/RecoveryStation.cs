@@ -52,7 +52,7 @@ public static partial class RecoveryStation
         Require(final.OpenFacilityTasks == 0, "Facility tasks lack completed reports.");
         Require(result.Events.GetValueOrDefault("MissingWorkReportOpened") > 0, "No overdue work reports were exercised.");
         Require(final.MissingReports == final.ResolvedReports, "Missing report incidents lack a delivered response.");
-        Require(world.InspectMissingReports().All(i => i.PatrolResultMessageId > 0), "Missing workers lack delivered patrol outcomes.");
+        Require(world.InspectMissingReports().All(i => i.PatrolResultMessageId > 0 || i.ResponseMessageId > 0 && i.WorkerStatusResponse == "ResponseReceived"), "Missing workers lack delivered patrol outcomes or original replies closing an unposted search.");
         Require(world.InspectJobs().All(j => j.PhysicalStatus == WorkExecution.CompletedPhysically && j.AuthorityStatus == "WorkCompleted"), "Work backlog lacks physical completion and received completion reports.");
         Require(result.Events.GetValueOrDefault("CredentialRecoveryCompleted") == scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"), "Lost credentials were not all recovered.");
         Require(result.Events.GetValueOrDefault("CardLost") == scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"), "Card loss burst did not execute.");

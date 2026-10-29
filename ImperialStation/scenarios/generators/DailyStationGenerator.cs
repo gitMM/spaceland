@@ -10,7 +10,7 @@ public static partial class StationBaseline
     public const long Day = 36000;
     public static LoadedScenario Create(int population, int days = 2, ulong seed = 42, bool shortage = false)
     {
-        if (population < 6 || population > 4096 || days < 1 || days > 7) throw new ArgumentException("Baseline needs 6..4096 citizens and 1..7 days.");
+        if (population < 6 || population > 4096 || days < 1 || days > 14) throw new ArgumentException("Baseline needs 6..4096 citizens and 1..14 days.");
         var catalog = new CatalogData { SchemaVersion = 1, Id = "integrated-station-v1",
             Tiles = Enum.GetValues<TileFamily>().Select(f => new DefinitionData { Id = f.ToString(), Family = f, TraversalTicks = 10, Capabilities = new() { "Cleanable" } }).ToList(),
             Resources = new() { new() { Id = "card" }, new() { Id = "meal" } } };
