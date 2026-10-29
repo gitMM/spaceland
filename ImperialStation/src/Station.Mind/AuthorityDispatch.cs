@@ -37,14 +37,19 @@ namespace Station.Mind
                 .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, locations[0], view.NominalTravelTicks)))
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
         }
-        public static long Replacement(IAuthorityView view, long machineId, long excludedActor, IEnumerable<DispatchCandidate> candidates)
+        // With preemptCleanup, an uncommitted responder is still preferred; otherwise
+        // the nearest one committed only to cleanup may be ordered onto the repair.
+        public static long Replacement(IAuthorityView view, long machineId, long excludedActor, IEnumerable<DispatchCandidate> candidates, bool preemptCleanup = false)
         {
             var job = view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == machineId);
             if (job == null) return 0;
-            return candidates.Where(c => c.Person.ActorId != excludedActor && !c.Committed && c.KnownOrigin.HasValue &&
-                    c.Person.Roster != null && RemainsOnDuty(c.Person.Roster, view.Tick, c.Person.Roster.DayTicks / 24) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
+            var eligible = candidates.Where(c => c.Person.ActorId != excludedActor && c.KnownOrigin.HasValue &&
+                    c.Person.Roster != null && RemainsOnDuty(c.Person.Roster, view.Tick, c.Person.Roster.DayTicks / 24) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal)).ToArray();
+            long Nearest(IEnumerable<DispatchCandidate> from) => from
                 .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, job.Position, view.NominalTravelTicks)))
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
+            long selected = Nearest(eligible.Where(c => !c.Committed));
+            return selected != 0 || !preemptCleanup ? selected : Nearest(eligible.Where(c => c.CleanupOnly));
         }
     }
 }

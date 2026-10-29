@@ -10,7 +10,7 @@ namespace Station.Core
         private void WriteFacility(BinaryWriter w)
         {
             w.Write(Facility != null); if (Facility == null) return;
-            WriteStrings(w, Facility.ReportingRoles); w.Write(Facility.DirtThreshold); w.Write(Facility.RepeatTicks); w.Write(Facility.OrderTicks); w.Write(nextFacilityReview);
+            WriteStrings(w, Facility.ReportingRoles); w.Write(Facility.DirtThreshold); w.Write(Facility.RepeatTicks); w.Write(Facility.OrderTicks); w.Write(Facility.RepairPreemptsCleanup); w.Write(nextFacilityReview);
             w.Write(facilityObservations.Count);
             foreach (var o in facilityObservations.Values)
             { w.Write(o.ActorId); WriteKey(w, o.Subject); w.Write(o.Adverse); w.Write(o.Generation); w.Write(o.LastObservedTick); w.Write(o.LastQueuedTick); w.Write(o.NextRepeatTick); w.Write(o.OperationKey); w.Write(o.LastMessageId); }
@@ -29,7 +29,7 @@ namespace Station.Core
                 if (scheduled.Any(e => e.Kind == ScheduledKind.ReviewFacilityTasks)) throw new ArgumentException("Disabled facility policy has a review timer.");
                 return;
             }
-            InitializeFacility(new FacilityConfig(ReadStrings(r), r.ReadInt64(), r.ReadInt64(), r.ReadInt64())); nextFacilityReview = r.ReadInt64();
+            InitializeFacility(new FacilityConfig(ReadStrings(r), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadBoolean())); nextFacilityReview = r.ReadInt64();
             int count = Count(r);
             for (int i = 0; i < count; i++)
             {

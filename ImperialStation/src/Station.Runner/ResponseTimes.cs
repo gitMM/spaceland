@@ -47,6 +47,9 @@ public static class ResponseTimes
         public long Acknowledged { get; set; } = -1;
         public long Arrived { get; set; } = -1;
         public long Resolved { get; set; } = -1;
+        // A spill is resolved when its tile is back to its dirt level just before
+        // the spill: the spilled units were removed, not the tile's older backlog.
+        public long RestoredLevel { get; set; } = -1;
         public long Responder { get; set; }
         public long AttemptId { get; set; }
         public long OrderMessageId { get; set; }
@@ -146,7 +149,7 @@ public static class ResponseTimes
             switch (e.Type)
             {
                 case "MachineFaulted": Open("MachineFault", Subject(e.FactKey), e.Tick); break;
-                case "DirtAdded" when e.Detail == "Spill": Open("Spill", Subject(e.FactKey), e.Tick); break;
+                case "DirtAdded" when e.Detail == "Spill" && e.FactValue is { } level: Open("Spill", Subject(e.FactKey), e.Tick).RestoredLevel = level.Number - e.Quantity; break;
                 case "CardLost": cards[e.ActorId] = Open("CardLoss", "Actor:" + e.ActorId, e.Tick); cards[e.ActorId].Responder = e.ActorId; break;
                 case "CredentialRecoveryNeeded" when cards.TryGetValue(e.ActorId, out var card) && card.Discovered < 0: card.Discovered = e.Tick; break;
                 case "LostCardReportAccepted":
@@ -169,7 +172,7 @@ public static class ResponseTimes
                     if (trips.Count == 0 || trips[^1].At != e.Target) trips.Add((e.Tick, e.Target));
                     break;
                 case "MachineTested" when e.Detail.EndsWith("operational=True", StringComparison.Ordinal): Resolve(e.Detail[..e.Detail.IndexOf(';')], e); break;
-                case "CleaningCompleted" when e.FactValue is { } dirtLeft && dirtLeft.Number == 0: Resolve(Subject(e.FactKey), e); break;
+                case "CleaningCompleted" when e.FactValue is { } dirtLeft: Resolve(Subject(e.FactKey), e, dirtLeft.Number); break;
                 case "DetentionAuthorized":
                     {
                         long id = Number(e.Detail, "authorization");
@@ -211,11 +214,11 @@ public static class ResponseTimes
         private readonly Dictionary<long, int> acks = new();
         private void Receipt(long job, TraceEvent e)
         { if (job <= 0) return; if (!receipts.TryGetValue(job, out var list)) receipts[job] = list = new(); list.Add((e.Tick, e.MessageId)); }
-        private void Resolve(string subject, TraceEvent e)
+        private void Resolve(string subject, TraceEvent e, long dirtLeft = 0)
         {
             if (!open.TryGetValue(subject, out var list)) return;
             long attempt = e.AttemptId > 0 ? e.AttemptId : actionAttempts.GetValueOrDefault(e.ActionId);
-            foreach (var i in list.Where(i => i.Resolved < 0 && i.Tick <= e.Tick)) { i.Resolved = e.Tick; i.Responder = e.ActorId; i.AttemptId = attempt; }
+            foreach (var i in list.Where(i => i.Resolved < 0 && i.Tick <= e.Tick && dirtLeft <= Math.Max(0, i.RestoredLevel))) { i.Resolved = e.Tick; i.Responder = e.ActorId; i.AttemptId = attempt; }
             list.RemoveAll(i => i.Resolved >= 0);
         }
         // Coverage samples use the published roster and authority-visible commitments

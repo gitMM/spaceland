@@ -42,6 +42,13 @@ namespace Station.Core
             { q.Status = QualityAssuranceStatus.NeedsAttention; q.Reason = draft.Claim.Text; }
             else return;
             Emit("QualityResultReceived", attemptId: attempt.Id, messageId: message.Id, detail: q.Status.ToString(), causeId: q.CauseId);
+            RequestFacilityReview(processingTick);
+        }
+        private bool OpenQualityVerification(long machine, long faultObserved)
+        {
+            long window = Routines != null ? Routines.DayTicks / 24 : QualityAssurance?.DelayTicks ?? 0;
+            return qualityChecks.Values.Any(q => q.MachineId == machine && q.ResultMessageId == 0 && faultObserved - q.ReceivedTick <= window &&
+                q.Status is QualityAssuranceStatus.Scheduled or QualityAssuranceStatus.PendingSupervisor or QualityAssuranceStatus.Assigned);
         }
         private void QualityDue(long attempt)
         {

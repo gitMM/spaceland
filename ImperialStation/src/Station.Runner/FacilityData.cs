@@ -8,5 +8,6 @@ public sealed class FacilityData
     public long DirtThreshold { get; set; } = 2;
     public long RepeatTicks { get; set; } = 36000;
     public long OrderTicks { get; set; } = 1728000;
-    public FacilityConfig ToConfig() => new(ReportingRoles, DirtThreshold, RepeatTicks, OrderTicks);
+    public bool RepairPreemptsCleanup { get; set; }
+    public FacilityConfig ToConfig() => new(ReportingRoles, DirtThreshold, RepeatTicks, OrderTicks, RepairPreemptsCleanup);
 }

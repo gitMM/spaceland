@@ -73,15 +73,18 @@ namespace Station.Core
         {
             // Receipt metadata is indexed when accepted and rebuilt on restore.
             // Commitments are reread after every dispatch, including within a review.
-            var committed = new SortedSet<long>(workAttempts.Values.Where(a => a.Expires > processingTick &&
-                (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))).Select(a => a.ActorId));
+            var committed = new SortedSet<long>(); var cleanup = new SortedSet<long>();
+            foreach (var a in workAttempts.Values.Where(a => a.Expires > processingTick &&
+                (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))))
+                (jobs[a.JobId].Kind == WorkKind.CleanTile ? cleanup : committed).Add(a.ActorId);
             committed.UnionWith(patrolOrders.Values.Where(p => p.Payload.Expires > processingTick && p.ResultMessageId == 0).Select(p => p.ActorId));
             var services = new SortedDictionary<long, Coord>();
             foreach (var service in view.Publication.Services) services.Add(service.Id, service.Position);
             foreach (var person in view.Personnel)
             {
                 Coord? origin = latestAuthorityVisit.TryGetValue(person.AccountId, out var message) && services.TryGetValue(message.TerminalId, out var position) ? position : (Coord?)null;
-                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, committed.Contains(person.ActorId) || EscortCommitted(person.ActorId));
+                bool other = committed.Contains(person.ActorId) || EscortCommitted(person.ActorId);
+                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, other || cleanup.Contains(person.ActorId), !other);
             }
         }
         private void SetIncidentResponse(MissingReportIncident incident, IncidentWorkResponse state, string reason)

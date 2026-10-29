@@ -56,7 +56,9 @@ public static partial class PressureStation
         // jobs finish; faults are still discovered only by local perception.
         foreach (var bed in s.Needs!.Services.Where(n => n.Kind == NeedServiceKind.Bed)) bed.Position.X += 2;
         foreach (var roster in s.Routines.Assignments) roster.RestTile!.X += 2;
-        s.Facility = new() { ReportingRoles = new() { "cleaner", "supervisor", "guard" }, RepeatTicks = StationBaseline.Day, OrderTicks = s.Horizon };
+        // Repairs take priority over the initial cleanup backlog: a cleaner committed
+        // only to cleanup may be ordered onto a reported machine fault.
+        s.Facility = new() { ReportingRoles = new() { "cleaner", "supervisor", "guard" }, RepeatTicks = StationBaseline.Day, OrderTicks = s.Horizon, RepairPreemptsCleanup = true };
         s.Authority!.PatrolRole = "guard"; s.Authority.GraceTicks = 2000;
         s.QualityAssurance = new() { SamplePermille = 1000, DelayTicks = 50, OrderTicks = s.Horizon };
         s.Personnel = new();

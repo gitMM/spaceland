@@ -258,7 +258,7 @@ namespace Station.Core
                 return;
             }
             if (!repairAgents.TryGetValue(actor.Id, out var agent) || !agent.Attempts.TryGetValue(order.MachineId, out long current) || current != order.AttemptId) return;
-            agent.Pending.Remove(order.MachineId); agent.Attempts.Remove(order.MachineId); ReleaseRepairPins(actor, agent);
+            agent.Pending.Remove(order.MachineId); agent.Attempts.Remove(order.MachineId); ReleaseRepairPins(actor, agent); WakeOrderDecisions(actor);
             if (actor.Action?.AttemptId == order.AttemptId)
             { if (actor.Action.Kind == ActionKind.Move) actor.Action.CancelAtBoundary = true; else CancelRunning(actor); }
         }
@@ -318,13 +318,14 @@ namespace Station.Core
             TriggerWorkCheckIn(agent.Actor);
             if (!agent.Attempts.TryGetValue(machine, out long id)) return;
             var order = localOrders[id]; order.Status = LocalOrderStatus.Completed; agent.Attempts.Remove(machine);
-            QueueOrderReport(order, MessageKind.WorkCompleted, "ReportedComplete"); UnpinOrder(actors[agent.Actor], id);
+            QueueOrderReport(order, MessageKind.WorkCompleted, "ReportedComplete"); UnpinOrder(actors[agent.Actor], id); WakeOrderDecisions(actors[agent.Actor]);
         }
         private void RepairOrderBlocked(RepairAgent agent, string reason)
         {
             if (agent.Pending.Count == 0 || !agent.Attempts.TryGetValue(agent.Pending[0], out long id)) return;
             SetAttemptExecution(id, WorkExecution.Blocked); var order = localOrders[id];
             if (!order.BlockedReported) { order.BlockedReported = true; QueueOrderReport(order, MessageKind.WorkBlocked, reason); TriggerWorkCheckIn(agent.Actor); }
+            WakeOrderDecisions(actors[agent.Actor]);
         }
         private void ChangeWorkSuspension(Actor actor, Id<ActionTag> action, long id, bool resume)
         {

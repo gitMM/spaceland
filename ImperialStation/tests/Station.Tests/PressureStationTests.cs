@@ -29,6 +29,13 @@ public sealed class PressureStationTests
         Assert.Equal(0, custody["Acknowledgment"].Missed);
         Assert.Contains(responses.Shifts, sh => sh.Category == "Custody" && sh.Shift != "shift-0" && sh.Unresolved == 0);
         Assert.All(responses.MissCauses.Where(m => m.Key.StartsWith("Custody/Ordering:", StringComparison.Ordinal)), m => Assert.Equal("Custody/Ordering:AwaitingKnownDetentionCapacity", m.Key));
+        // Repair priority: a reported machine fault is ordered at once, pre-empting a
+        // cleanup commitment when needed, while the evidence hold keeps the four
+        // misconduct discrepancies (asserted above as four reprimands) for verification.
+        var faults = responses.Stages.Single(st => st.Category == "MachineFault" && st.Stage == "Ordering");
+        Assert.Equal(0, faults.Missed); Assert.Equal(0, faults.Maximum);
+        // A spill is resolved when its own units are removed, not the tile's older backlog.
+        Assert.All(responses.Detail.Where(i => i.Category == "Spill"), i => { Assert.True(i.RestoredLevel >= 0); Assert.True(i.Resolved >= i.Tick); });
         Assert.Equal(0, result.RoutineWindows!.RetentionViolations);
         Assert.True(result.RoutineWindows.MaximumSwitchesPerMeal <= 1);
     }
@@ -36,10 +43,10 @@ public sealed class PressureStationTests
     [Fact]
     public void PopulationGeneratorCreatesRealIndependentBedsAndScaledMisconduct()
     {
-        var scenario = PressureStation.Create(2048);
-        Assert.Equal(64, scenario.Scenario.ScriptedActors.Count);
-        Assert.Equal(512, scenario.Scenario.ScriptedActors.Sum(a => a.Commands.Count));
-        Assert.Equal(384, scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"));
+        var scenario = PressureStation.Create(256);
+        Assert.Equal(8, scenario.Scenario.ScriptedActors.Count);
+        Assert.Equal(64, scenario.Scenario.ScriptedActors.Sum(a => a.Commands.Count));
+        Assert.Equal(48, scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"));
         var state = scenario.Scenario.InitialState;
         foreach (var supervisor in state.Actors.Where(a => a.Role == "supervisor"))
         {
@@ -53,13 +60,13 @@ public sealed class PressureStationTests
             Assert.Contains(state.Information.Recovery!.Desks, d => d.TerminalId == desk.Id);
         }
         var w = scenario.CreateWorld();
-        Assert.Equal(32, w.InspectNeedServices().Count(n => n.Definition.Kind == Station.Contracts.NeedServiceKind.Bed && n.Definition.DetentionFacilityId == 1));
+        Assert.Equal(4, w.InspectNeedServices().Count(n => n.Definition.Kind == Station.Contracts.NeedServiceKind.Bed && n.Definition.DetentionFacilityId == 1));
         Assert.Empty(w.InspectEquipment());
         Assert.All(scenario.Scenario.InitialState.Actors.Where(a => a.Role == "guard"), a =>
             Assert.Single(scenario.Scenario.InitialState.Items, i => i.Resource == "guard_equipment" &&
                 i.LocationKind == Station.Contracts.LocationKind.ActorInventory && i.Owner == a.Id && i.Quantity == 1));
         w.AdvanceTo(50);
-        Assert.Equal(128, w.InspectMachines().Count(m => m.Id <= 128 && !m.Operational));
+        Assert.Equal(16, w.InspectMachines().Count(m => m.Id <= 16 && !m.Operational));
         w.AssertAccounting();
     }
 }

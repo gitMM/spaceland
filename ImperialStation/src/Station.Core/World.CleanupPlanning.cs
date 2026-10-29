@@ -11,6 +11,9 @@ namespace Station.Core
         {
             var actor = actors[new Id<ActorTag>(order.ActorId)];
             if (actor.Action != null || processingTick >= order.Expires) return;
+            // An accepted repair order comes first. Its completion, block or removal
+            // wakes this retained cleanup goal; cleanup resumes from the tile's state.
+            if (OrderedRepairFirst(actor.Id)) return;
             // One retained cleanup goal may issue an intent for this citizen. Later
             // assignments wait in stable attempt order and wake after the report.
             if (localOrders.Values.Any(o => o.ActorId == order.ActorId && o.Kind == WorkKind.CleanTile && o.Status == LocalOrderStatus.Working && o.AttemptId < order.AttemptId)) return;
@@ -45,6 +48,8 @@ namespace Station.Core
             Emit("PlanUnavailable", actor, attemptId: order.AttemptId, detail: "clean-known-tile/v1; " + order.Reason);
             RequestOrderDecision(order, checked(processingTick + order.Backoff)); order.Backoff = NextWorkBackoff(order.Backoff);
         }
+        private bool OrderedRepairFirst(Id<ActorTag> actor) => repairAgents.TryGetValue(actor, out var agent) && agent.Pending.Count > 0 && agent.BlockedReason.Length == 0 &&
+            agent.Attempts.TryGetValue(agent.Pending[0], out long attempt) && localOrders.TryGetValue(attempt, out var repair) && repair.Status == LocalOrderStatus.Working && processingTick < repair.Expires;
         private void CompleteKnownCleanup(Actor actor, LocalWorkOrderSnapshot order)
         {
             order.Status = LocalOrderStatus.Completed; order.Reason = order.CleanedUnits == 0 ? "NoWorkNeeded" : "ReportedComplete";

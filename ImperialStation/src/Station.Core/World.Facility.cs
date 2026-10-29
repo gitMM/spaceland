@@ -121,10 +121,17 @@ namespace Station.Core
             foreach (var task in facilityTasks.Values.Where(t => t.Status == FacilityTaskStatus.Pending).OrderBy(t => t.CreatedTick).ThenBy(t => t.JobId).ToArray())
             {
                 var job = jobs[task.JobId];
+                // Evidence hold: the fault was first observed within a configured hour of a claimed
+                // repair whose verification is still open, so it is evidence about that claim.
+                // Repairing first would erase what the verification inspects; its result wakes
+                // this review. A later fault is a new fault and is dispatched at once.
+                if (job.Kind == WorkKind.RepairMachine && OpenQualityVerification(job.MachineId, messages[task.FirstMessageId].Draft.ObservedTick)) { task.Reason = "AwaitingQualityVerification"; continue; }
                 candidates ??= Candidates(view).ToArray();
                 long selected = job.Kind == WorkKind.CleanTile ? AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), 0, candidates) :
-                    AuthorityDispatch.Replacement(view, job.MachineId, 0, candidates);
+                    AuthorityDispatch.Replacement(view, job.MachineId, 0, candidates, Facility!.RepairPreemptsCleanup);
                 if (selected == 0) { task.Reason = "NoKnownQualifiedOnDutyUncommittedResponderWithLocation"; continue; }
+                if (candidates.Any(c => c.Person.ActorId == selected && c.Committed))
+                    Emit("RepairPreemptedCleanup", factKey: task.Subject, detail: "job=" + task.JobId + "; responder=" + selected, causeId: task.CauseId);
                 var assignment = new AssignmentSeed("facility/" + task.JobId + "/after/" + job.CurrentAttemptId, task.JobId, new Id<ActorTag>(selected), checked(processingTick + Facility!.OrderTicks));
                 var attempt = CreateWorkAttempt(processingTick, assignment); task.AttemptId = attempt.Id; task.Status = FacilityTaskStatus.Assigned; task.Reason = "OrderPosted";
                 DispatchWork(attempt.Id, task.CauseId);
