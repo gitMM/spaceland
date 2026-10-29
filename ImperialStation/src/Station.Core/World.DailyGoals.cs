@@ -147,6 +147,7 @@ namespace Station.Core
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
                 PlansFound++; goal.Reason = fallback ? UnmetSleepReason : ""; var step = plan.Steps[0].Intent; goal.ServiceId = step.ServiceId;
+                NoteCafeteriaChoice(actor, preparation ?? goal.Need, plan);
                 if (fallback) Emit("SleepUnmet", actor, detail: UnmetSleepReason + "; goal=" + goal.Id + "; planning rest; service=" + step.ServiceId);
                 long cause = Emit("PlanSelected", actor, detail: "daily-routine/v1; goal=" + goal.Id + "; " + goal.Kind + "; due=" + goal.DueTick + "; cost=" + plan.Cost);
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.DailyCommand, Intent = step, Value = goal.Id, CauseId = cause }); return;

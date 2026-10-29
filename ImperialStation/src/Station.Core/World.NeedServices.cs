@@ -99,6 +99,33 @@ namespace Station.Core
                 (HeldBy(i, actor) || ItemAvailableAt(i, actor.Position)) && !resourceClaims.Any(c => c.Kind == ClaimKind.Item && c.ResourceId == i.Id.Value && c.ActionId != action.Id.Value) &&
                 !credentials.Values.Any(c => c.Definition.Card == i.Id) && i.Quantity > OtherMealReservations(i.Id.Value, action.Id.Value));
         }
+        // Local, present-tense estimates: meals visibly available here and the
+        // wait implied by the queue ahead. Citizens never read a remote cafeteria.
+        private void ObserveCafeterias(Actor actor, long cause)
+        {
+            if (Needs == null || Information == null) return;
+            foreach (var service in needServices.Values.Where(s => s.Definition.Kind == NeedServiceKind.Cafeteria && s.Definition.Position == actor.Position))
+            {
+                long meals = AvailableItemsAt(actor.Position).Where(i => i.Resource == service.Definition.MealResource).Sum(i => i.Quantity);
+                ObservePerceived(actor, new FactKey(SubjectKind.Service, service.Definition.Id, AttributeKind.Quantity), FactValue.Integer(meals), EvidenceKind.Direct, service.Definition.Id, cause, true);
+                ObservePerceived(actor, new FactKey(SubjectKind.Service, service.Definition.Id, AttributeKind.EstimateTicks), FactValue.Integer(VisibleWait(service, actor)), EvidenceKind.Direct, service.Definition.Id, cause, true);
+            }
+        }
+        // Leaving a cafeteria for another is an explicit, counted reconsideration.
+        private void NoteCafeteriaChoice(Actor actor, NeedKind need, PlanResult plan)
+        {
+            if (need != NeedKind.Hunger || plan.Steps.Count == 0 || plan.Steps[0].Intent.Kind != ActionKind.Move) return;
+            var here = needServices.Values.FirstOrDefault(s => s.Definition.Kind == NeedServiceKind.Cafeteria && s.Definition.DetentionFacilityId == 0 && s.Definition.Position == actor.Position);
+            long target = plan.Steps[0].Intent.ServiceId;
+            if (here == null || target == 0 || target == here.Definition.Id || !needServices.TryGetValue(target, out var next) || next.Definition.Kind != NeedServiceKind.Cafeteria) return;
+            Emit("CafeteriaReconsidered", actor, detail: "from=" + here.Definition.Id + "; to=" + target + "; knownWait=" + Mind.NeedPlanning.CafeteriaWait(ActorView(actor.Id), here.Definition));
+        }
+        private static long VisibleWait(NeedService service, Actor observer)
+        {
+            int ahead = service.Queue.Count(id => observer.Action == null || id != observer.Action.Id.Value);
+            if (service.Occupants.Count < service.Definition.Capacity && ahead == 0) return 0;
+            return checked((ahead / service.Definition.Capacity + 1) * service.Definition.DurationTicks);
+        }
         private void StartNeedActivity(Actor actor, ActiveAction action)
         {
             if (!needServices.TryGetValue(action.ServiceId, out var service)) { Fail(actor, action.Id, FailureReason.RequiredServiceNotPresent); return; }
@@ -106,6 +133,7 @@ namespace Station.Core
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
+            if (service.Definition.Kind == NeedServiceKind.Cafeteria) ObserveCafeterias(actor, action.CauseId);
             service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
         }
         private void RequestNeedGrant(NeedService service)
@@ -127,6 +155,9 @@ namespace Station.Core
                 if (failure != FailureReason.None)
                 { activity.Status = NeedActivityStatus.Rejected; activity.EndedTick = processingTick; activity.Reason = failure.ToString(); actor.Action = null; Fail(actor, action.Id, failure); continue; }
                 if (meal != null) { action.Item = meal.Id; activity.MealItemId = meal.Id.Value; }
+                // The wait actually experienced is the citizen's own newest estimate.
+                if (service.Definition.Kind == NeedServiceKind.Cafeteria && Information != null)
+                    Learn(actor, new FactKey(SubjectKind.Service, id, AttributeKind.EstimateTicks), FactValue.Integer(processingTick - activity.RequestedTick), EvidenceKind.Direct, id, processingTick, action.CauseId);
                 activity.Status = NeedActivityStatus.Active; activity.StartedTick = processingTick; service.Occupants.Add(action.Id.Value);
                 ReserveMeal(activity);
                 action.Waiting = false; action.Started = processingTick; action.Completes = PlannedNeedEnd(actor, action, service);

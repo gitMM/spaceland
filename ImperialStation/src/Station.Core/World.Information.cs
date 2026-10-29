@@ -107,6 +107,7 @@ namespace Station.Core
             }
             foreach (var item in ItemsAt(LocationKind.ActorInventory, actor.Id.Value)) ObserveItemDescription(actor, item, cause, passive: true);
             foreach (var machine in machines.Values.Where(m => m.Position == actor.Position)) ObserveMachine(actor, machine, false, sensingCause: cause);
+            ObserveCafeterias(actor, cause);
             if (perception.Mode(SubjectKind.Actor, AttributeKind.Location) == PerceptionMode.Passive)
                 foreach (var other in actors.Values.Where(a => a.Id != actor.Id && a.Position == actor.Position && a.Action?.Kind != ActionKind.Move))
                     ObservePerceived(actor, new FactKey(SubjectKind.Actor, other.Id.Value, AttributeKind.Location), FactValue.At(actor.Position), EvidenceKind.Direct, tile.Id.Value, cause, true);

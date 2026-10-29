@@ -25,6 +25,8 @@ namespace Station.Contracts
             Add(SubjectKind.Machine, AttributeKind.RequiredResource, PerceptionMode.InspectionOnly); Add(SubjectKind.Machine, AttributeKind.InstalledResource, PerceptionMode.InspectionOnly);
             Add(SubjectKind.Actor, AttributeKind.Location, PerceptionMode.InspectionOnly);
             Add(SubjectKind.Tile, AttributeKind.Dirt, PerceptionMode.Passive);
+            // Visible cafeteria condition: meals on the counter and the queue ahead.
+            Add(SubjectKind.Service, AttributeKind.Quantity, PerceptionMode.Passive); Add(SubjectKind.Service, AttributeKind.EstimateTicks, PerceptionMode.Passive);
             var seen = new SortedSet<(SubjectKind, AttributeKind)>();
             foreach (var rule in overrides ?? Array.Empty<PerceptionRule>())
             {

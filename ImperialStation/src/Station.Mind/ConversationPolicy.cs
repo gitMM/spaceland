@@ -23,7 +23,10 @@ namespace Station.Mind
                 case ConversationTopic.WitnessedProblem:
                     return (fact.SourceKind is EvidenceKind.Direct or EvidenceKind.Inspection) &&
                         (key.SubjectKind == SubjectKind.Machine && key.Attribute == AttributeKind.Operational && fact.Value.Equals(FactValue.Boolean(false)) ||
-                         key.SubjectKind == SubjectKind.Tile && key.Attribute == AttributeKind.Dirt && fact.Value.Kind == FactValueKind.Number && fact.Value.Number > 0);
+                         key.SubjectKind == SubjectKind.Tile && key.Attribute == AttributeKind.Dirt && fact.Value.Kind == FactValueKind.Number && fact.Value.Number > 0 ||
+                         // An empty counter or a queue the speaker saw; the listener keeps its age and source.
+                         key.SubjectKind == SubjectKind.Service && key.Attribute == AttributeKind.Quantity && fact.Value.Kind == FactValueKind.Number && fact.Value.Number == 0 ||
+                         key.SubjectKind == SubjectKind.Service && key.Attribute == AttributeKind.EstimateTicks && fact.Value.Kind == FactValueKind.Number && fact.Value.Number > 0);
                 case ConversationTopic.AllowedRequest:
                     return key.SubjectKind == SubjectKind.Machine && key.Attribute == AttributeKind.RequiredResource && fact.Value.Kind == FactValueKind.Text;
                 default: return false;

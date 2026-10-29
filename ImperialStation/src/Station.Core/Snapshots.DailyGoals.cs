@@ -57,7 +57,9 @@ namespace Station.Core
                 ValidateStamp(new GoalStamp(g.DueTick, g.Id));
                 if (!dailySchedules.TryGetValue(g.ActorId, out var schedule) || !rosters.TryGetValue(g.RosterVersion, out var roster) || roster.Roster.ActorId != g.ActorId ||
                     g.DueTick != Math.Max(0, g.Opens) || g.Closes <= g.Opens || g.RetryAt < 0 || g.Backoff < planner.InitialBackoff || g.Backoff > planner.MaximumBackoff ||
-                    g.ServiceId < 0 || g.ServiceId > 0 && (!needServices.TryGetValue(g.ServiceId, out var service) || !(NeedPlanning.Serves(service.Definition.Kind, g.Need) || IsSleepFallback(g.Need, g.ServiceId))) ||
+                    g.ServiceId < 0 || g.ServiceId > 0 && (!needServices.TryGetValue(g.ServiceId, out var service) || !(NeedPlanning.Serves(service.Definition.Kind, g.Need) || IsSleepFallback(g.Need, g.ServiceId) ||
+                        // A sleep goal may own a preparatory meal or toilet visit before sleeping.
+                        g.Kind == RoutineOpportunityKind.Sleep && (NeedPlanning.Serves(service.Definition.Kind, NeedKind.Hunger) || NeedPlanning.Serves(service.Definition.Kind, NeedKind.Bladder)))) ||
                     !keys.Add((g.ActorId, g.RosterVersion, g.Kind, g.Opens)) ||
                     !DailyRoutine.Around(roster.Roster, Math.Max(0, g.Opens)).Any(w => w.Kind == g.Kind && w.Opens == g.Opens && w.Closes == g.Closes)) throw new ArgumentException("Invalid roster opportunity goal.");
                 if (g.Status == DailyGoalStatus.Pending ? g.EndedTick != -1 || schedule.RosterVersion != g.RosterVersion : g.EndedTick < g.DueTick || g.EndedTick > LastProcessedTick) throw new ArgumentException("Invalid daily goal lifecycle.");

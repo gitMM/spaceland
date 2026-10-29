@@ -141,6 +141,7 @@ namespace Station.Core
             {
                 PlansFound++; agent.BlockedReason = fallback ? UnmetSleepReason : ""; agent.RetryAt = 0; agent.UrgentRetryAt = 0; agent.PlannedTick = processingTick;
                 var step = plan.Steps[0].Intent; agent.ServiceId = step.ServiceId;
+                NoteCafeteriaChoice(actor, need.Kind, plan);
                 if (fallback) Emit("SleepUnmet", actor, detail: UnmetSleepReason + "; planning rest; service=" + step.ServiceId);
                 long cause = Emit("PlanSelected", actor, detail: "urgent-need/v1; need=" + need.Kind + "; band=" + need.Band + "; service=" + step.ServiceId + "; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.NeedCommand, Intent = step, CauseId = cause }); return;

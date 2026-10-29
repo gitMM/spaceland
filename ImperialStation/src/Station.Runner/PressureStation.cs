@@ -128,10 +128,13 @@ public static partial class PressureStation
                 result.Phases.Add(phase); Console.Error.WriteLine(JsonData.Write(phase));
             });
         var world = final!;
+        void Require0(bool ok, string reason) { if (!ok) result.Failures.Add(reason); }
         result.ResponseTimes = responses.Finish(world, ResponseTimes.Limits.Pressure(StationBaseline.Day), world.Detention?.Escort?.GuardCount ?? 2);
         result.RoutineWindows = windows.Finish(world);
+        Require0(result.RoutineWindows.RetentionViolations == 0, "A routine activity admitted while its window was open was recorded as missed.");
+        Require0(result.RoutineWindows.MaximumSwitchesPerMeal <= 1, "A citizen switched cafeterias more than once before one meal.");
         result.Failures.AddRange(result.Participation.Failures);
-        void Require(bool ok, string reason) { if (!ok) result.Failures.Add(reason); }
+        void Require(bool ok, string reason) => Require0(ok, reason);
         result.Reprimands = world.InspectReprimands().Count;
         var stays = world.InspectDetentionStays(); result.Released = stays.Count(st => st.Status == DetentionStayStatus.Released);
         result.CaseOutcomes = InspectCaseOutcomes(world, repairTriggers);

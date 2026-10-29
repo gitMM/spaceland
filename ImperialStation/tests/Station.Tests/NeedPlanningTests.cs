@@ -11,13 +11,13 @@ public sealed class NeedPlanningTests
 {
     private const long H = NeedAccumulator.HourMilliseconds;
     private static World Make(NeedKind need = NeedKind.Hunger, long points = 700, long meals = 2, bool alternate = false, bool publication = true,
-        IEnumerable<NeedServiceDefinition>? services = null, IEnumerable<NeedInitialValue>? initial = null, bool report = false, int requests = 64)
+        IEnumerable<NeedServiceDefinition>? services = null, IEnumerable<NeedInitialValue>? initial = null, bool report = false, int requests = 64, bool bothStocked = false)
     {
         var kind = need switch { NeedKind.Bladder => NeedServiceKind.Toilet, NeedKind.SleepPressure => NeedServiceKind.Bed, NeedKind.WorkStrain => NeedServiceKind.RestSpot, _ => NeedServiceKind.Cafeteria };
         var defs = services ?? new[] { new NeedServiceDefinition(1, kind, Fixtures.B, durationTicks: 5, assignedActorId: kind == NeedServiceKind.Bed ? 1 : 0) }.Concat(alternate ? new[] { new NeedServiceDefinition(2, kind, Fixtures.C, durationTicks: 5) } : Array.Empty<NeedServiceDefinition>());
         var tiles = new[] { new Tile(new(1), "Storage", Fixtures.A, traversalOverride: 4), new Tile(new(2), "Habitat", Fixtures.B, traversalOverride: 4), new Tile(new(3), "Habitat", Fixtures.C, traversalOverride: 4) };
         return new World("autonomous-needs", 42, new WorldConfig(itemActionTicks: 1), Fixtures.Catalog, tiles,
-            new[] { new ActorSeed(new(1), "Resident", "worker", Fixtures.A) }, meals > 0 ? new[] { new Item(new(1), "meal", meals, new(LocationKind.TileContainer, alternate ? 3 : 2)) } : Array.Empty<Item>(), true,
+            new[] { new ActorSeed(new(1), "Resident", "worker", Fixtures.A) }, meals > 0 ? new[] { new Item(new(1), "meal", meals, new(LocationKind.TileContainer, alternate ? 3 : 2)) }.Concat(bothStocked ? new[] { new Item(new(2), "meal", meals, new(LocationKind.TileContainer, 2)) } : Array.Empty<Item>()).ToArray() : Array.Empty<Item>(), true,
             information: new InformationSeed(publication: publication ? new PublicKnowledge(1, tiles.Select(t => new KnownTile(t.Id, t.Position, 4)), Array.Empty<PublicService>()) : new PublicKnowledge(1, Array.Empty<KnownTile>(), Array.Empty<PublicService>()),
                 reportGoals: report ? new[] { new ReportGoalSeed(new(1), TerminalFixtures.Draft(1)) } : null, planner: new PlannerConfig(requestsPerTick: requests)),
             needs: new NeedSeed(initial: initial ?? new[] { new NeedInitialValue(new(1), need, points * H) }, services: defs));
@@ -43,26 +43,41 @@ public sealed class NeedPlanningTests
         Assert.Empty(Agent(empty).Failures); Assert.Equal(stocked.Trace.Single(e => e.Type == "PlanSelected").Detail, empty.Trace.Single(e => e.Type == "PlanSelected").Detail);
     }
     [Fact]
-    public void ActualStockFailureSelectsAKnownAlternativeWithoutTelepathy()
+    public void EmptyCounterSeenOnArrivalSelectsAKnownAlternativeWithoutTelepathy()
     {
-        var w = Make(alternate: true); w.AdvanceTo(5); Assert.Equal(1, w.ActionsFailed); var learned = Assert.Single(Agent(w).Failures);
-        Assert.Equal(FailureReason.InsufficientMaterials, learned.Reason); Assert.Equal(1, learned.ServiceId); Assert.Equal(5, learned.Tick); RoundTrip(w);
+        // The empty counter is unknown from afar; at arrival it is seen locally and the
+        // resident continues to the alternative without queueing for a meal that is not there.
+        var w = Make(alternate: true); w.AdvanceTo(0); Assert.Equal(1, Agent(w).ServiceId);
+        w.AdvanceTo(5); Assert.Equal(0, w.ActionsFailed);
+        var seen = Assert.Single(w.ActorView(new(1)).Knowledge, f => f.Key.Equals(new FactKey(SubjectKind.Service, 1, AttributeKind.Quantity)));
+        Assert.Equal(0, seen.Value.Number); Assert.Equal(4, seen.ObservedTick); Assert.Equal(EvidenceKind.Direct, seen.SourceKind); RoundTrip(w);
         w.AdvanceTo(16); Assert.Equal(Fixtures.C, w.InspectActor(new(1)).Position); Assert.Equal(1, w.MealsConsumed); Assert.Equal(2, Agent(w).ServiceId);
-        Assert.Equal(NeedActivityStatus.Rejected, w.InspectNeedActivities()[0].Status); Assert.Equal(NeedActivityStatus.Completed, w.InspectNeedActivities()[1].Status); w.AssertAccounting(); RoundTrip(w);
+        Assert.Equal(NeedActivityStatus.Completed, Assert.Single(w.InspectNeedActivities()).Status); w.AssertAccounting(); RoundTrip(w);
+    }
+    [Fact]
+    public void ActualStockFailureAtAStockedLookingCounterIsLearnedAndBounded()
+    {
+        // Meals are visible but reserved by nobody else; a disabled service still fails only locally.
+        var w = Make(alternate: true, bothStocked: true); w.ScheduleNeedServiceChange(0, 1, false); w.AdvanceTo(5);
+        Assert.Equal(1, w.ActionsFailed); Assert.Equal(FailureReason.ServiceBusy, Assert.Single(Agent(w).Failures).Reason); RoundTrip(w);
+        w.AdvanceTo(20); Assert.Equal(1, w.MealsConsumed); Assert.Equal(2, Assert.Single(w.InspectNeedActivities(), a => a.Status == NeedActivityStatus.Completed).ServiceId);
     }
     [Fact]
     public void OutageIsLearnedOnlyAtArrivalAndAllowsAlternative()
     {
-        var w = Make(alternate: true); w.ScheduleNeedServiceChange(0, 1, false); w.AdvanceTo(3); Assert.Empty(Agent(w).Failures);
+        var w = Make(alternate: true, bothStocked: true); w.ScheduleNeedServiceChange(0, 1, false); w.AdvanceTo(3); Assert.Empty(Agent(w).Failures);
         w.AdvanceTo(4); Assert.Equal(FailureReason.ServiceBusy, Assert.Single(Agent(w).Failures).Reason); RoundTrip(w);
         w.AdvanceTo(20); Assert.Equal(1, w.MealsConsumed); Assert.Equal(1, w.ActionsFailed); RoundTrip(w);
     }
     [Fact]
     public void ShortageRetriesAreBoundedAndNeverCreateMeals()
     {
+        // Both counters are seen empty on arrival: no failed service attempts are needed,
+        // and the remembered empty counters keep planning bounded until they go stale.
         var w = Make(alternate: true, meals: 0); w.AdvanceTo(3000);
-        Assert.InRange(w.ActionsFailed, 2, 16); Assert.InRange(w.PlannerRequests, 2, 45); Assert.Equal(0, w.MealsConsumed); Assert.Empty(w.InspectItems());
-        Assert.Equal(2, Agent(w).Failures.Count); Assert.True(Agent(w).NextDecision > 3000); Assert.True(Agent(w).RetryAt > 3000); w.AssertAccounting(); RoundTrip(w);
+        Assert.InRange(w.ActionsFailed, 0, 16); Assert.InRange(w.PlannerRequests, 2, 45); Assert.Equal(0, w.MealsConsumed); Assert.Empty(w.InspectItems());
+        Assert.Equal(2, w.ActorView(new(1)).Knowledge.Count(f => f.Key.SubjectKind == SubjectKind.Service && f.Key.Attribute == AttributeKind.Quantity && f.Value.Number == 0));
+        Assert.True(Agent(w).NextDecision > 3000); Assert.True(Agent(w).RetryAt > 3000); w.AssertAccounting(); RoundTrip(w);
     }
     [Fact]
     public void PrivateRetryEventuallyDiscoversRestoredServiceWithoutBroadcast()
@@ -211,7 +226,7 @@ public sealed class NeedPlanningTests
     {
         var loaded = LoadedScenario.Load(Path.Combine(Fixtures.Root, "scenarios", "autonomous_need_relief.json")); Assert.Empty(loaded.Scenario.ScriptedActors);
         var run = Runs.Execute(loaded, 42, true); Assert.Equal("completed", run.Result.Status); Assert.Empty(run.Result.AssertionFailures); Assert.Equal(10, loaded.Scenario.Assertions.Count);
-        Assert.Equal(1, Agent(run.World).CompletedActivities); Assert.Equal(1, run.World.ActionsFailed); RoundTrip(run.World);
+        Assert.Equal(1, Agent(run.World).CompletedActivities); Assert.Equal(0, run.World.ActionsFailed); RoundTrip(run.World);
     }
     [Fact]
     public void SnapshotRejectsInvalidNeedActionOwnershipRetryClockAndFailureMemory()

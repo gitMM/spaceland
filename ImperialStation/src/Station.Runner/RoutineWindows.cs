@@ -14,6 +14,9 @@ public static class RoutineWindows
         public SortedDictionary<string, int> Outcomes { get; set; } = new(StringComparer.Ordinal);
         // A finite activity admitted while its window was open must still count.
         public int RetentionViolations { get; set; }
+        // Cafeteria reconsiderations: total, and the most by one citizen before one meal.
+        public int CafeteriaSwitches { get; set; }
+        public int MaximumSwitchesPerMeal { get; set; }
         public List<Miss> Misses { get; set; } = new();
     }
     public sealed class Tracker
@@ -34,6 +37,8 @@ public static class RoutineWindows
         private readonly Dictionary<long, long> plans = new();
         private readonly Dictionary<long, long> actionGoals = new();
         private readonly Dictionary<long, long> subjects = new();
+        private readonly Dictionary<long, int> mealSwitches = new();
+        private int switches, maximumSwitches;
         private static long Number(string detail, string name)
         {
             int at = detail.IndexOf(name + "=", StringComparison.Ordinal); if (at < 0) return 0;
@@ -81,6 +86,9 @@ public static class RoutineWindows
                 case "DetentionAuthorized": subjects[Number(e.Detail, "authorization")] = Number(e.Detail, "known-actor"); break;
                 case "CustodyBegan" when subjects.TryGetValue(Number(e.Detail, "authorization"), out long subject): Actor(subject).Custody = true; break;
                 case "DetentionReleased": Actor(e.ActorId).Custody = false; break;
+                case "CafeteriaReconsidered":
+                    switches++; mealSwitches[e.ActorId] = mealSwitches.GetValueOrDefault(e.ActorId) + 1; maximumSwitches = Math.Max(maximumSwitches, mealSwitches[e.ActorId]); break;
+                case "MealConsumed": mealSwitches.Remove(e.ActorId); break;
                 case "DailyGoalResolved" when goals.TryGetValue(Goal(e.Detail), out var resolved):
                     {
                         var a = Actor(resolved.Actor);
@@ -91,7 +99,7 @@ public static class RoutineWindows
         }
         public Report Finish(World w)
         {
-            var report = new Report();
+            var report = new Report { CafeteriaSwitches = switches, MaximumSwitchesPerMeal = maximumSwitches };
             foreach (var g in w.InspectDailyGoals())
             {
                 report.Outcomes[g.Kind + "/" + g.Status] = report.Outcomes.GetValueOrDefault(g.Kind + "/" + g.Status) + 1;

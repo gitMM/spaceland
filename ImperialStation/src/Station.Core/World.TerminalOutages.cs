@@ -55,10 +55,14 @@ namespace Station.Core
         // so an eligible alternative is tried before waiting for a recheck.
         private bool JustLearnedTerminalOutage(Id<ActorTag> actor) => terminalOutages.Count > 0 && actors[actor].LastFailure == FailureReason.RequiredServiceNotPresent &&
             terminalOutages.Values.Any(o => o.ActorId == actor.Value && o.LastObservedTick == NeedNow && o.Observations == 1);
+        // Outages still inside their wait are avoided. Of those due for a recheck, only the
+        // least-confirmed one (smallest backoff, then oldest observation) stays eligible.
         private IReadOnlyList<long> KnownTerminalOutages(Id<ActorTag> actor)
         {
             if (terminalOutages.Count == 0) return Array.Empty<long>();
-            return terminalOutages.Values.Where(o => o.ActorId == actor.Value && o.RetryAt > NeedNow).Select(o => o.TerminalId).ToArray();
+            var own = terminalOutages.Values.Where(o => o.ActorId == actor.Value).ToArray();
+            var recheck = own.Where(o => o.RetryAt <= NeedNow).OrderBy(o => o.Backoff).ThenBy(o => o.LastObservedTick).ThenBy(o => o.TerminalId).FirstOrDefault();
+            return own.Where(o => o != recheck).Select(o => o.TerminalId).ToArray();
         }
         // An agent left without any eligible terminal waits for its own backoff and
         // for the earliest remembered outage to become due for a bounded recheck.

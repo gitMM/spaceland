@@ -62,7 +62,9 @@ public sealed class FacilityTests
         Assert.Equal(1, Assert.Single(w.InspectFacilityObservations(new(3))).Generation);
         var restored = World.Restore(w.Serialize()); Assert.Equal(w.Serialize(), restored.Serialize());
         w.ScheduleTerminalChange(301, 2, true, true); restored.ScheduleTerminalChange(301, 2, true, true);
-        w.AdvanceTo(900); restored.AdvanceTo(900); Assert.Equal(w.Serialize(), restored.Serialize()); Assert.Single(w.InspectFacilityTasks());
+        // Remembered outages are rechecked with growing delays; reconnection is found only locally.
+        w.AdvanceTo(2000); restored.AdvanceTo(2000); Assert.Equal(w.Serialize(), restored.Serialize()); Assert.Single(w.InspectFacilityTasks());
+        Assert.InRange(w.ActionsFailed, 2, 12); Assert.DoesNotContain(w.InspectTerminalOutages(new(3)), o => o.TerminalId == 2);
     }
 
     [Fact]
