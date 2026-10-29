@@ -69,15 +69,25 @@ bool ReliefEdge(int k, int row, int key, bool calm)
 // hash (as CarveFace makes it); calm 1 when the tile's budget made every plate calm.
 struct ReliefFace { int ax, ua, va, key; bool allCalm; };
 
+// What ReliefHeight looked up last: a ray stays in one zone and on one plate for many steps, and the zone's calm, the
+// plate's run of cells and its random numbers cost a dozen hashes to find again.
+struct ReliefCache { bool zoneSet, cellSet; int3 zone; bool calm; int row, cell, k, k2; float t, h, plate; };
+ReliefCache ReliefCacheEmpty() { ReliefCache c = (ReliefCache)0; c.zoneSet = false; c.cellSet = false; return c; }
+
 // Height of the carving at station point s on the face (0 the face itself), with gaps narrower than fill filled in
 // (they are under a pixel; TileSurface folds their darkening instead). plate: the plate's own random number, for tone.
-float ReliefHeight(ReliefFace f, float3 s, float fill, out float plate)
+float ReliefHeight(ReliefFace f, float3 s, float fill, inout ReliefCache cache, out float plate)
 {
     plate = 0;
     float u = ReliefAt(s, f.ua), v = ReliefAt(s, f.va);
     float3 zone = floor((s + ReliefZoneOffset) / RELIEF_ZONE);
     int3 idx = (int3)zone;
-    bool calm = f.allCalm || ReliefH01(idx.x, idx.y, idx.z, 77) < 0.4;
+    if (!cache.zoneSet || any(idx != cache.zone))
+    {
+        cache.zoneSet = true; cache.cellSet = false; cache.zone = idx;
+        cache.calm = f.allCalm || ReliefH01(idx.x, idx.y, idx.z, 77) < 0.4;
+    }
+    bool calm = cache.calm;
     float sc = calm ? 2 : 1, rowH = 0.62 * sc, cellW = 0.31 * sc;
     float gap = max(RELIEF_GAP - fill * .5, 0);
     // the zone, less its gap
@@ -86,15 +96,23 @@ float ReliefHeight(ReliefFace f, float3 s, float fill, out float plate)
     int zkey = f.key * 2 + (calm ? 1 : 0);
     int row = (int)floor(v / rowH);
     float r0 = row * rowH, stag = row * 0.47 * sc;
-    int k = (int)floor((u + stag) / cellW);
-    [loop] for (int i = 0; i < 4 && !ReliefEdge(k, row, zkey, calm); i++) k--;
-    int k2 = k + 1;
-    [loop] for (int j = 0; j < 4 && !ReliefEdge(k2, row, zkey, calm); j++) k2++;
+    int cell = (int)floor((u + stag) / cellW);
+    if (!cache.cellSet || row != cache.row || cell != cache.cell)
+    {
+        int k = cell;
+        [loop] for (int i = 0; i < 4 && !ReliefEdge(k, row, zkey, calm); i++) k--;
+        int k2 = k + 1;
+        [loop] for (int j = 0; j < 4 && !ReliefEdge(k2, row, zkey, calm); j++) k2++;
+        cache.cellSet = true; cache.row = row; cache.cell = cell; cache.k = k; cache.k2 = k2;
+        cache.t = ReliefH01(k, row, zkey, 1); cache.h = 0.04 + 0.03 * floor(ReliefH01(k, row, zkey, 2) * 3);
+        cache.plate = ReliefH01(k, row, zkey, 11);
+    }
+    int k = cache.k, k2 = cache.k2;
     float4 r = float4(k * cellW - stag + gap, r0 + gap, k2 * cellW - stag - gap, r0 + rowH - gap);   // xMin, yMin, xMax, yMax
     if (u < r.x || u > r.z || v < r.y || v > r.w) return 0;
     float w = r.z - r.x, hgt = r.w - r.y;
-    float t = ReliefH01(k, row, zkey, 1), h = 0.04 + 0.03 * floor(ReliefH01(k, row, zkey, 2) * 3);
-    plate = ReliefH01(k, row, zkey, 11);
+    float t = cache.t, h = cache.h;
+    plate = cache.plate;
     float4 odds = calm ? float4(0.58, 0.70, 0.82, 0.90) : float4(0.30, 0.46, 0.56, 0.60);
     float odds4 = calm ? 0.95 : 0.80;
     float cut = max(RELIEF_CUT - fill * .5, 0);
@@ -171,8 +189,9 @@ ReliefHit ReliefTrace(ReliefFace f, float3 s0, float3 n, float3 dir, float3 toSu
 {
     // (heights over the face; the layout is read on the face plane, so a point above it never crosses into another
     // zone along the face's own axis)
-    #define RELIEF_AT(q) ReliefHeight(f, (q) - n * dot((q) - s0, n), fill, drop)
+    #define RELIEF_AT(q) ReliefHeight(f, (q) - n * dot((q) - s0, n), fill, cache, drop)
     float drop;
+    ReliefCache cache = ReliefCacheEmpty();
     ReliefHit hit;
     hit.station = s0; hit.height = 0; hit.wall = 0; hit.plate = 0; hit.shadow = 1;
     float down = -dot(dir, n);
@@ -203,7 +222,7 @@ ReliefHit ReliefTrace(ReliefFace f, float3 s0, float3 n, float3 dir, float3 toSu
     }
     float3 p = start + dir * t1;
     float above = top - down * t1;
-    float hHere = ReliefHeight(f, p - n * dot(p - s0, n), fill, plate) * lower;
+    float hHere = ReliefHeight(f, p - n * dot(p - s0, n), fill, cache, plate) * lower;
     hit.station = p - n * (dot(p - s0, n) - hHere);
     hit.height = hHere;
     hit.plate = plate;

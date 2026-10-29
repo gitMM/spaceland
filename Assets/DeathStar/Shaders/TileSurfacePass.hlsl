@@ -8,6 +8,19 @@
 float4 _TileRelief;
 float _StationAmbient, _StationEmission;
 float4 _StationHabitatFamily, _StationHabitatTint, _StationDefaultTileTint;
+// Only draws that trace write depth: the mid and far levels' armour (_TILE_RELIEF, TileLook.ReliefMaterials) and the
+// relief shells. A pixel shader that may move its depth toward the camera can't be rejected by the depth test before it
+// runs, so writing depth everywhere made every hidden tile pixel shade in full.
+#if !defined(STATION_GI_SOURCE) && (defined(_TILE_SHELL) || defined(_TILE_RELIEF))
+    #define TILE_WRITES_DEPTH 1
+#endif
+// Interpolated depth isn't bit for bit the depth prepass's: nudge it toward the camera so the opaque pass's depth test
+// against the prepass never drops a pixel.
+#if UNITY_REVERSED_Z
+    #define TILE_NEARER(z) ((z) * (1 + 4e-6))
+#else
+    #define TILE_NEARER(z) ((z) * (1 - 4e-6))
+#endif
 
             struct Varyings
             {
@@ -39,6 +52,15 @@ float4 _StationHabitatFamily, _StationHabitatTint, _StationDefaultTileTint;
                 VertexPositionInputs pos = GetVertexPositionInputs(v.positionOS.xyz);
                 // Match the depth/normal prepass exactly for the source redraw.
                 o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
+                #if !defined(STATION_GI_SOURCE) && !defined(TILE_WRITES_DEPTH)
+                // (the same nudge the depth-writing draws give their 0-1 depth, here where it leaves the depth test
+                // early; OpenGL's clip z runs from -w at the near plane)
+                #if UNITY_REVERSED_Z
+                o.positionCS.z = TILE_NEARER(o.positionCS.z);
+                #else
+                o.positionCS.z = UNITY_NEAR_CLIP_VALUE * o.positionCS.w + TILE_NEARER(o.positionCS.z - UNITY_NEAR_CLIP_VALUE * o.positionCS.w);
+                #endif
+                #endif
                 o.viewWS = pos.positionWS - _WorldSpaceCameraPos;
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 o.positionOS = v.positionOS.xyz;
@@ -72,9 +94,10 @@ float4 _StationHabitatFamily, _StationHabitatTint, _StationDefaultTileTint;
 
             #if defined(STATION_GI_SOURCE)
 StationGiSourceOutput Frag(Varyings i)
-#else
-            // The relief trace moves the surface toward the camera, never away (reversed Z: depth only grows), so
-            // conservative depth keeps early depth testing. A relief shell's trace moves it away, never toward.
+#elif defined(TILE_WRITES_DEPTH)
+            // The relief trace moves the surface toward the camera, never away (reversed Z: depth only grows): the
+            // depth test can't reject these pixels early. A relief shell's trace moves it away, never toward, so
+            // conservative depth keeps early rejection there.
             #if defined(_TILE_SHELL)
                 #define TILE_DEPTH TILE_SHELL_DEPTH
             #elif UNITY_REVERSED_Z
@@ -83,17 +106,12 @@ StationGiSourceOutput Frag(Varyings i)
                 #define TILE_DEPTH SV_DepthLessEqual
             #endif
 half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
+#else
+half4 Frag(Varyings i) : SV_Target
 #endif
             {
                 UNITY_SETUP_INSTANCE_ID(i);
-                #if !defined(STATION_GI_SOURCE)
-                // Interpolated depth isn't bit for bit the depth prepass's: nudge it toward the camera so the opaque
-                // pass's depth test against the prepass never drops a pixel.
-                #if UNITY_REVERSED_Z
-                    #define TILE_NEARER(z) ((z) * (1 + 4e-6))
-                #else
-                    #define TILE_NEARER(z) ((z) * (1 - 4e-6))
-                #endif
+                #if defined(TILE_WRITES_DEPTH)
                 depth = TILE_NEARER(i.positionCS.z);
                 #endif
                 TileKitClip(i.fade, i.positionCS);
@@ -203,10 +221,12 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                     #endif
                 }
                 bool hasRelief = false;
-                #else
+                #elif defined(_TILE_RELIEF)
                 // The armour's plates, traced where the mesh left the armour plain (mid and far levels).
                 // (a mesh without uv6 reads w as 1; a real layout code is never under 2 either way)
                 bool hasRelief = abs(i.relief.w) > 1.5;
+                #else
+                bool hasRelief = false;   // the near level carves its armour as geometry
                 #endif
                 if (_TileRelief.x > .5 && hasRelief)
                 {
@@ -246,7 +266,7 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                         // never let a bad trace through to lighting or depth
                         if (any(!isfinite(surfaceWS)) || any(!isfinite(shadingN)) || !isfinite(StationSurfaceShadow))
                         { surfaceWS = positionWS; shadingN = edged.normalWS; StationSurfaceShadow = 1; }
-                        #if !defined(STATION_GI_SOURCE)
+                        #if defined(TILE_WRITES_DEPTH)
                         // 3 mm behind where it hit: where a real plate of the near level shares a handover band with it,
                         // the plate wins instead of the two fighting.
                         depth = max(TILE_NEARER(ReliefDepthAt(surfaceWS, .003)), depth);   // (conservative: never farther than the face)

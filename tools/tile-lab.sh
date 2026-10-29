@@ -16,7 +16,7 @@
 #   tools/tile-lab.sh ridges     # just the ridges example (and station: just the station)
 #   tools/tile-lab.sh budget     # just the triangle budget, every tile of every example and the gallery
 #   tools/tile-lab.sh snap family=<Name> [back=1] [clay=1]  |  snap x= y= z= tx= ty= tz= [fov=] [clay=1]  -> DeathStarRuns/Tiles/snap.png
-# Needs the spaceland editor open and not in play mode. Imports changed scripts first so the run uses the code
+# Needs the spaceland editor open and not in play mode. TILE_LAB_TIMEOUT: seconds to wait for the job (600). Imports changed scripts first so the run uses the code
 # on disk (set TILE_LAB_NO_COMPILE=1 to skip).
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -60,7 +60,7 @@ args=${args% }
 sub=$(unity command run_script --detach --project-path "$P" --file tools/TileLabEntry.cs --entry TileLabEntry.Run --args "[\"$args\"]" --json --no-banner 2>&1)
 job=$(echo "$sub" | grep -o '"jobId": *"[0-9a-f]*"' | head -1 | grep -o '[0-9a-f]\{16,\}')
 if [ -z "$job" ]; then echo "Could not start the lab job:"; echo "$sub"; exit 1; fi
-out=$(unity job wait "$job" --timeout 600 --project-path "$P" --json --no-banner 2>&1)
+out=$(unity job wait "$job" --timeout "${TILE_LAB_TIMEOUT:-600}" --project-path "$P" --json --no-banner 2>&1)
 if ! echo "$out" | grep -q '"result": "DONE'; then echo "$out"; exit 1; fi
 if [ "${1:-report}" != "report" ]; then echo "$out" | grep -o '"result": "DONE[^"]*' | sed 's/"result": "//'; exit 0; fi
 cat DeathStarRuns/Tiles/last.txt

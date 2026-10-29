@@ -68,8 +68,8 @@ namespace DeathStar
                     for(int i=0;i<shared.Length;i++)
                     {
                         if(!shared[i])continue;
-                        materials[i]=new Material(shared[i]){enableInstancing=true,hideFlags=HideFlags.HideAndDontSave};materials[i].SetFloat("_TileKitMode",1);
-                        routeMaterials[i]=new Material(shared[i]){hideFlags=HideFlags.HideAndDontSave};routeMaterials[i].SetFloat("_TileKitMode",2);
+                        materials[i]=new Material(shared[i]){enableInstancing=true,hideFlags=HideFlags.HideAndDontSave};materials[i].SetFloat("_TileKitMode",1);materials[i].EnableKeyword("_TILE_KIT");
+                        routeMaterials[i]=new Material(shared[i]){hideFlags=HideFlags.HideAndDontSave};routeMaterials[i].SetFloat("_TileKitMode",2);routeMaterials[i].EnableKeyword("_TILE_KIT");
                     }
                 }
                 var v=mesh.vertices;var normals=mesh.normals;var l2w=filter.transform.localToWorldMatrix;

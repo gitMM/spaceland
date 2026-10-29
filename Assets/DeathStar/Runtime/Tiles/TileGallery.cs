@@ -157,7 +157,8 @@ namespace DeathStar
         {
             var go=Node(name,parent.transform,dontSave);go.transform.SetLocalPositionAndRotation(position,rotation);
             go.AddComponent<MeshFilter>().sharedMesh=mesh;
-            var r=go.AddComponent<MeshRenderer>();r.sharedMaterials=lib!=null?lib.materials:new Material[0];
+            var r=go.AddComponent<MeshRenderer>();
+            r.sharedMaterials=lib==null?new Material[0]:name=="Mid"||name=="Far"?TileLook.ReliefMaterials(lib.materials):lib.materials;
             if(name!="Mid"&&name!="Far")go.AddComponent<StationLocalLightSource>();
             return r;
         }

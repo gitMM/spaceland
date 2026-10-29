@@ -103,6 +103,9 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
     float c1 = 1e3, c2 = 1e3; float3 g1 = 0, g2 = 0;                  // the two nearest convex edges
     float soft = 1e3; float3 gs = 0;
     float crease = 1e3;
+    // The face's rectangle (below): a, the first convex edge, its distance and direction kept as it is found. (Reading
+    // em or eg at a runtime index would put the arrays in local memory, slow to every pixel.)
+    int a = -1; float ma = 0; float3 ga = 0;
     // (HLSL evaluates both sides of ?:, so unpack instead of indexing d0 or d1 by k)
     float dk[8] = { d0.x, d0.y, d0.z, d0.w, d1.x, d1.y, d1.z, d1.w };
     float xk[8] = { dx0.x, dx0.y, dx0.z, dx0.w, dx1.x, dx1.y, dx1.z, dx1.w };
@@ -120,6 +123,7 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
         else if (kind == TILE_EDGE_SOFT) { if (m < soft) { soft = m; gs = g; } }
         else if (kind == TILE_EDGE_CONVEX)
         {
+            if (a < 0) { a = k; ma = m; ga = g; }
             if (m < c1) { c2 = c1; g2 = g1; c1 = m; g1 = g; }
             else if (m < c2) { c2 = m; g2 = g; }
         }
@@ -155,27 +159,28 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
 
     // ---- fine detail, in the face's own rectangle: a (first convex edge), b (a convex edge square to it) and their
     // opposites give u, v across the face and its size U, V (1e3 where an opposite is missing).
-    int a = -1, b = -1, a2 = -1, b2 = -1;
-    [unroll] for (int i = 0; i < 8; i++) if (a < 0 && ek[i] == TILE_EDGE_CONVEX) a = i;
+    // (each found edge's distance and direction kept as it is found: mb, gb for b, ma2 and mb2 the opposites')
+    int b = -1, a2 = -1, b2 = -1;
+    float mb = 0, ma2 = 0, mb2 = 0; float3 gb = 0;
     [unroll] for (int j = 0; j < 8; j++)
     {
         if (a < 0 || ek[j] != TILE_EDGE_CONVEX || j == a) continue;
-        float c = dot(eg[j], eg[max(a, 0)]);
-        if (b < 0 && abs(c) < .3) b = j;
-        if (a2 < 0 && c < -.9) a2 = j;
+        float c = dot(eg[j], ga);
+        if (b < 0 && abs(c) < .3) { b = j; mb = em[j]; gb = eg[j]; }
+        if (a2 < 0 && c < -.9) { a2 = j; ma2 = em[j]; }
     }
-    [unroll] for (int l = 0; l < 8; l++) if (b >= 0 && b2 < 0 && ek[l] == TILE_EDGE_CONVEX && dot(eg[l], eg[max(b, 0)]) < -.9) b2 = l;
+    [unroll] for (int l = 0; l < 8; l++) if (b >= 0 && b2 < 0 && ek[l] == TILE_EDGE_CONVEX && dot(eg[l], gb) < -.9) { b2 = l; mb2 = em[l]; }
     // Beyond the kit ring a plate that would hold a prop takes the prop's average darkening instead (StationKit
     // decides the same way: four sharp edges, 0.35-3 m a side, random under the density).
     uint flagged = 0, sharp = 0;
     [unroll] for (int fi = 0; fi < 8; fi++) { flagged += ek[fi] != 0 ? 1 : 0; sharp += ek[fi] == TILE_EDGE_CONVEX ? 1 : 0; }
     if (_TileKitCentre.w > .5 && TILE_KIT_MODE < .5 && flagged == 4 && sharp == 4 && a >= 0 && b >= 0 && a2 >= 0 && b2 >= 0)
     {
-        float fu = em[max(a, 0)], fv = em[max(b, 0)];
-        float U = fu + em[max(a2, 0)], V = fv + em[max(b2, 0)];
+        float fu = ma, fv = mb;
+        float U = fu + ma2, V = fv + mb2;
         if (min(U, V) >= .35 && max(U, V) <= 3 && random < _TileKit.z)
         {
-            float3 centre = positionWS + eg[max(a, 0)] * (U * .5 - fu) + eg[max(b, 0)] * (V * .5 - fv);
+            float3 centre = positionWS + ga * (U * .5 - fu) + gb * (V * .5 - fv);
             float grow = saturate((_TileKit.y - distance(centre, _TileKitCentre.xyz)) / max(_TileKit.y - _TileKit.x, 1e-3));
             float cover = saturate(.09 / (U * V));   // a prop covers about 0.09 m2 of its plate
             s.albedo *= 1 - .45 * cover * (1 - grow);
@@ -183,10 +188,9 @@ void TileEdges(float4 d0, float4 d1, float kinds, float packed, float3 positionW
     }
     if (_TileDetail.x > .5 && a >= 0 && b >= 0)
     {
-        // (max: the compiler cannot see that a and b are set here)
-        float fu = em[max(a, 0)], fv = em[max(b, 0)];
-        float U = a2 >= 0 ? fu + em[max(a2, 0)] : 1e3, V = b2 >= 0 ? fv + em[max(b2, 0)] : 1e3;
-        float3 gu = eg[max(a, 0)], gv = eg[max(b, 0)];
+        float fu = ma, fv = mb;
+        float U = a2 >= 0 ? fu + ma2 : 1e3, V = b2 >= 0 ? fv + mb2 : 1e3;
+        float3 gu = ga, gv = gb;
         float small = min(U, V);
         float density = _TileDetail.y;
         float h1 = frac(random * 7.31), h2 = frac(random * 13.7), h3 = frac(random * 29.3), h4 = frac(random * 53.9), h5 = frac(random * 97.1);

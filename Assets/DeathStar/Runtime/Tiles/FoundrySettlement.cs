@@ -95,7 +95,7 @@ namespace DeathStar
                 {
                     var go=new GameObject(name){hideFlags=HideFlags.DontSave};go.transform.SetParent(root.transform,false);
                     go.AddComponent<MeshFilter>().sharedMesh=mesh;
-                    var renderer=go.AddComponent<MeshRenderer>();renderer.sharedMaterials=materials;
+                    var renderer=go.AddComponent<MeshRenderer>();renderer.sharedMaterials=name=="Near"?materials:TileLook.ReliefMaterials(materials);
                     tile.renderers.Add(renderer);return renderer;
                 }
                 var r=Add("Near",near);

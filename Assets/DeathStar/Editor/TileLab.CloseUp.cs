@@ -29,6 +29,8 @@ namespace DeathStar.EditorTools
     //                           mesh relief and the plain face, 110-400 m; no NaN; triangles and a rough frame cost
     //   closeup part=precision  close spots with the stage at the origin and moved 4 km away: the same picture (fine
     //                           detail used to turn to speckle far from the origin)
+    //   closeup part=perf       what close views cost the GPU at 1920 x 1080, as is and with one thing changed at a
+    //                           time (only=, old=, rounds=: see PerfCheck), and a picture of each view to compare runs by
     public static partial class TileLab
     {
         static string CloseDir=>Path.Combine(Dir,"closeup");
@@ -71,6 +73,7 @@ namespace DeathStar.EditorTools
                     case "orbit":OrbitCheck(rig,md,checks);break;
                     case "precision":PrecisionCheck(rig,md,checks);break;
                     case "greeble":GreebleCheck(rig,md,checks);break;
+                    case "perf":PerfCheck(rig,md,checks,o);break;
                     case "wear":
                         SettingSheet(rig,"wear-width.png",()=>settings.edgeWearWidth=1,()=>settings.edgeWearWidth=4,()=>settings.edgeWearWidth=10);
                         md.AppendLine("# Edge wear width");md.AppendLine();md.AppendLine("Columns: Edge Wear Width 1, 4, 10. Rows: command and hull at 2 m.");
@@ -316,6 +319,124 @@ namespace DeathStar.EditorTools
                 double withTrace=Median(times[1]),without=Median(times[0]);
                 md.AppendLine();md.AppendLine($"Station view, every tile far, {W} × {H}: {withTrace:0.0} ms a frame with the trace, {without:0.0} ms without, {withTrace-without:0.0} ms for the trace (render and read back, medians of 12 taken in turn; rough).");
             }
+        }
+
+        // GPU cost of close views: frames rendered back to back into one target and waited for once, so a frame's time
+        // is the GPU's wherever that outweighs the editor's own submission (the stage hidden gives that floor). A laptop
+        // GPU's clocks wander from run to run and within one, so each variant is timed between two takes of the view as
+        // is, and judged by its ratio to them: the median of those ratios over every view and round.
+        //   only=KEY[,KEY]  just these variants (depth, edges, relief, gi, soft, hidden, or an old keyword)
+        //   old=KEYWORD[,KEYWORD]  a shader change's old path, kept for now under a global keyword
+        //   rounds=N  rounds over every view (5)
+        //   vary=FIELD:VALUE[,FIELD:VALUE]  a variant per StationLightingSettings field set to that value
+        static void PerfCheck(Rig rig,StringBuilder md,List<(bool ok,string text)> checks,Dictionary<string,string> o)
+        {
+            var settings=StationLightingSettings.Current;var stage=rig.Stage;
+            const int w=1920,h=1080,frames=8;
+            int rounds=o.TryGetValue("rounds",out var rs)&&int.TryParse(rs,out var rn)?Mathf.Max(1,rn):5;
+            var views=new List<(string name,TileGallery.View view,Vector3 sun)>();
+            foreach(var spot in Spots(rig,"top","hull","command"))
+            {
+                if(!Aim(stage.root,spot,out var hit,out var normal,out var dir)){checks.Add((false,$"{spot.name}: the spot's ray meets the stage"));continue;}
+                foreach(float d in new[]{1.5f,4f,12f,40f})views.Add(($"{spot.name}-{d:0.#}m",Stand(hit,normal,dir,d,spot.elevation),SideSun(normal,dir,25)));
+            }
+            views.Add(("trench",TileGallery.Trench,settings.sunFrom));views.Add(("surface",TileGallery.Surface,settings.sunFrom));
+            // Tile materials the near level draws with: "depth everywhere" gives them TileSurface's _TILE_RELIEF, so they
+            // write depth as every tile did before only the tracing levels did.
+            var near=Array.FindAll(rig.Library.materials,m=>m&&m.shader.name=="DeathStar/Tile Surface"&&!m.IsKeywordEnabled("_TILE_SHELL"));
+            void Keyword(string k,bool on){foreach(var m in near)if(on)m.EnableKeyword(k);else m.DisableKeyword(k);}
+            var variants=new List<(string key,string name,Action set,Action unset)>
+            {
+                ("depth","depth everywhere",()=>Keyword("_TILE_RELIEF",true),()=>Keyword("_TILE_RELIEF",false)),
+                ("edges","no edges, detail",()=>{settings.closeUpSurface=false;settings.fineDetail=false;},null),
+                ("relief","no relief trace",()=>settings.reliefTrace=false,null),
+                ("gi","no screen GI",()=>settings.screenSpaceGi=false,null),
+                ("soft","softness 1",()=>settings.shadowSoftness=1,null),
+                ("hidden","stage hidden",()=>rig.ShowStage(false),()=>rig.ShowStage(true)),
+            };
+            if(o.TryGetValue("old",out var olds))
+                foreach(var k in olds.Split(','))variants.Insert(0,(k,"old "+k,()=>Shader.EnableKeyword(k),()=>Shader.DisableKeyword(k)));
+            if(o.TryGetValue("vary",out var vary))
+                foreach(var fv in vary.Split(','))
+                {
+                    var parts=fv.Split(':');var field=parts.Length==2?typeof(StationLightingSettings).GetField(parts[0]):null;
+                    var type=field?.FieldType;
+                    if(type!=typeof(bool)&&type!=typeof(int)&&type!=typeof(float)){checks.Add((false,$"vary: {fv} is not a bool, int or float setting and a value"));continue;}
+                    object value;
+                    try{value=type==typeof(bool)?bool.Parse(parts[1]):type==typeof(int)?(object)int.Parse(parts[1]):float.Parse(parts[1],System.Globalization.CultureInfo.InvariantCulture);}
+                    catch(FormatException){checks.Add((false,$"vary: can't read {parts[1]} for {parts[0]}"));continue;}
+                    variants.Add((fv,parts[0]+" "+parts[1],()=>field.SetValue(settings,value),null));
+                }
+            if(o.TryGetValue("only",out var only)){var keep=new HashSet<string>(only.Split(','));variants.RemoveAll(v=>!keep.Contains(v.key));}
+            var baseline=JsonUtility.ToJson(settings);
+            var rt=RenderTexture.GetTemporary(w,h,24,RenderTextureFormat.ARGB32);var one=new Texture2D(1,1,TextureFormat.RGBA32,false);
+            var cam=rig.Camera;
+            void Wait(){var prev=RenderTexture.active;RenderTexture.active=rt;one.ReadPixels(new Rect(0,0,1,1),0,0);one.Apply();RenderTexture.active=prev;}
+            double Take(int view,Action set,Action unset)
+            {
+                var (_,v,sun)=views[view];
+                JsonUtility.FromJsonOverwrite(baseline,settings);settings.sunFrom=sun;set?.Invoke();ApplyLights(rig);
+                cam.transform.SetPositionAndRotation(v.position,Quaternion.LookRotation(v.target-v.position,v.up));
+                cam.fieldOfView=v.fov;cam.farClipPlane=Vector3.Distance(v.position,v.target)+200f;
+                cam.targetTexture=rt;
+                cam.Render();Wait();   // (warm: settings and shadows settle)
+                var clock=System.Diagnostics.Stopwatch.StartNew();
+                for(int f=0;f<frames;f++)cam.Render();
+                Wait();double ms=clock.Elapsed.TotalMilliseconds/frames;
+                cam.targetTexture=null;unset?.Invoke();
+                return ms;
+            }
+            var asIs=new List<double>[views.Count];var times=new List<double>[views.Count,variants.Count];var ratios=new List<double>[variants.Count];
+            for(int i=0;i<views.Count;i++){asIs[i]=new List<double>();for(int j=0;j<variants.Count;j++)times[i,j]=new List<double>();}
+            for(int j=0;j<variants.Count;j++)ratios[j]=new List<double>();
+            try
+            {
+                Shader.SetGlobalFloat("_TileFootprintScale",1);
+                for(int round=0;round<rounds;round++)for(int i=0;i<views.Count;i++)
+                {
+                    double before=Take(i,null,null);asIs[i].Add(before);
+                    for(int j=0;j<variants.Count;j++)
+                    {
+                        double t=Take(i,variants[j].set,variants[j].unset),after=Take(i,null,null);
+                        times[i,j].Add(t);asIs[i].Add(after);ratios[j].Add(t/((before+after)*.5));before=after;
+                    }
+                }
+            }
+            finally
+            {
+                cam.targetTexture=null;RenderTexture.ReleaseTemporary(rt);UnityEngine.Object.DestroyImmediate(one);
+                foreach(var v in variants)v.unset?.Invoke();JsonUtility.FromJsonOverwrite(baseline,settings);ApplyLights(rig);
+            }
+            md.AppendLine("# Close views: GPU cost");md.AppendLine();
+            md.AppendLine($"{DateTime.Now:yyyy-MM-dd HH:mm}, {SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType}). {w} × {h}, {frames} frames back to back then one wait; ms a frame, medians of {rounds} rounds. Sun 25° above each spot, from the side. Each variant was timed between two takes of the view as is; its ratio is the median, over every view and round, of its time over theirs (quartiles in brackets).");
+            md.AppendLine();
+            var head="| View | as is |";var rule="|---|---:|";foreach(var v in variants){head+=$" {v.name} |";rule+="---:|";}
+            md.AppendLine(head);md.AppendLine(rule);
+            double asIsSum=0;var sums=new double[variants.Count];
+            for(int i=0;i<views.Count;i++)
+            {
+                double a=Median(new List<double>(asIs[i]));asIsSum+=a;
+                var line=$"| {views[i].name} | {a:0.00} |";
+                for(int j=0;j<variants.Count;j++){double m=Median(new List<double>(times[i,j]));line+=$" {m:0.00} |";sums[j]+=m;}
+                md.AppendLine(line);
+            }
+            var sum=$"| sum | {asIsSum:0.0} |";foreach(var t in sums)sum+=$" {t:0.0} |";md.AppendLine(sum);
+            var ratioLine="| ratio | 1 |";
+            for(int j=0;j<variants.Count;j++)
+            {
+                var r=new List<double>(ratios[j]);r.Sort();
+                double q1=r[r.Count/4],q2=r[r.Count/2],q3=r[r.Count*3/4];
+                ratioLine+=$" {q2:0.000} ({q1:0.00}-{q3:0.00}) |";
+                checks.Add((true,$"close views, {variants[j].name}: {q2:0.000} × as is (quartiles {q1:0.000}-{q3:0.000}, {r.Count} pairs); summed medians {sums[j]:0.0} against {asIsSum:0.0} ms"));
+            }
+            md.AppendLine(ratioLine);md.AppendLine();
+            // Pictures to compare runs by (the lab's usual 2 x supersampling).
+            foreach(var (name,v,sun) in views)
+            {
+                settings.sunFrom=sun;ApplyLights(rig);
+                var t=rig.Shoot(v,W,H);Save(t,Path.Combine(CloseDir,$"perf-{name}.png"));UnityEngine.Object.DestroyImmediate(t);
+            }
+            JsonUtility.FromJsonOverwrite(baseline,settings);ApplyLights(rig);
         }
 
         // Every tile at one level of detail (-1: back to its own pick); a forced level doesn't dither against another.

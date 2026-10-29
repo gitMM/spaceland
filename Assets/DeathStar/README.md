@@ -458,7 +458,21 @@ ring's edge, grow-in against a hard edge, and frame cost), `relief` (trace again
 triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chunks against a 16-sample reference),
 `nan` (no NaN pixels on bent Foundry tiles), `reliefview` (the relief view), `wear` (Edge Wear Width 1, 4, 10),
 `bevel` (Bevel Width and Roundness), `precision` (the stage 4 km from the origin looks the same), `greeble` (the far
-level's traced station relief against the mesh relief, 110-400 m).
+level's traced station relief against the mesh relief, 110-400 m), `perf` (what 14 close views cost the GPU at 1920 × 1080:
+each variant timed between two takes of the view as is and judged by the median ratio; `only=`, `old=KEYWORD` for
+a shader change's old path, `vary=FIELD:VALUE` for a lighting setting, `rounds=`).
+
+GPU cost (2026-10-29, `perf`): only the draws that trace write depth: the mid and far levels through copies of the
+tile materials with `_TILE_RELIEF` (`TileLook.ReliefMaterials`) and the shells; everything else lets the depth test
+reject hidden pixels early. Only the kit's copies can discard (`_TILE_KIT`), and the GI source redraw takes URP's
+shadow filter instead of the wide one. Together about 1.5 times faster on close views. Then the main light's
+shadow map is summed up in 16 × 16 texel blocks (least and greatest depth, `StationShadowRange.shader`), and a pixel
+whose filter only reaches texels all on one side of it skips the filter: pictures unchanged, about 1.1 times faster
+under the lab's 25° sun, 1.05 under a 70° one (fewer pixels lie wholly on one side). The relief trace keeps the plate
+it last looked up (no measurable gain; the trace is 6-8% of a close frame). Left (`perf vary=`): the SSILVB trace is
+the largest cost, at least half of a close frame (Slices 2 or Slice Steps 4 each save about a quarter), then Shadow
+Softness (1 saves about an eighth) and the GI sources' redraw (about a tenth); its cost goes with its samples far more
+than its radius.
 
 
 ### Interiors (greybox)

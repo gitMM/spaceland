@@ -59,6 +59,10 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex Vert
             #pragma fragment Frag
             #pragma shader_feature_local _TILE_SHELL
+            // TileLook.ReliefMaterials: the mid and far levels trace the armour's relief and write its depth.
+            #pragma multi_compile_local _ _TILE_RELIEF
+            // StationKit's copies: props dither out as they shrink (TileKitClip).
+            #pragma multi_compile_local_fragment _ _TILE_KIT
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
@@ -85,6 +89,8 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex Vert
             #pragma fragment Frag
             #pragma shader_feature_local _TILE_SHELL
+            #pragma multi_compile_local_fragment _ _TILE_RELIEF
+            #pragma multi_compile_local_fragment _ _TILE_KIT
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
@@ -114,6 +120,7 @@ Shader "DeathStar/Tile Surface"
             #pragma vertex TileShadowVert
             #pragma fragment TileShadowFrag
             #pragma multi_compile_instancing
+            #pragma multi_compile_local_fragment _ _TILE_KIT
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             #include "TileShadow.hlsl"
             ENDHLSL
@@ -133,6 +140,7 @@ Shader "DeathStar/Tile Surface"
             #pragma fragment TileDepthFrag
             #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile_instancing
+            #pragma multi_compile_local_fragment _ _TILE_KIT
             ENDHLSL
         }
 
@@ -149,6 +157,7 @@ Shader "DeathStar/Tile Surface"
             #pragma fragment TileDepthNormalFrag
             #pragma shader_feature_local _TILE_SHELL
             #pragma multi_compile_instancing
+            #pragma multi_compile_local_fragment _ _TILE_KIT
             ENDHLSL
         }
     }

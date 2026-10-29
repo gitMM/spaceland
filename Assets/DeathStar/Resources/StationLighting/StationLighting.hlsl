@@ -92,7 +92,11 @@ float4 StationShadowReceiverPlane(float4x4 worldToShadow,float3 positionWS,half3
 }
 bool StationUseWideShadowFilter(half4 parameters)
 {
-    #if defined(_SHADOWS_SOFT_LOW) || defined(_SHADOWS_SOFT_MEDIUM) || defined(_SHADOWS_SOFT_HIGH)
+    // A bounce's diffuse sources (StationScreenGiSource) take the original filter: the screen GI spreads their light
+    // far wider than the wide filter's penumbra, so its hundred-odd taps would be lost there.
+    #if defined(STATION_GI_SOURCE)
+        return false;
+    #elif defined(_SHADOWS_SOFT_LOW) || defined(_SHADOWS_SOFT_MEDIUM) || defined(_SHADOWS_SOFT_HIGH)
         return StationDirectSettings().w > 1;
     #elif defined(_SHADOWS_SOFT)
         return StationDirectSettings().w > 1 && parameters.y > SOFT_SHADOW_QUALITY_OFF;
@@ -100,15 +104,9 @@ bool StationUseWideShadowFilter(half4 parameters)
         return false;
     #endif
 }
-real StationSampleShadowmap(TEXTURE2D_SHADOW_PARAM(shadowMap, shadowSampler), float4 coord,
-    ShadowSamplingData data, half4 parameters, bool perspective, float4 receiverPlane)
+// The wide filter's radius, in shadow map texels.
+float StationWideShadowRadius(ShadowSamplingData data)
 {
-    float width = StationDirectSettings().w;
-    // The original filter anchors contact shadows. Its result already includes
-    // the light's strength, so blend only after both filters apply that strength.
-    real contactShadow = SampleShadowmap(TEXTURE2D_SHADOW_ARGS(shadowMap, shadowSampler),coord,data,parameters,perspective);
-    if (perspective) coord.xyz /= coord.w;
-    if (BEYOND_SHADOW_FAR(coord)) return 1;
     float baseRadius = 3.5;
     #if defined(_SHADOWS_SOFT_LOW)
         baseRadius = 1;
@@ -118,7 +116,48 @@ real StationSampleShadowmap(TEXTURE2D_SHADOW_PARAM(shadowMap, shadowSampler), fl
         baseRadius = data.softShadowQuality == SOFT_SHADOW_QUALITY_LOW ? 1 :
             (data.softShadowQuality == SOFT_SHADOW_QUALITY_MEDIUM ? 2.5 : 3.5);
     #endif
-    float radius = baseRadius * clamp(width,1,3);
+    return baseRadius * clamp(StationDirectSettings().w,1,3);
+}
+// The main light's shadow map in 16 x 16 texel blocks, each block's least and greatest depth (StationShadowRange.shader,
+// drawn by StationScreenGiFeature); x of the parameters is 1 while it belongs to the shadow map being sampled.
+Texture2D<float2> _StationShadowRange;
+float4 _StationShadowRangeParams;
+// Whether every texel within reach texels of shadow coordinate uv compares alike against receiver depths from lo to hi:
+// 1 all lit, 0 all in shadow, -1 either way or no range to go by. Where they agree, every filter over them gives that
+// answer without its taps.
+half StationShadowRangeTest(float2 uv, float reach, float lo, float hi, float4 shadowmapSize)
+{
+    if (_StationShadowRangeParams.x < .5) return -1;
+    float2 texel = uv * shadowmapSize.zw;
+    int2 last = (int2)shadowmapSize.zw - 1;
+    int2 b0 = clamp((int2)floor(texel - reach), 0, last) >> 4, b1 = clamp((int2)floor(texel + reach), 0, last) >> 4;
+    float least = 1e9, most = -1e9;
+    [loop] for (int y = b0.y; y <= b1.y; y++)
+    [loop] for (int x = b0.x; x <= b1.x; x++)
+    {
+        float2 range = _StationShadowRange.Load(int3(x, y, 0));
+        least = min(least, range.x); most = max(most, range.y);
+    }
+    // (a margin of two 16-bit depth steps, in case the hardware rounds the receiver's depth to the shadow map's)
+    #if UNITY_REVERSED_Z
+        // lit where the receiver's depth is at least the texel's
+        if (lo - 3e-5 >= most) return 1;
+        if (hi + 3e-5 < least) return 0;
+    #else
+        if (hi + 3e-5 <= least) return 1;
+        if (lo - 3e-5 > most) return 0;
+    #endif
+    return -1;
+}
+real StationSampleShadowmap(TEXTURE2D_SHADOW_PARAM(shadowMap, shadowSampler), float4 coord,
+    ShadowSamplingData data, half4 parameters, bool perspective, float4 receiverPlane)
+{
+    // The original filter anchors contact shadows. Its result already includes
+    // the light's strength, so blend only after both filters apply that strength.
+    real contactShadow = SampleShadowmap(TEXTURE2D_SHADOW_ARGS(shadowMap, shadowSampler),coord,data,parameters,perspective);
+    if (perspective) coord.xyz /= coord.w;
+    if (BEYOND_SHADOW_FAR(coord)) return 1;
+    float radius = StationWideShadowRadius(data);
     float2 depthGradient = receiverPlane.xy;
     float nearestBlocker = 1e20;
     // Search the original kernel's core for nearby blockers, using raw depth.
@@ -191,9 +230,22 @@ half StationMainRealtimeShadow(float4 coord, half4 parameters, ShadowSamplingDat
         return SampleScreenSpaceShadowmap(coord);
     #else
         if (BEYOND_SHADOW_FAR(coord)) return 1;
-        // Hard shadows and the original URP width need no receiver-plane math.
+        // Hard shadows and the original URP width need no receiver-plane math. (URP's widest filter, 7 x 7 texels and
+        // their bilinear neighbours, stays within 6 texels.)
         if (!StationUseWideShadowFilter(parameters))
+        {
+            // (only URP's medium and high filters, 9 and 16 taps, cost more than the test)
+            #if defined(_SHADOWS_SOFT_MEDIUM) || defined(_SHADOWS_SOFT_HIGH)
+            bool tested = true;
+            #elif defined(_SHADOWS_SOFT) && !defined(_SHADOWS_SOFT_LOW)
+            bool tested = parameters.y > SOFT_SHADOW_QUALITY_LOW && data.softShadowQuality > SOFT_SHADOW_QUALITY_LOW;
+            #else
+            bool tested = false;
+            #endif
+            half known = tested ? StationShadowRangeTest(coord.xy,6,coord.z,coord.z,data.shadowmapSize) : -1;
+            if (known >= 0) return LerpWhiteTo(known,parameters.x);
             return SampleShadowmap(TEXTURE2D_ARGS(_MainLightShadowmapTexture,sampler_LinearClampCompare),coord,data,parameters,false);
+        }
         #ifdef _MAIN_LIGHT_SHADOWS_CASCADE
         int cascade = ComputeCascadeIndex(positionWS);
         #else
@@ -201,6 +253,14 @@ half StationMainRealtimeShadow(float4 coord, half4 parameters, ShadowSamplingDat
         #endif
         float4 receiverPlane = StationShadowReceiverPlane(_MainLightWorldToShadow[cascade],positionWS,normalWS,
             GetMainLight().direction,data.shadowmapSize.xy,false);
+        {
+            // The wide filter's taps, their bilinear neighbours and the original filter inside them; the receiving
+            // plane's depths over that reach, slope bias included.
+            float reach = max(ceil(StationWideShadowRadius(data) + .5) + 2, 6);
+            float spread = dot(abs(receiverPlane.xy),data.shadowmapSize.xy) * (reach + 2);
+            half known = StationShadowRangeTest(coord.xy,reach,coord.z - spread,coord.z + spread,data.shadowmapSize);
+            if (known >= 0) return LerpWhiteTo(known,parameters.x);
+        }
         return StationSampleShadowmap(TEXTURE2D_ARGS(_MainLightShadowmapTexture,sampler_LinearClampCompare),coord,data,parameters,false,receiverPlane);
     #endif
 }

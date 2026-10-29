@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -64,6 +65,46 @@ namespace DeathStar
                     m.SetVector("_RoomColor",new Vector4(1f,0.76f,0.52f,1));
                     m.SetFloat("_RoomLight",3.4f);m.SetFloat("_RoomDepth",2.8f);m.SetFloat("_Reflection",1f);
                     break;
+            }
+        }
+        // The mid and far levels' copies of the tile materials (TileSurface's _TILE_RELIEF): they trace the armour's
+        // relief and write its depth. Everything else draws with the originals, which write no depth, so the depth test
+        // rejects hidden pixels before they shade. A copy follows its original before any frame after it changed.
+        static readonly Dictionary<Material,(Material copy,int crc)> reliefCopies=new();
+        static readonly List<Material> changedOriginals=new();
+        static bool following;
+        public static Material[] ReliefMaterials(Material[] materials)
+        {
+            var copies=new Material[materials.Length];
+            for(int i=0;i<materials.Length;i++)copies[i]=ReliefMaterial(materials[i]);
+            return copies;
+        }
+        static Material ReliefMaterial(Material m)
+        {
+            // (glass and the relief shells trace nothing of the armour)
+            if(!m||!m.shader||m.shader.name!="DeathStar/Tile Surface"||m.IsKeywordEnabled("_TILE_SHELL"))return m;
+            if(reliefCopies.TryGetValue(m,out var c)&&c.copy)return c.copy;
+            if(!following){RenderPipelineManager.beginContextRendering+=FollowOriginals;following=true;}
+            // (a copy whose original is gone goes too: BlockFoundry makes and destroys its own materials)
+            changedOriginals.Clear();
+            foreach(var (o,_) in reliefCopies)if(!o)changedOriginals.Add(o);
+            foreach(var o in changedOriginals)
+            {
+                var gone=reliefCopies[o].copy;reliefCopies.Remove(o);
+                if(gone){if(Application.isPlaying)Object.Destroy(gone);else Object.DestroyImmediate(gone);}
+            }
+            var copy=new Material(m){name=m.name+" (relief)",hideFlags=HideFlags.DontSave};copy.EnableKeyword("_TILE_RELIEF");
+            reliefCopies[m]=(copy,m.ComputeCRC());
+            return copy;
+        }
+        static void FollowOriginals(ScriptableRenderContext context,List<Camera> cameras)
+        {
+            changedOriginals.Clear();
+            foreach(var (m,c) in reliefCopies)if(m&&c.copy&&m.ComputeCRC()!=c.crc)changedOriginals.Add(m);
+            foreach(var m in changedOriginals)
+            {
+                var copy=reliefCopies[m].copy;copy.CopyPropertiesFromMaterial(m);copy.EnableKeyword("_TILE_RELIEF");
+                reliefCopies[m]=(copy,m.ComputeCRC());
             }
         }
         public static void ConfigureClearGlass(Material m)

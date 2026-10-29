@@ -49,9 +49,13 @@ float TileKitFade()
     float3 x = float3(UNITY_MATRIX_M._m00, UNITY_MATRIX_M._m10, UNITY_MATRIX_M._m20), y = float3(UNITY_MATRIX_M._m01, UNITY_MATRIX_M._m11, UNITY_MATRIX_M._m21);
     return saturate(length(y) / max(length(x), 1e-5));
 }
+// Only the kit's copies dither (_TILE_KIT): a pixel shader that may discard keeps the depth test from writing early, so
+// the tiles' own carry no discard.
 void TileKitClip(float fade, float4 positionCS)
 {
+    #if defined(_TILE_KIT)
     if (fade < 1) clip(fade - InterleavedGradientNoise(positionCS.xy, 0) * .998 - .001);
+    #endif
 }
 
 // Global: how many times supersampled the picture is (the lab), so fades follow the final picture's pixels. 0 = 1.

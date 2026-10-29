@@ -17,6 +17,8 @@ namespace DeathStar
         ContactPass contactPass;
         StationLocalLightPass localLightPass;
         DenoisePass denoisePass;
+        ShadowRangePass shadowRangePass;
+        Material shadowRangeMaterial;
         bool customAoActive;
         StationVoxelGi voxels;
         // Keep these indices in the same order as StationScreenGi.shader.
@@ -41,6 +43,9 @@ namespace DeathStar
         static readonly int ContactSettingsId=Shader.PropertyToID("_ContactSettings");
         static readonly int ContactLightId=Shader.PropertyToID("_ContactLightDir");
         static readonly int ContactRawId=Shader.PropertyToID("_ContactRaw");
+        static readonly int ShadowRangeId=Shader.PropertyToID("_StationShadowRange");
+        static readonly int ShadowRangeParamsId=Shader.PropertyToID("_StationShadowRangeParams");
+        static readonly int ShadowSourceId=Shader.PropertyToID("_StationShadowSource");
         public override void Create()
         {
             denoisePass?.Dispose();denoisePass=new DenoisePass();
@@ -49,6 +54,10 @@ namespace DeathStar
             CoreUtils.Destroy(material);
             var shader=Resources.Load<Shader>("StationLighting/StationScreenGi");
             if(shader) material=CoreUtils.CreateEngineMaterial(shader);
+            CoreUtils.Destroy(shadowRangeMaterial);
+            var rangeShader=Resources.Load<Shader>("StationLighting/StationShadowRange");
+            if(rangeShader) shadowRangeMaterial=CoreUtils.CreateEngineMaterial(rangeShader);
+            shadowRangePass=new ShadowRangePass();
             pass=new GiPass();
             compositePass=new CompositePass();
             contactPass=new ContactPass();
@@ -63,8 +72,9 @@ namespace DeathStar
                 Shader.DisableKeyword("_STATION_SCREEN_OCCLUSION");
             }
             customAoActive=false;
-            // Contact shadows are valid only while their pass has run for the camera being drawn.
+            // Contact shadows and the shadow range are valid only while their passes have run for the camera being drawn.
             Shader.SetGlobalVector(ContactGlobalId,Vector4.zero);
+            Shader.SetGlobalVector(ShadowRangeParamsId,Vector4.zero);
         }
         void EndCamera(ScriptableRenderContext context,Camera camera) => ResetAo();
         public override void AddRenderPasses(ScriptableRenderer renderer,ref RenderingData data)
@@ -78,6 +88,7 @@ namespace DeathStar
             bool supported=!data.cameraData.camera.stereoEnabled && data.cameraData.cameraType!=CameraType.Reflection &&
                 data.cameraData.renderType==CameraRenderType.Base && data.cameraData.cameraTargetDescriptor.msaaSamples<=1;
             if(!supported) return;
+            if(shadowRangeMaterial){shadowRangePass.Material=shadowRangeMaterial;renderer.EnqueuePass(shadowRangePass);}
             if(settings.localLights && settings.localLightStrength>0 && settings.emission>0 && Shader.GetGlobalFloat("_TileClay")<.5f &&
                 settings.giDebugView!=GiDebugView.ScreenSpaceAoOnly && settings.giDebugView!=GiDebugView.ContactShadowsOnly &&
                 settings.giDebugView!=GiDebugView.VoxelGiOnly) renderer.EnqueuePass(localLightPass);
@@ -134,9 +145,43 @@ namespace DeathStar
             denoisePass?.Dispose();denoisePass=null;
             voxels?.Dispose();voxels=null;
             ResetAo();RenderPipelineManager.endCameraRendering-=EndCamera;
-            CoreUtils.Destroy(material);
+            CoreUtils.Destroy(material);CoreUtils.Destroy(shadowRangeMaterial);
         }
 
+        // The main light's shadow map in 16 x 16 texel blocks, each block's least and greatest depth
+        // (StationShadowRange.shader): StationLighting.hlsl skips its soft filters where every texel they could reach
+        // lies on one side of the receiver.
+        sealed class ShadowRangePass : ScriptableRenderPass {
+            public Material Material;
+            sealed class Data {public Material Material;public TextureHandle Shadows;}
+            public ShadowRangePass() {renderPassEvent=RenderPassEvent.AfterRenderingShadows;requiresIntermediateTexture=false;}
+            public override void RecordRenderGraph(RenderGraph graph,ContextContainer frameData) {
+                var resources=frameData.Get<UniversalResourceData>();
+                if(!resources.mainShadowsTexture.IsValid())return;
+                var shadows=graph.GetTextureDesc(resources.mainShadowsTexture);
+                var desc=new TextureDesc((shadows.width+15)/16,(shadows.height+15)/16){name="Station shadow range",
+                    colorFormat=GraphicsFormat.R32G32_SFloat,filterMode=FilterMode.Point,clearBuffer=false};
+                var range=graph.CreateTexture(desc);
+                using(var builder=graph.AddRasterRenderPass<Data>("Station shadow range",out var data)) {
+                    data.Material=Material;data.Shadows=resources.mainShadowsTexture;
+                    builder.UseTexture(data.Shadows);
+                    builder.SetRenderAttachment(range,0,AccessFlags.Write);
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);builder.SetGlobalTextureAfterPass(range,ShadowRangeId);
+                    builder.SetRenderFunc((Data d,RasterGraphContext ctx)=> {
+                        d.Material.SetTexture(ShadowSourceId,d.Shadows);
+                        Blitter.BlitTexture(ctx.cmd,d.Shadows,new Vector4(1,1,0,0),d.Material,0);
+                        ctx.cmd.SetGlobalVector(ShadowRangeParamsId,new Vector4(1,0,0,0));
+                    });
+                }
+                frameData.Create<ShadowRangeFrame>().Range=range;
+            }
+        }
+
+        sealed class ShadowRangeFrame : ContextItem {
+            public TextureHandle Range;
+            public override void Reset() {Range=TextureHandle.nullHandle;}
+        }
         sealed class ContactFrame : ContextItem {
             public TextureHandle Shadow;
             public override void Reset() {Shadow=TextureHandle.nullHandle;}
@@ -290,6 +335,7 @@ namespace DeathStar
                         // global while it is attached for the Equal depth test.
                         if(resources.mainShadowsTexture.IsValid())builder.UseTexture(resources.mainShadowsTexture);
                         if(resources.additionalShadowsTexture.IsValid())builder.UseTexture(resources.additionalShadowsTexture);
+                        if(frameData.Contains<ShadowRangeFrame>()&&frameData.Get<ShadowRangeFrame>().Range.IsValid())builder.UseTexture(frameData.Get<ShadowRangeFrame>().Range);
                         if(frameData.Contains<ContactFrame>()&&frameData.Get<ContactFrame>().Shadow.IsValid())builder.UseTexture(frameData.Get<ContactFrame>().Shadow);
                         builder.SetRenderAttachment(source,0,AccessFlags.Write);
                         builder.SetRenderAttachment(receiver,1,AccessFlags.Write);
