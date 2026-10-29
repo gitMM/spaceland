@@ -69,7 +69,7 @@ namespace Station.Core
                 // history even when the entire guard roster is off duty.
                 var guards = AuthorityDispatch.EscortTeam(view, subject.ActorId, policy, view.Personnel.Where(p =>
                     p.ActorId != subject.ActorId && p.Role == policy.GuardRole && p.Roster != null && AuthorityDispatch.RemainsOnDuty(p.Roster, view.Tick, policy.MinimumRemainingDutyTicks) &&
-                    !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId)).Select(Candidate));
+                    !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId && !WithdrawnAfterAcknowledging(a))).Select(Candidate));
                 if (guards.Count != policy.GuardCount) { dispatch.Reason = "InsufficientKnownOnDutyUncommittedGuards"; continue; }
                 var payload = new EscortOrderPayload(authorization.Id, authorization.AccountId, authorization.ActorId, authorization.Expires, authorization.SentenceTicks, policy, authorization.JustifyingCases, guards, sites, nextMessage);
                 var orders = new List<long>();
@@ -84,6 +84,8 @@ namespace Station.Core
                 }
                 dispatch.Payload = payload; dispatch.OrderMessageIds = orders.ToArray(); dispatch.DispatchedTick = processingTick;
                 dispatch.Status = EscortDispatchStatus.AwaitingReaders; dispatch.Reason = "AwaitingIndividualAcknowledgments";
+                if (policy.AcknowledgmentTicks > 0)
+                    Schedule(new ScheduledEvent { Tick = checked(processingTick + policy.AcknowledgmentTicks), Phase = EventPhase.Decision, Kind = ScheduledKind.EscortAcknowledgmentDeadline, Value = authorization.Id, ActionId = payload.DispatchId });
                 Emit("EscortTeamDispatched", detail: "authorization=" + authorization.Id + "; guards=" + string.Join(",", guards));
             }
             var pending = escortDispatches.Values.Where(o => o.Status == EscortDispatchStatus.AwaitingGuards && detentionAuthorizations[o.AuthorizationId].Expires > processingTick).ToArray();
@@ -97,7 +99,28 @@ namespace Station.Core
         }
         private int KnownDetentionCommitments(long facility, long except) => escortDispatches.Values.Count(d => d.AuthorizationId != except && d.Payload?.Dispatch.FacilityId == facility &&
             d.Status is EscortDispatchStatus.AwaitingReaders or EscortDispatchStatus.TeamForming or EscortDispatchStatus.Blocked or EscortDispatchStatus.NeedsAttention or EscortDispatchStatus.Detained);
-        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
+        // A guard who acknowledged an order later withdrawn for a partner's silence remains fit.
+        private static bool WithdrawnAfterAcknowledging(GuardAssignmentSnapshot a) => a.WithdrawnTick >= 0 && a.AcknowledgmentMessageId != 0 && a.Response == "Accepted";
+        // The authority knows only posting and received acknowledgments, never private reads.
+        // A team still missing an acknowledgment at the deadline is withdrawn and replaced.
+        private void EscortAcknowledgmentDeadline(long authorizationId, long dispatchId)
+        {
+            if (!escortDispatches.TryGetValue(authorizationId, out var dispatch) || dispatch.Payload?.DispatchId != dispatchId || dispatch.Status != EscortDispatchStatus.AwaitingReaders) return;
+            var authorization = detentionAuthorizations[authorizationId];
+            if (authorization.Status != DetentionAuthorizationStatus.Authorized || authorization.Expires <= processingTick) return;
+            var silent = dispatch.OrderMessageIds.Where(id => guardAssignments[id].AcknowledgmentMessageId == 0).Select(id => guardAssignments[id].ActorId).ToArray();
+            long cause = Emit("EscortAcknowledgmentOverdue", detail: "authorization=" + authorizationId + "; unacknowledged=" + string.Join(",", silent));
+            foreach (long orderId in dispatch.OrderMessageIds)
+            {
+                var assignment = guardAssignments[orderId]; var original = messages[orderId];
+                assignment.WithdrawnTick = processingTick;
+                assignment.WithdrawalMessageId = PostAuthorityWork(new MessageDraft(MessageKind.EscortRevoked, RecipientKind.Account, original.Draft.Recipient, original.Draft.Subject,
+                    new FactValue(FactValueKind.Text, text: "AcknowledgmentOverdue"), processingTick, relatedMessageId: orderId, operationKey: "escort-withdrawn/" + orderId), cause);
+            }
+            dispatch.Status = EscortDispatchStatus.AwaitingGuards; dispatch.Reason = "AcknowledgmentOverdue";
+            RequestEscortReview(processingTick); RequestIncidentReview(processingTick);
+        }
+        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && a.WithdrawnTick < 0 && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
             !(escortDispatches[a.AuthorizationId].Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released) && !GuardReportedFinished(actor, a.AuthorizationId, processingTick));
         private void ReadGuardOrder(Actor actor, MessageSnapshot message)
         {
@@ -126,6 +149,8 @@ namespace Station.Core
         private bool ReceiveGuardAcknowledgment(MessageSnapshot message)
         {
             var d = message.Draft; if (d.Kind != MessageKind.EscortAcknowledged) return true;
+            if (guardAssignments.TryGetValue(d.RelatedMessageId, out var withdrawn) && withdrawn.WithdrawnTick >= 0 && withdrawn.AcknowledgmentMessageId == 0)
+            { Emit("GuardAcknowledgmentRejected", messageId: message.Id, detail: "AssignmentWithdrawn"); return false; }
             if (!guardAssignments.TryGetValue(d.RelatedMessageId, out var assignment) || assignment.AcknowledgmentMessageId != 0 ||
                 message.SenderAccount.Value != registrations[assignment.ActorId].AccountId || message.PhysicalSender.Value != assignment.ActorId || message.TerminalId < 1 || message.SessionId < 1 ||
                 message.SubmittedTick < messages[assignment.OrderMessageId].DeliveryTick || !d.Subject.Equals(messages[assignment.OrderMessageId].Draft.Subject))

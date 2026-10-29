@@ -6,7 +6,7 @@ using Station.Contracts;
 
 namespace Station.Core
 {
-    internal enum ScheduledKind { TraversalChange, ActionCompletion, Command, Sense, MessageDelivery, SessionExpiry, TerminalChange, CredentialRevocation, GrantTerminal, EvaluateReport, WorkServiceChange, EvaluateRepair, DispatchWork, EvaluateWorkOrder, CheckInDue, EvaluateCheckIn, ExpireWorkOrder, CancelAssignment, ReleaseIdleTerminal, SensorSample, SensorDelivery, SensorChange, PublishRoster, RoutineBoundary, ShiftCheckIn, EvaluateRoutine, ReportExpectationDue, AcknowledgmentDue, OpenAdmissionBucket, ReviewIncidents, EvaluatePatrol, ExpirePatrol, Soiling, Spill, ReviewFacilityTasks, MachineFault, MachineWear, QualityDue, ReviewQuality, EvaluateAudit, ExpireDetentionAuthorization, ReviewEscorts, ExpireGuardOrder, EvaluateGuard, DetentionServiceChange, DetentionReleaseDue, RevokeDetention, NeedThreshold, GrantNeedService, NeedServiceChange, EvaluateNeed, NeedCommand, DailyBoundary, EvaluateDaily, DailyCommand, CardLoss, EvaluateRecovery, RecoveryCommand, ExternalCommand, ReviewGrowth }
+    internal enum ScheduledKind { TraversalChange, ActionCompletion, Command, Sense, MessageDelivery, SessionExpiry, TerminalChange, CredentialRevocation, GrantTerminal, EvaluateReport, WorkServiceChange, EvaluateRepair, DispatchWork, EvaluateWorkOrder, CheckInDue, EvaluateCheckIn, ExpireWorkOrder, CancelAssignment, ReleaseIdleTerminal, SensorSample, SensorDelivery, SensorChange, PublishRoster, RoutineBoundary, ShiftCheckIn, EvaluateRoutine, ReportExpectationDue, AcknowledgmentDue, OpenAdmissionBucket, ReviewIncidents, EvaluatePatrol, ExpirePatrol, Soiling, Spill, ReviewFacilityTasks, MachineFault, MachineWear, QualityDue, ReviewQuality, EvaluateAudit, ExpireDetentionAuthorization, ReviewEscorts, ExpireGuardOrder, EvaluateGuard, DetentionServiceChange, DetentionReleaseDue, RevokeDetention, NeedThreshold, GrantNeedService, NeedServiceChange, EvaluateNeed, NeedCommand, DailyBoundary, EvaluateDaily, DailyCommand, CardLoss, EvaluateRecovery, RecoveryCommand, ExternalCommand, ReviewGrowth, EscortAcknowledgmentDeadline }
     internal sealed class ScheduledEvent : IComparable<ScheduledEvent>
     {
         internal long Tick;
@@ -162,6 +162,7 @@ namespace Station.Core
                         case ScheduledKind.QualityDue: QualityDue(e.Value); break;
                         case ScheduledKind.ReviewQuality: ReviewQuality(); break; case ScheduledKind.ReviewGrowth: ReviewGrowth(); break;
                         case ScheduledKind.ReviewEscorts: ReviewEscorts(); break;
+                        case ScheduledKind.EscortAcknowledgmentDeadline: EscortAcknowledgmentDeadline(e.Value, e.ActionId); break;
                         case ScheduledKind.EvaluateGuard: EvaluateGuard(e.Value); break;
                         case ScheduledKind.DetentionServiceChange: ChangeDetentionService(e.ActionId, e.Value); break;
                         case ScheduledKind.DetentionReleaseDue: BeginDetentionRelease(e.Value); break;

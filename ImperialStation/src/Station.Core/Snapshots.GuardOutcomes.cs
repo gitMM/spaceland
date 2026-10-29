@@ -51,13 +51,16 @@ namespace Station.Core
             }
             if (scheduled.Any(e => e.Kind == ScheduledKind.RevokeDetention && !detentionRevocations.ContainsKey(e.Value)) ||
                 detentionAuthorizations.Values.Any(a => a.Status == DetentionAuthorizationStatus.Revoked && !detentionRevocations.ContainsKey(a.Id)) ||
-                messages.Values.Any(m => m.Draft.Kind == MessageKind.EscortRevoked && !detentionRevocations.Values.Any(v => v.Notices.Contains(m.Id)))) throw new ArgumentException("Unregistered revocation state.");
+                messages.Values.Any(m => m.Draft.Kind == MessageKind.EscortRevoked && !detentionRevocations.Values.Any(v => v.Notices.Contains(m.Id)) &&
+                    !(guardAssignments.TryGetValue(m.Draft.RelatedMessageId, out var withdrawn) && withdrawn.WithdrawalMessageId == m.Id))) throw new ArgumentException("Unregistered revocation state.");
             count = Count(r);
             for (int i = 0; i < count; i++)
             {
                 var v = new KnownGuardRevocationSnapshot { OrderMessageId = r.ReadInt64(), LearnedTick = r.ReadInt64(), MessageId = r.ReadInt64(), ServiceActionId = r.ReadInt64(), FacilityId = r.ReadInt64() };
-                if (!localGuardOrders.TryGetValue(v.OrderMessageId, out var local) || local.Status != GuardOrderStatus.Revoked || local.Reason != "KnownAuthorizationRevoked" || v.LearnedTick < local.ReadTick || v.LearnedTick > LastProcessedTick ||
-                    !detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Revoked || v.LearnedTick < authorization.RevokedTick) throw new ArgumentException("Invalid private revocation proof.");
+                bool withdrawnOrder = localGuardOrders.TryGetValue(v.OrderMessageId, out var known) && known.Reason == "KnownAssignmentWithdrawn" && guardAssignments.TryGetValue(v.OrderMessageId, out var withdrawal) &&
+                    withdrawal.WithdrawalMessageId == v.MessageId && v.MessageId != 0 && v.LearnedTick >= withdrawal.WithdrawnTick;
+                if (!localGuardOrders.TryGetValue(v.OrderMessageId, out var local) || local.Status != GuardOrderStatus.Revoked || !withdrawnOrder && local.Reason != "KnownAuthorizationRevoked" || v.LearnedTick < local.ReadTick || v.LearnedTick > LastProcessedTick ||
+                    !withdrawnOrder && (!detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Revoked || v.LearnedTick < authorization.RevokedTick)) throw new ArgumentException("Invalid private revocation proof.");
                 if (v.MessageId != 0)
                 {
                     if (v.ServiceActionId != 0 || v.FacilityId != 0 || !messages.TryGetValue(v.MessageId, out var notice) || notice.Draft.Kind != MessageKind.EscortRevoked || notice.Draft.RelatedMessageId != local.OrderMessageId ||

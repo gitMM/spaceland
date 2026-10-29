@@ -62,19 +62,25 @@ namespace Station.Core
         {
             if (message.Draft.Kind != MessageKind.EscortRevoked || message.SenderAccount.Value != 0 || message.Draft.Recipient != actor.Account ||
                 !localGuardOrders.TryGetValue(message.Draft.RelatedMessageId, out var local) || local.ActorId != actor.Id.Value) return;
-            LearnGuardRevocation(local, message.Id, 0, 0);
+            LearnGuardRevocation(local, message.Id, 0, 0, message.Draft.Claim.Text == "AcknowledgmentOverdue");
         }
-        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility)
+        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility, bool withdrawn = false)
         {
             if (knownGuardRevocations.ContainsKey(local.OrderMessageId)) return;
             knownGuardRevocations.Add(local.OrderMessageId, new KnownGuardRevocationSnapshot { OrderMessageId = local.OrderMessageId, LearnedTick = processingTick, MessageId = message, ServiceActionId = serviceAction, FacilityId = facility });
-            local.Status = GuardOrderStatus.Revoked; local.Reason = "KnownAuthorizationRevoked"; RemoveGuardDecision(local); WithdrawGuardJoin(local);
+            local.Status = GuardOrderStatus.Revoked; local.Reason = withdrawn ? "KnownAssignmentWithdrawn" : "KnownAuthorizationRevoked"; RemoveGuardDecision(local); WithdrawGuardJoin(local);
             foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.ExpireGuardOrder && e.Value == local.OrderMessageId).ToArray()) scheduled.Remove(e);
             var actor = actors[new Id<ActorTag>(local.ActorId)];
             var key = new FactKey(SubjectKind.Order, local.OrderMessageId, AttributeKind.DetentionStatus);
             if (actor.Knowledge.Entries.TryGetValue(key, out var entry))
             { var fact = entry.Fact; entry.Fact = new KnowledgeFact(fact.Id, fact.Key, fact.Value, fact.SourceKind, fact.SourceId, fact.ObservedTick, fact.LearnedTick, false, fact.SourceActorId); }
             if (actor.Action?.GuardOrderId == local.OrderMessageId && actor.Action.Kind == ActionKind.Move) actor.Action.CancelAtBoundary = true;
+            if (withdrawn)
+            {
+                // The authority already knows; an unposted acknowledgment is dropped, not sent late.
+                if (reportAgents.TryGetValue(actor.Id, out var reports)) RemoveReports(reports, d => d.Kind == MessageKind.EscortAcknowledged && d.RelatedMessageId == local.OrderMessageId);
+                Emit("GuardWithdrawalLearned", actor, messageId: message, detail: "order=" + local.OrderMessageId); return;
+            }
             QueueGuardOutcome(local, "AuthorizationRevoked", processingTick);
             Emit("GuardRevocationLearned", actor, messageId: message, detail: "order=" + local.OrderMessageId + "; service-action=" + serviceAction);
         }
@@ -147,7 +153,8 @@ namespace Station.Core
             if (d.WorkOrder != null || d.EscortOrder != null || d.Roster != null || d.PatrolOrder != null || d.InspectionReport != null || d.CaseSubmission != null || d.CaseDecision != null || d.DetentionRequest != null || d.DetentionDecision != null ||
                 d.TaskId != 0 || d.AttemptId != 0 || d.RelatedMessageId < 1 || d.Claim.Kind != FactValueKind.Text || !d.Subject.Equals(new FactKey(SubjectKind.Order, d.RelatedMessageId, AttributeKind.DetentionStatus))) return false;
             return d.Kind == MessageKind.EscortOutcome ? d.RecipientKind == RecipientKind.Authority && ValidGuardOutcome(d.Claim.Text) && d.OperationKey == "escort-result/" + d.RelatedMessageId + "/" + d.Claim.Text :
-                d.RecipientKind == RecipientKind.Account && d.Claim.Text == "AuthorizationRevoked" && d.OperationKey == "escort-revoked/" + d.RelatedMessageId;
+                d.RecipientKind == RecipientKind.Account && (d.Claim.Text == "AuthorizationRevoked" && d.OperationKey == "escort-revoked/" + d.RelatedMessageId ||
+                    d.Claim.Text == "AcknowledgmentOverdue" && d.OperationKey == "escort-withdrawn/" + d.RelatedMessageId);
         }
     }
 }

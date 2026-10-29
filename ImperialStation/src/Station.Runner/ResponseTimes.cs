@@ -192,6 +192,8 @@ public static class ResponseTimes
                     foreach (var c in custody.Values.Where(c => c.Resolved < 0 && c.Arrived < 0 && c.Acknowledged >= 0 && c.Responders.Contains(e.ActorId))) c.Arrived = e.Tick;
                     break;
                 case "Detained" when custody.TryGetValue(Number(e.Detail, "authorization"), out var detained): detained.Resolved = e.Tick; break;
+                case "EscortAcknowledgmentOverdue" when custody.ContainsKey(Number(e.Detail, "authorization")):
+                    replacedBecause[Number(e.Detail, "authorization")] = "AcknowledgmentOverdue"; break;
                 case "GuardOutcomeReceived" when custody.ContainsKey(Number(e.Detail, "authorization")):
                     replacedBecause[Number(e.Detail, "authorization")] = e.Detail[(e.Detail.IndexOf(';') + 2)..];
                     break;

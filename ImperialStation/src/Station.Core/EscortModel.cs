@@ -24,6 +24,9 @@ namespace Station.Core
         public long AuthorizationId { get; internal set; }
         public long AcknowledgmentMessageId { get; internal set; }
         public string Response { get; internal set; } = "AwaitingAcknowledgment";
+        // Set when the authority withdrew the order after its acknowledgment deadline.
+        public long WithdrawnTick { get; internal set; } = -1;
+        public long WithdrawalMessageId { get; internal set; }
         internal GuardAssignmentSnapshot Copy() => (GuardAssignmentSnapshot)MemberwiseClone();
     }
     public sealed class LocalGuardOrderSnapshot

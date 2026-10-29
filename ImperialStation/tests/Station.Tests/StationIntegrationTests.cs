@@ -50,9 +50,10 @@ public sealed class StationIntegrationTests
         var measured = StationBaseline.Execute(StationBaseline.Create(128, days: 1), requireDaily: false);
         Assert.Equal("completed", measured.Status); Assert.Equal(128, measured.ActiveWorkers);
         Assert.Equal(0, measured.ScheduledRestsOverdue); Assert.Equal(128, measured.ScheduledRestsCompleted);
-        // Schema 45 changes the validated guard search deadline to a full roster
-        // cycle. This no-escort control differs only in its encoded schema byte.
-        Assert.Equal("2d8a319bf9682e9a394c84f678e0d06553bc17280b68ce39954dceef7f9bf67d", measured.Digest);
+        // Schema 46 ends daily sleep at the known wake time, prepares for sleep from
+        // the citizen's own need rates, and records cafeteria estimates and terminal
+        // outages, so this no-escort control's state changes beyond its schema byte.
+        Assert.Equal("496204f5b1dde45a521ed3a3bf3dad608c44f61d1b3386b8c0724380db18180a", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]
