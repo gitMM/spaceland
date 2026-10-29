@@ -193,6 +193,7 @@ namespace Station.Core
         private FailureReason TerminalAccess(Actor actor, long terminalId, TerminalCapability needed, out Terminal? terminal)
         {
             terminal = null;
+            if (terminals.TryGetValue(terminalId, out var observed)) ObserveTerminalCondition(actor, observed);
             if (!terminals.TryGetValue(terminalId, out terminal) || !terminal.Enabled || !terminal.Connected || (terminal.Definition.Capabilities & needed) != needed) return FailureReason.RequiredServiceNotPresent;
             if (actor.Position != terminal.Definition.Position || actor.Action?.Kind == ActionKind.Move) return FailureReason.NotAtRequiredTile;
             if (!terminal.Definition.PermittedRoles.Contains(actor.Role, StringComparer.Ordinal)) return FailureReason.NotQualified;

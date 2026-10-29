@@ -46,7 +46,8 @@ namespace Station.Core
             if(planningBudgetTick!=processingTick){planningBudgetTick=processingTick;planningRequestsThisTick=0;}
             if(planningRequestsThisTick>=planner.RequestsPerTick){RequestReportDecision(agent,checked(processingTick+1));return;}
             planningRequestsThisTick++;PlannerRequests++;
-            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget);
+            var outages=KnownTerminalOutages(actorId);
+            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget,avoided:outages);
             PlannerExpansions+=result.Expansions;agent.LastOutcome=result.Outcome;agent.LastCost=result.Cost;
             if(result.Outcome==PlanOutcome.PlanFound&&result.Steps.Count>0)
             {
@@ -57,9 +58,10 @@ namespace Station.Core
                 return;
             }
             if(result.Outcome==PlanOutcome.BudgetExhausted){PlansExhausted++;agent.BlockedReason="PlanBudgetExhausted";}
-            else{PlansUnavailable++;agent.BlockedReason="UnknownRequiredFactOrCredential";}
+            else{PlansUnavailable++;agent.BlockedReason=outages.Count>0?"KnownTerminalOutage":"UnknownRequiredFactOrCredential";}
             Emit("PlanUnavailable",actor,detail:"report-due/v1; "+result.Outcome+"; retry="+agent.Backoff);
-            WakeDaily(actor);RequestReportDecision(agent,checked(processingTick+agent.Backoff));agent.Backoff=Math.Min(planner.MaximumBackoff,checked(agent.Backoff*2));
+            long retry=checked(processingTick+agent.Backoff); if(outages.Count>0)retry=NextTerminalRecheck(actorId,retry);
+            WakeDaily(actor);RequestReportDecision(agent,retry);agent.Backoff=Math.Min(planner.MaximumBackoff,checked(agent.Backoff*2));
         }
         private static void PinReportPlan(Actor actor,ReportAgent agent)
         {
@@ -108,7 +110,7 @@ namespace Station.Core
             if(!reportAgents.TryGetValue(actor.Id,out var agent)||actor.Action!=null)return;
             ReleasePlanPins(actor,agent);agent.BlockedReason=actor.LastFailure.ToString();
             foreach(var e in scheduled.ForActor(actor.Id.Value).Where(e=>e.Kind==ScheduledKind.EvaluateReport).ToArray())scheduled.Remove(e);
-            agent.NextDecision=-1;RequestReportDecision(agent,checked(processingTick+agent.Backoff));agent.Backoff=NextWorkBackoff(agent.Backoff);
+            agent.NextDecision=-1;RequestReportDecision(agent,JustLearnedTerminalOutage(actor.Id)?checked(processingTick+1):checked(processingTick+agent.Backoff));agent.Backoff=NextWorkBackoff(agent.Backoff);
         }
         private static bool SameDraft(MessageDraft? a,MessageDraft b)=>a!=null&&a.Kind==b.Kind&&a.RecipientKind==b.RecipientKind&&a.Recipient==b.Recipient&&a.Subject.Equals(b.Subject)&&a.Claim.Equals(b.Claim)&&a.TaskId==b.TaskId&&a.AttemptId==b.AttemptId&&a.ObservedTick==b.ObservedTick&&a.RelatedMessageId==b.RelatedMessageId&&a.OperationKey==b.OperationKey&&a.WorkOrder?.Kind==b.WorkOrder?.Kind&&a.WorkOrder?.Tile==b.WorkOrder?.Tile&&a.WorkOrder?.MachineId==b.WorkOrder?.MachineId&&a.WorkOrder?.Expires==b.WorkOrder?.Expires&&(a.WorkOrder?.Construction == null ? b.WorkOrder?.Construction == null : b.WorkOrder?.Construction != null && a.WorkOrder.Construction.Same(b.WorkOrder.Construction))&&SamePersonnelPayloads(a,b)&&SameDetentionPayloads(a,b)&&(a.EscortOrder == null ? b.EscortOrder == null : b.EscortOrder != null && a.EscortOrder.Same(b.EscortOrder));
         public IReadOnlyList<AgentSnapshot> InspectAgents()=>reportAgents.Values.Select(a=>new AgentSnapshot{ActorId=a.Actor.Value,PendingReports=a.Pending.Count,CompletedReports=a.CompletedReports,NextDecisionTick=a.NextDecision,Backoff=a.Backoff,LastOutcome=a.LastOutcome,LastPlanCost=a.LastCost,BlockedReason=a.BlockedReason}).ToArray();

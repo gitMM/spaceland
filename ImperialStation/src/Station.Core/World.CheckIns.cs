@@ -53,7 +53,8 @@ namespace Station.Core
             if (EscortControls(actorId) || !agent.Due || actor.Action != null || DeferToNeed(actor) || PrepareCredentialGoal(actor) || !RoutineAllowsCheckIn(actorId) || GuardHasPriority(actorId) || DeferToDueGoal(actor, DueSource.CheckIn) || AlreadyPlanned(actor, DueSource.CheckIn) || !needAgents.ContainsKey(actorId.Value) && reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0) return;
             if (needAgents.ContainsKey(actorId.Value) && agent.BlockedUntil > processingTick) { RequestCheckInDecision(agent, agent.BlockedUntil); return; }
             if (!SpendPlanningRequest()) { RequestCheckInDecision(agent, checked(processingTick + 1)); return; }
-            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            var outages = KnownTerminalOutages(actorId);
+            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget, outages);
             PlannerExpansions += result.Expansions;
             if (result.Outcome == PlanOutcome.PlanFound && result.Steps.Count > 0)
             {
@@ -65,7 +66,8 @@ namespace Station.Core
                 if (result.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
                 Emit("PlanUnavailable", actor, detail: "periodic-check-in/v1; " + result.Outcome);
                 if (!KnownOnDuty(actorId)) { RoutineCheckInFinished(actor, true); return; }
-                agent.BlockedUntil = checked(processingTick + agent.Backoff); WakeDaily(actor); RequestCheckInDecision(agent, agent.BlockedUntil); agent.Backoff = NextWorkBackoff(agent.Backoff);
+                agent.BlockedUntil = checked(processingTick + agent.Backoff); if (outages.Count > 0) agent.BlockedUntil = NextTerminalRecheck(actorId, agent.BlockedUntil);
+                WakeDaily(actor); RequestCheckInDecision(agent, agent.BlockedUntil); agent.Backoff = NextWorkBackoff(agent.Backoff);
             }
         }
         private void OnCheckInActionFinished(Actor actor, ActiveAction? action, bool failed)
@@ -75,7 +77,7 @@ namespace Station.Core
                 if (!failed && action?.Kind is ActionKind.Login or ActionKind.ReadInbox) agent.Backoff = planner.InitialBackoff;
                 if (failed && actor.LastFailure == FailureReason.RequiredServiceNotPresent)
                 {
-                    agent.BlockedUntil = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff);
+                    agent.BlockedUntil = JustLearnedTerminalOutage(actor.Id) ? checked(processingTick + 1) : checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff);
                     foreach (var e in scheduled.ForActor(actor.Id.Value).Where(e => e.Kind == ScheduledKind.EvaluateCheckIn).ToArray()) scheduled.Remove(e);
                     agent.NextDecision = -1;
                 }
@@ -86,7 +88,7 @@ namespace Station.Core
                     foreach (var e in scheduled.ForActor(actor.Id.Value).Where(e => e.Kind == ScheduledKind.CheckInDue).ToArray()) scheduled.Remove(e);
                     Schedule(new ScheduledEvent { Tick = agent.DueTick, Phase = EventPhase.Decision, Kind = ScheduledKind.CheckInDue, Intent = new ActionIntent(actor.Id, ActionKind.ReadInbox, default) });
                 }
-                if (agent.Due) RequestCheckInDecision(agent, failed ? checked(processingTick + planner.InitialBackoff) : processingTick);
+                if (agent.Due) RequestCheckInDecision(agent, failed ? checked(processingTick + (JustLearnedTerminalOutage(actor.Id) ? 1 : planner.InitialBackoff)) : processingTick);
             }
             if ((JobsEnabled || Routines != null) && !failed && action?.Kind is ActionKind.ReadInbox or ActionKind.PostMessage)
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.ReleaseIdleTerminal, Intent = new ActionIntent(actor.Id, ActionKind.Logout, actor.Position) });

@@ -97,8 +97,8 @@ namespace Station.Core
             var view = ActorView(actorId); bool held = CredentialPlanning.KnownUsableCredential(view);
             bool alternate = recoveryCapabilities.TryGetValue(actorId.Value, out var capability) && capability.Retained && capability.AccountId == actor.Account.Value;
             var memory = new RecoveryPlanningState(agent.OldCredentialId, agent.OldCardId, alternate, agent.PostedTick >= 0, agent.KnownCaseId > 0, agent.IssuedCardId,
-                sessions.TryGetValue(actorId, out var session) && session.Scope == SessionScope.CredentialRecovery ? session.Terminal : 0, agent.TerminalRetry.Where(t => t.Value > processingTick).Select(t => t.Key).ToArray());
-            var plan = held ? ReportPlanning.PlanInbox(view, Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget) :
+                sessions.TryGetValue(actorId, out var session) && session.Scope == SessionScope.CredentialRecovery ? session.Terminal : 0, agent.TerminalRetry.Where(t => t.Value > processingTick).Select(t => t.Key).Union(KnownTerminalOutages(actorId)).OrderBy(t => t).ToArray());
+            var plan = held ? ReportPlanning.PlanInbox(view, Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownTerminalOutages(actorId)) :
                 CredentialPlanning.Plan(view, memory, KnownRecoveryDesks(view), RecoveryIdentityCheckTicks, Information!.PostTicks, Information.ReadBaseTicks, Information.LatencyTicks, Config.ItemActionTicks, Math.Min(6, planner.Candidates), planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += plan.Expansions; agent.LastOutcome = plan.Outcome; agent.LastCost = plan.Cost;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)

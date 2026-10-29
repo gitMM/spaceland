@@ -73,7 +73,7 @@ namespace Station.Core
             WriteDetentionServices(w); WriteGuardOutcomes(w);
             WriteMachineWear(w);
             WriteCleanliness(w);
-            WriteFacility(w); WriteNeeds(w); WriteNeedServices(w); WriteBerths(w); WriteConversations(w); WriteNeedAgents(w); WriteDailyGoals(w); WriteGrowth(w);
+            WriteFacility(w); WriteNeeds(w); WriteNeedServices(w); WriteBerths(w); WriteConversations(w); WriteNeedAgents(w); WriteDailyGoals(w); WriteGrowth(w); WriteTerminalOutages(w);
             w.Flush(); return buffer.ToArray();
         }
         private static void WriteCoord(BinaryWriter w, Coord c) { w.Write(c.X); w.Write(c.Y); w.Write(c.Z); }
@@ -145,7 +145,7 @@ namespace Station.Core
             world.ReadDetentionServices(r); world.ReadGuardOutcomes(r);
             world.ReadMachineWear(r);
             world.ReadCleanliness(r);
-            world.ReadFacility(r); world.ReadNeeds(r); world.ReadNeedServices(r); world.ReadBerths(r); world.ReadConversations(r); world.ReadNeedAgents(r); world.ReadDailyGoals(r); world.ReadGrowth(r);
+            world.ReadFacility(r); world.ReadNeeds(r); world.ReadNeedServices(r); world.ReadBerths(r); world.ReadConversations(r); world.ReadNeedAgents(r); world.ReadDailyGoals(r); world.ReadGrowth(r); world.ReadTerminalOutages(r);
             if (buffer.Position != buffer.Length) throw new ArgumentException("Trailing snapshot data.");
             if (last < -1 || seq < 1 || actionSeq < 1 || traceSeq < 1) throw new ArgumentException("Invalid snapshot counters.");
             world.ValidateRecoverySessions(); world.ValidateConstructionState(); world.ValidateGrowthState(); world.AssertAccounting(); return world;

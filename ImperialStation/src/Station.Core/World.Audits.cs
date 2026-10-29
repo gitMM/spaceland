@@ -60,7 +60,8 @@ namespace Station.Core
                 !needAgents.ContainsKey(actor.Id.Value) && (reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0 || checkIns.TryGetValue(actor.Id, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick)) ||
                 localOrders.Values.Any(o => o.ActorId == actor.Id.Value && o.Status is LocalOrderStatus.Read or LocalOrderStatus.AcknowledgmentPending or LocalOrderStatus.Working)) return;
             if (!SpendPlanningRequest()) { RequestAudit(audit, checked(processingTick + 1)); return; }
-            var plan = ReportPlanning.PlanRecords(ActorView(actor.Id), AuditQuery(audit), audit.TerminalId, Information!.LoginTicks, Information.QueryTicks, planner.MaximumDepth, planner.NodeBudget);
+            var outages = KnownTerminalOutages(actor.Id);
+            var plan = ReportPlanning.PlanRecords(ActorView(actor.Id), AuditQuery(audit), audit.TerminalId, Information!.LoginTicks, Information.QueryTicks, planner.MaximumDepth, planner.NodeBudget, outages);
             PlannerExpansions += plan.Expansions;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
@@ -71,8 +72,10 @@ namespace Station.Core
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, Value = DecisionSource(actor, DueSource.None), Intent = plan.Steps[0].Intent, CauseId = cause }); return;
             }
             if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; audit.Reason = "PlanBudgetExhausted"; }
-            else { PlansUnavailable++; audit.Reason = "NoKnownRecordsRouteOrCredential"; }
-            RequestAudit(audit, checked(processingTick + audit.Backoff)); audit.Backoff = NextWorkBackoff(audit.Backoff);
+            else { PlansUnavailable++; audit.Reason = outages.Contains(audit.TerminalId) ? "KnownTerminalOutage" : "NoKnownRecordsRouteOrCredential"; }
+            // Records permission binds the audit to its terminal: wait for the bounded recheck.
+            long retry = checked(processingTick + audit.Backoff); if (outages.Contains(audit.TerminalId)) retry = NextTerminalRecheck(actor.Id, retry);
+            RequestAudit(audit, retry); audit.Backoff = NextWorkBackoff(audit.Backoff);
         }
         private void AuditQueryCompleted(Actor actor, ActiveAction action)
         {

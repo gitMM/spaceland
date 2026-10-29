@@ -7,13 +7,15 @@ namespace Station.Mind
 {
     public static class ReportPlanning
     {
-        public static PlanResult PlanInbox(IActorView view, long loginTicks, long readTicks, int candidates = 3, int maxDepth = 8, int nodeBudget = 512)
-            => Plan(view, null, loginTicks, readTicks, candidates, maxDepth, nodeBudget, true);
-        public static PlanResult PlanRecords(IActorView view, RecordQuery query, long terminalId, long loginTicks, long queryTicks, int maxDepth = 8, int nodeBudget = 512)
-            => PlanTerminal(view, null, query, terminalId, loginTicks, queryTicks, 3, maxDepth, nodeBudget, false);
-        public static PlanResult Plan(IActorView view, MessageDraft? report, long loginTicks, long postTicks, int candidates = 3, int maxDepth = 8, int nodeBudget = 512, bool readInbox = false)
-            => PlanTerminal(view, report, null, 0, loginTicks, postTicks, candidates, maxDepth, nodeBudget, readInbox);
-        private static PlanResult PlanTerminal(IActorView view, MessageDraft? report, RecordQuery? query, long requiredTerminal, long loginTicks, long postTicks, int candidates, int maxDepth, int nodeBudget, bool readInbox)
+        // Avoided terminals are the citizen's own remembered outages awaiting a recheck;
+        // eligible alternatives with the required capability and permission remain.
+        public static PlanResult PlanInbox(IActorView view, long loginTicks, long readTicks, int candidates = 3, int maxDepth = 8, int nodeBudget = 512, IReadOnlyCollection<long>? avoided = null)
+            => Plan(view, null, loginTicks, readTicks, candidates, maxDepth, nodeBudget, true, avoided);
+        public static PlanResult PlanRecords(IActorView view, RecordQuery query, long terminalId, long loginTicks, long queryTicks, int maxDepth = 8, int nodeBudget = 512, IReadOnlyCollection<long>? avoided = null)
+            => PlanTerminal(view, null, query, terminalId, loginTicks, queryTicks, 3, maxDepth, nodeBudget, false, avoided);
+        public static PlanResult Plan(IActorView view, MessageDraft? report, long loginTicks, long postTicks, int candidates = 3, int maxDepth = 8, int nodeBudget = 512, bool readInbox = false, IReadOnlyCollection<long>? avoided = null)
+            => PlanTerminal(view, report, null, 0, loginTicks, postTicks, candidates, maxDepth, nodeBudget, readInbox, avoided);
+        private static PlanResult PlanTerminal(IActorView view, MessageDraft? report, RecordQuery? query, long requiredTerminal, long loginTicks, long postTicks, int candidates, int maxDepth, int nodeBudget, bool readInbox, IReadOnlyCollection<long>? avoided)
         {
             if (candidates < 1 || candidates > 30 || loginTicks < 1 || postTicks < 1 || requiredTerminal < 0) throw new ArgumentException("Invalid terminal-planning limits/durations.");
             if (view.CurrentTile == null || view.PublicKnowledge == null) return new PlanResult(PlanOutcome.NoPlan);
@@ -21,7 +23,7 @@ namespace Station.Mind
                 && view.Inventory.Any(i => i.Value == f.Value.Number) && view.Knowledge.Any(s => s.Key.SubjectKind == SubjectKind.Credential && s.Key.SubjectId == f.Key.SubjectId && s.Key.Attribute == AttributeKind.CredentialStatus && s.Value.Equals(FactValue.Boolean(true))));
             var capability = query != null ? TerminalCapability.Records : readInbox ? TerminalCapability.Inbox : TerminalCapability.Post;
             var distances = new KnownNavigation.Distances(view, view.CurrentTile.Value);
-            var terminals = view.PublicKnowledge.Services.Where(s => (requiredTerminal == 0 || s.Id == requiredTerminal) && (s.Capabilities & capability) != 0 && s.PermittedRoles.Contains(view.Role, StringComparer.Ordinal))
+            var terminals = view.PublicKnowledge.Services.Where(s => (requiredTerminal == 0 || s.Id == requiredTerminal) && (s.Capabilities & capability) != 0 && s.PermittedRoles.Contains(view.Role, StringComparer.Ordinal) && (avoided == null || !avoided.Contains(s.Id)))
                 .Select(s => (Service: s, Travel: distances.To(s.Position)))
                 .Where(x => x.Travel.HasValue).OrderBy(x => x.Travel!.Value).ThenBy(x => x.Service.Id).Take(candidates).ToArray();
             var predicates = new List<string> { "KnownHeldCredential", query != null ? "RecordsQueried" : readInbox ? "InboxRead" : "ReportPosted" }; var actions = new List<SymbolicAction>(); ulong initial = credential ? 1UL : 0UL;
