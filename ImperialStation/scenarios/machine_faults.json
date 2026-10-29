@@ -1,0 +1,362 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "machine_faults",
+    "catalog": "../content/jobs.json",
+    "seed": 42,
+    "horizon": 300,
+    "configuration": {
+      "itemActionTicks": 1
+    },
+    "tiles": [
+      {
+        "id": 1,
+        "definition": "industrial",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "id": 2,
+        "definition": "power",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 2
+        },
+        "definition": "storage",
+        "id": 3,
+        "traversalOverride": 1
+      }
+    ],
+    "actors": [
+      {
+        "id": 1,
+        "name": "Autonomous engineer",
+        "role": "worker",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "scripted": false
+      }
+    ],
+    "items": [
+      {
+        "id": 1,
+        "resource": "metal",
+        "quantity": 3,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 2,
+        "resource": "wire",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 3,
+        "resource": "tool",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 4,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "TileContainer",
+        "owner": 3
+      },
+      {
+        "owner": 1,
+        "resource": "card",
+        "quantity": 1,
+        "id": 5,
+        "locationKind": "ActorInventory"
+      },
+      {
+        "id": 6,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "MachineSlot",
+        "owner": 1
+      }
+    ],
+    "information": {
+      "facts": [
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Resource",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Quantity",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "kind": "Coordinate",
+            "coordinate": {
+              "y": 0,
+              "z": 0,
+              "x": 2
+            }
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Location",
+            "subjectId": 4
+          },
+          "actorId": 1
+        }
+      ],
+      "repairGoals": [],
+      "configuration": {
+        "readPerMessageTicks": 0,
+        "latencyTicks": 1,
+        "postTicks": 1,
+        "readBaseTicks": 1,
+        "loginTicks": 1,
+        "readMaximumTicks": 1
+      },
+      "terminals": [
+        {
+          "permittedRoles": [
+            "worker"
+          ],
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 1
+          },
+          "id": 1
+        }
+      ],
+      "credentials": [
+        {
+          "cardItem": 5,
+          "holder": 1,
+          "account": 1,
+          "id": 1
+        }
+      ]
+    },
+    "work": {
+      "workstations": [
+        {
+          "id": 1,
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "capability": "fabricate",
+          "capacity": 1,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ],
+      "machines": [
+        {
+          "id": 1,
+          "position": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "fitClass": "cartridge",
+          "requiredResource": "correct",
+          "requiredRating": 2,
+          "installTicks": 3,
+          "inspectTicks": 2,
+          "testTicks": 2,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ]
+    },
+    "jobSystem": {
+      "checkIns": [
+        {
+          "actorId": 1,
+          "interval": 100,
+          "firstTick": 0
+        }
+      ],
+      "jobs": [],
+      "assignments": []
+    },
+    "facility": {
+      "reportingRoles": [
+        "worker"
+      ]
+    },
+    "authority": {
+      "graceTicks": 1000
+    },
+    "machineWear": {
+      "meanIntervalTicks": 0
+    },
+    "routines": {
+      "configuration": {
+        "dayTicks": 3000,
+        "periodicCheckInTicks": 20,
+        "dutyTicks": 1000,
+        "checkInWindow": 1,
+        "cohorts": 3
+      },
+      "assignments": [
+        {
+          "actorId": 1,
+          "restTile": {
+            "x": 1,
+            "z": 0,
+            "y": 0
+          },
+          "cohort": 0
+        }
+      ]
+    }
+  },
+  "disturbances": [
+    {
+      "type": "MachineFault",
+      "tick": 10,
+      "workServiceId": 1
+    }
+  ],
+  "scriptedActors": [],
+  "assertions": [
+    {
+      "kind": "MachineOperational",
+      "machineId": 1,
+      "tick": 9,
+      "operational": true
+    },
+    {
+      "jobId": 1,
+      "kind": "FacilityTask",
+      "tick": 9,
+      "state": "Absent"
+    },
+    {
+      "kind": "MachineOperational",
+      "machineId": 1,
+      "tick": 10,
+      "operational": false
+    },
+    {
+      "itemId": 6,
+      "kind": "ItemAbsent",
+      "tick": 10
+    },
+    {
+      "fact": {
+        "attribute": "RequiredResource",
+        "subjectKind": "Machine",
+        "subjectId": 1
+      },
+      "kind": "KnowledgeAbsent",
+      "actorId": 1,
+      "tick": 10
+    },
+    {
+      "jobId": 1,
+      "kind": "FacilityTask",
+      "tick": 10,
+      "state": "Absent"
+    },
+    {
+      "jobId": 1,
+      "kind": "FacilityTask",
+      "tick": 13,
+      "state": "Assigned"
+    },
+    {
+      "fact": {
+        "attribute": "RequiredResource",
+        "subjectKind": "Machine",
+        "subjectId": 1
+      },
+      "kind": "KnowledgeValue",
+      "actorId": 1,
+      "tick": 108,
+      "value": {
+        "kind": "Text",
+        "text": "correct"
+      }
+    },
+    {
+      "kind": "MachineOperational",
+      "machineId": 1,
+      "tick": 114,
+      "operational": true
+    },
+    {
+      "jobId": 1,
+      "kind": "FacilityTask",
+      "tick": 114,
+      "state": "Assigned"
+    },
+    {
+      "jobId": 1,
+      "kind": "FacilityTask",
+      "tick": 118,
+      "state": "ReportedComplete"
+    },
+    {
+      "attemptId": 1,
+      "kind": "Expectation",
+      "tick": 118,
+      "state": "Satisfied"
+    },
+    {
+      "tick": 300,
+      "kind": "Accounting"
+    }
+  ],
+  "metrics": [
+    "movement",
+    "actions",
+    "resources",
+    "information"
+  ]
+}

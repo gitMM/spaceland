@@ -1,0 +1,38 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "conversation", "catalog": "../content/tiles.json", "seed": 42, "horizon": 10,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [ { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "actors": [
+      { "id": 1, "name": "First citizen", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "name": "Second citizen", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 3, "name": "Bystander", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } }
+    ],
+    "information": {},
+    "routines": {
+      "configuration": { "dayTicks": 240, "dutyTicks": 80, "cohorts": 3, "checkInWindow": 1, "periodicCheckInTicks": 30 },
+      "assignments": [
+        { "actorId": 1, "cohort": 2, "restTile": { "x": 0, "y": 0, "z": 0 } },
+        { "actorId": 2, "cohort": 2, "restTile": { "x": 0, "y": 0, "z": 0 } },
+        { "actorId": 3, "cohort": 2, "restTile": { "x": 0, "y": 0, "z": 0 } }
+      ]
+    },
+    "needs": {
+      "initial": [ { "actorId": 1, "kind": "Social", "q": 1440000000 }, { "actorId": 2, "kind": "Social", "q": 1440000000 } ],
+      "conversations": { "durationTicks": 5 }
+    }
+  },
+  "assertions": [
+    { "tick": 0, "kind": "Conversations", "state": "Active", "quantity": 1 },
+    { "tick": 4, "kind": "Conversations", "state": "Completed", "quantity": 0 },
+    { "tick": 4, "kind": "NeedQ", "actorId": 1, "state": "Social", "quantity": 1440008000 },
+    { "tick": 4, "kind": "NeedQ", "actorId": 2, "state": "Social", "quantity": 1440008000 },
+    { "tick": 5, "kind": "Conversations", "state": "Completed", "actorId": 1, "quantity": 1 },
+    { "tick": 5, "kind": "Conversations", "state": "Completed", "actorId": 2, "quantity": 1 },
+    { "tick": 10, "kind": "Conversations", "state": "Completed", "actorId": 3, "quantity": 0 },
+    { "tick": 10, "kind": "NeedQ", "actorId": 1, "state": "Social", "quantity": 360020000 },
+    { "tick": 10, "kind": "NeedQ", "actorId": 2, "state": "Social", "quantity": 360020000 },
+    { "tick": 10, "kind": "NeedQ", "actorId": 3, "state": "Social", "quantity": 20000 },
+    { "tick": 10, "kind": "Accounting" }
+  ]
+}

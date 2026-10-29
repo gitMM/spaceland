@@ -1,0 +1,35 @@
+{
+  "initialState":{
+    "schemaVersion":1,"id":"autonomous_report","catalog":"../content/tiles.json","seed":42,"horizon":20,
+    "configuration":{"tickDurationMs":100,"itemActionTicks":1},
+    "tiles":[
+      {"id":1,"definition":"storage","position":{"x":0,"y":0,"z":0},"traversalOverride":5},
+      {"id":2,"definition":"corridor","position":{"x":1,"y":0,"z":0},"traversalOverride":5},
+      {"id":3,"definition":"command","position":{"x":2,"y":0,"z":0},"traversalOverride":5}
+    ],
+    "actors":[{"id":1,"accountId":101,"name":"Reporting worker","role":"worker","position":{"x":1,"y":0,"z":0}}],
+    "items":[
+      {"id":1,"resource":"component","quantity":1,"locationKind":"TileContainer","owner":1},
+      {"id":101,"resource":"keycard","quantity":1,"locationKind":"ActorInventory","owner":1}
+    ],
+    "information":{
+      "configuration":{"loginTicks":1,"readBaseTicks":1,"readPerMessageTicks":0,"readMaximumTicks":1,"postTicks":1,"latencyTicks":2,"sessionTicks":100,"inspectTicks":1},
+      "terminals":[
+        {"id":1,"position":{"x":0,"y":0,"z":0},"permittedRoles":["worker"]},
+        {"id":2,"position":{"x":2,"y":0,"z":0},"permittedRoles":["worker"]}
+      ],
+      "credentials":[{"id":1,"holder":1,"account":101,"cardItem":101}],
+      "facts":[{"actorId":1,"key":{"subjectKind":"Item","subjectId":1,"attribute":"Location"},"value":{"kind":"Coordinate","coordinate":{"x":0,"y":0,"z":0}},"pinned":true}],
+      "reportGoals":[{"actorId":1,"report":{"kind":"Observation","recipientKind":"Authority","subject":{"subjectKind":"Item","subjectId":1,"attribute":"Location"},"claim":{"kind":"Coordinate","coordinate":{"x":0,"y":0,"z":0}},"observedTick":0}}]
+    }
+  },
+  "assertions":[
+    {"tick":0,"kind":"ActorInTransit","actorId":1},
+    {"tick":5,"kind":"ActorAt","actorId":1,"position":{"x":0,"y":0,"z":0}},
+    {"tick":7,"kind":"MessageStage","messageId":1,"stage":"Posted"},
+    {"tick":8,"kind":"BeliefAbsent","fact":{"subjectKind":"Item","subjectId":1,"attribute":"Location"}},
+    {"tick":9,"kind":"BeliefValue","fact":{"subjectKind":"Item","subjectId":1,"attribute":"Location"},"value":{"kind":"Coordinate","coordinate":{"x":0,"y":0,"z":0}}},
+    {"tick":20,"kind":"Accounting"}
+  ],
+  "metrics":["information","terminals","movement","resources"]
+}

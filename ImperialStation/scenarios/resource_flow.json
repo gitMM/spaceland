@@ -1,0 +1,42 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "resource_flow", "catalog": "../content/resources.json", "seed": 42, "horizon": 20,
+    "configuration": { "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "industrial", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 1 },
+      { "id": 2, "definition": "storage", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 1 }
+    ],
+    "actors": [{ "id": 1, "name": "Materials worker", "role": "worker", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } }],
+    "items": [{ "id": 1, "resource": "metal", "quantity": 10, "locationKind": "ActorInventory", "owner": 1 }],
+    "information": {},
+    "work": {
+      "workstations": [{ "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "capability": "supply", "access": { "roles": ["worker"] } }],
+      "stashes": [{ "id": 1, "projectId": 42, "position": { "x": 1, "y": 0, "z": 0 } }]
+    }
+  },
+  "scriptedActors": [{ "actorId": 1, "commands": [
+    { "tick": 0, "kind": "ProduceRecipe", "target": { "x": 0, "y": 0, "z": 0 }, "serviceId": 1, "recipeId": 2 },
+    { "tick": 4, "kind": "PickUp", "target": { "x": 0, "y": 0, "z": 0 }, "itemId": 2 },
+    { "tick": 5, "kind": "MergeStacks", "target": { "x": 0, "y": 0, "z": 0 }, "itemId": 1, "otherItemId": 2 },
+    { "tick": 6, "kind": "SplitStack", "target": { "x": 0, "y": 0, "z": 0 }, "itemId": 1, "quantity": 4 },
+    { "tick": 7, "kind": "Move", "target": { "x": 1, "y": 0, "z": 0 } },
+    { "tick": 8, "kind": "StoreInStash", "target": { "x": 1, "y": 0, "z": 0 }, "itemId": 3, "serviceId": 1 },
+    { "tick": 9, "kind": "PickUp", "target": { "x": 1, "y": 0, "z": 0 }, "itemId": 3 },
+    { "tick": 10, "kind": "Move", "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 11, "kind": "MergeStacks", "target": { "x": 0, "y": 0, "z": 0 }, "itemId": 1, "otherItemId": 3 },
+    { "tick": 12, "kind": "ProduceRecipe", "target": { "x": 0, "y": 0, "z": 0 }, "serviceId": 1, "recipeId": 3 }
+  ] }],
+  "assertions": [
+    { "tick": 3, "kind": "ItemAbsent", "itemId": 2 },
+    { "tick": 4, "kind": "ItemState", "itemId": 2, "quantity": 5, "locationKind": "ServiceOutput", "owner": 1 },
+    { "tick": 6, "kind": "ItemState", "itemId": 1, "quantity": 15, "locationKind": "ActorInventory", "owner": 1 },
+    { "tick": 6, "kind": "ItemAbsent", "itemId": 2 },
+    { "tick": 7, "kind": "ItemState", "itemId": 1, "quantity": 11, "locationKind": "ActorInventory", "owner": 1 },
+    { "tick": 9, "kind": "ItemState", "itemId": 3, "quantity": 4, "locationKind": "ProjectStash", "owner": 1 },
+    { "tick": 10, "kind": "ItemState", "itemId": 3, "quantity": 4, "locationKind": "ActorInventory", "owner": 1 },
+    { "tick": 16, "kind": "ItemState", "itemId": 1, "quantity": 13, "locationKind": "ActorInventory", "owner": 1 },
+    { "tick": 16, "kind": "ItemAbsent", "itemId": 3 },
+    { "tick": 20, "kind": "Accounting" }
+  ],
+  "metrics": ["actions", "resources"]
+}

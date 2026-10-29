@@ -1,0 +1,60 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "sensor_status", "catalog": "../content/sensors.json", "seed": 42, "horizon": 45,
+    "tiles": [
+      { "id": 1, "definition": "power", "position": {"x":0,"y":0,"z":0}, "traversalOverride": 2 },
+      { "id": 2, "definition": "storage", "position": {"x":1,"y":0,"z":0}, "traversalOverride": 2 }
+    ],
+    "actors": [{ "id": 1, "name": "Local inspector", "role": "worker", "position": {"x":1,"y":0,"z":0}, "scripted": true }],
+    "items": [
+      { "id": 1, "resource": "correct", "quantity": 1, "locationKind": "MachineSlot", "owner": 1 },
+      { "id": 2, "resource": "metal", "quantity": 7, "locationKind": "TileContainer", "owner": 2 }
+    ],
+    "information": {
+      "configuration": { "inspectTicks": 3 },
+      "sensors": [
+        { "id": 1, "machineId": 1, "firstTick": 0, "interval": 10, "latency": 5 },
+        { "id": 2, "machineId": 2, "firstTick": 0, "interval": 10, "latency": 5, "enabled": false }
+      ],
+      "messages": [{ "senderAccount": 1, "deliveryTick": 5, "message": {
+        "kind": "Observation", "recipientKind": "Authority", "recipientAccount": 0,
+        "subject": {"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},
+        "claim": {"kind":"Boolean","number":0}, "observedTick": 0
+      }}]
+    },
+    "work": { "machines": [
+      { "id": 1, "position": {"x":0,"y":0,"z":0}, "fitClass":"cartridge", "requiredResource":"correct", "access":{"roles":["worker"]}, "inspectTicks":3 },
+      { "id": 2, "position": {"x":1,"y":0,"z":0}, "fitClass":"cartridge", "requiredResource":"correct", "access":{"roles":["worker"]}, "inspectTicks":3 }
+    ]}
+  },
+  "disturbances": [
+    {"type":"WorkServiceChange","tick":3,"workServiceId":1,"machine":true,"enabled":false},
+    {"type":"TraversalChange","tick":6,"tile":{"x":1,"y":0,"z":0},"traversalTicks":9},
+    {"type":"SensorChange","tick":12,"sensorId":1,"enabled":false},
+    {"type":"SensorChange","tick":23,"sensorId":1,"enabled":true},
+    {"type":"WorkServiceChange","tick":28,"workServiceId":1,"machine":true,"enabled":true},
+    {"type":"SensorChange","tick":40,"sensorId":1,"enabled":false}
+  ],
+  "scriptedActors": [{"actorId":1,"commands":[
+    {"tick":0,"kind":"InspectMachine","target":{"x":1,"y":0,"z":0},"serviceId":2},
+    {"tick":4,"kind":"InspectTile","target":{"x":1,"y":0,"z":0}},
+    {"tick":8,"kind":"Inspect","target":{"x":1,"y":0,"z":0},"itemId":2}
+  ]}],
+  "assertions": [
+    {"tick":2,"kind":"KnowledgeAbsent","actorId":1,"fact":{"subjectKind":"Machine","subjectId":2,"attribute":"Operational"}},
+    {"tick":3,"kind":"KnowledgeValue","actorId":1,"fact":{"subjectKind":"Machine","subjectId":2,"attribute":"Operational"},"value":{"kind":"Boolean","number":0}},
+    {"tick":4,"kind":"BeliefAbsent","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"}},
+    {"tick":5,"kind":"MachineOperational","machineId":1,"operational":false},
+    {"tick":5,"kind":"BeliefValue","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},"value":{"kind":"Boolean","number":1}},
+    {"tick":6,"kind":"KnowledgeAbsent","actorId":1,"fact":{"subjectKind":"Tile","subjectId":2,"attribute":"TraversalTicks"}},
+    {"tick":7,"kind":"KnowledgeValue","actorId":1,"fact":{"subjectKind":"Tile","subjectId":2,"attribute":"TraversalTicks"},"value":{"kind":"Number","number":9}},
+    {"tick":10,"kind":"KnowledgeAbsent","actorId":1,"fact":{"subjectKind":"Item","subjectId":2,"attribute":"Quantity"}},
+    {"tick":11,"kind":"KnowledgeValue","actorId":1,"fact":{"subjectKind":"Item","subjectId":2,"attribute":"Quantity"},"value":{"kind":"Number","number":7}},
+    {"tick":15,"kind":"BeliefValue","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},"value":{"kind":"Boolean","number":0}},
+    {"tick":34,"kind":"BeliefValue","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},"value":{"kind":"Boolean","number":0}},
+    {"tick":35,"kind":"BeliefValue","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},"value":{"kind":"Boolean","number":1}},
+    {"tick":45,"kind":"BeliefAbsent","fact":{"subjectKind":"Machine","subjectId":2,"attribute":"Operational"}},
+    {"tick":45,"kind":"KnowledgeAbsent","actorId":1,"fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"}},
+    {"tick":45,"kind":"Accounting"}
+  ]
+}

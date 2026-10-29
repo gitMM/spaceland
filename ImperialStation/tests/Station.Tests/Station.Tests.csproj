@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><LangVersion>12.0</LangVersion><ImplicitUsings>enable</ImplicitUsings><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../scenarios/generators/FalseDeliveryGenerator.cs" Link="Generators/FalseDeliveryGenerator.cs" />
+    <Compile Include="../../scenarios/generators/RepairGenerator.cs" Link="Generators/RepairGenerator.cs" />
+    <Compile Include="../../scenarios/generators/WorkOrderGenerator.cs" Link="Generators/WorkOrderGenerator.cs" />
+    <Compile Include="../../scenarios/generators/ResourceFlowGenerator.cs" Link="Generators/ResourceFlowGenerator.cs" />
+    <Compile Include="../../scenarios/generators/RecoveryGenerator.cs" Link="Generators/RecoveryGenerator.cs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" PrivateAssets="all" />
+    <ProjectReference Include="../../src/Station.Runner/Station.Runner.csproj" />
+  </ItemGroup>
+</Project>

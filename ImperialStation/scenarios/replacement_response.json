@@ -1,0 +1,427 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "replacement_response",
+    "catalog": "../content/jobs.json",
+    "seed": 42,
+    "horizon": 80,
+    "configuration": {
+      "itemActionTicks": 1,
+      "authorityNominalTicks": 1
+    },
+    "tiles": [
+      {
+        "id": 1,
+        "definition": "industrial",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "id": 2,
+        "definition": "power",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 2
+        },
+        "definition": "storage",
+        "id": 3,
+        "traversalOverride": 1
+      }
+    ],
+    "actors": [
+      {
+        "id": 1,
+        "name": "Unresponsive original worker",
+        "role": "original",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scripted": true
+      },
+      {
+        "role": "worker",
+        "id": 2,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "name": "Autonomous replacement"
+      }
+    ],
+    "items": [
+      {
+        "id": 1,
+        "resource": "metal",
+        "quantity": 3,
+        "locationKind": "ActorInventory",
+        "owner": 2
+      },
+      {
+        "id": 2,
+        "resource": "wire",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 2
+      },
+      {
+        "id": 3,
+        "resource": "tool",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 2
+      },
+      {
+        "id": 4,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "TileContainer",
+        "owner": 3
+      },
+      {
+        "owner": 1,
+        "resource": "card",
+        "quantity": 1,
+        "id": 5,
+        "locationKind": "ActorInventory"
+      },
+      {
+        "owner": 2,
+        "resource": "card",
+        "id": 6,
+        "quantity": 1,
+        "locationKind": "ActorInventory"
+      }
+    ],
+    "information": {
+      "facts": [
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Machine",
+            "attribute": "RequiredResource",
+            "subjectId": 1
+          },
+          "actorId": 2
+        },
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Resource",
+            "subjectId": 4
+          },
+          "actorId": 2
+        },
+        {
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Quantity",
+            "subjectId": 4
+          },
+          "actorId": 2
+        },
+        {
+          "value": {
+            "kind": "Coordinate",
+            "coordinate": {
+              "y": 0,
+              "z": 0,
+              "x": 2
+            }
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Location",
+            "subjectId": 4
+          },
+          "actorId": 2
+        }
+      ],
+      "repairGoals": [],
+      "configuration": {
+        "readPerMessageTicks": 0,
+        "latencyTicks": 2,
+        "postTicks": 1,
+        "readBaseTicks": 1,
+        "loginTicks": 1,
+        "readMaximumTicks": 1
+      },
+      "terminals": [
+        {
+          "permittedRoles": [
+            "original"
+          ],
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "id": 1,
+          "capabilities": "Post, Records"
+        },
+        {
+          "permittedRoles": [
+            "worker"
+          ],
+          "id": 2,
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "capabilities": "Inbox, Post"
+        }
+      ],
+      "credentials": [
+        {
+          "cardItem": 5,
+          "holder": 1,
+          "account": 1,
+          "id": 1
+        },
+        {
+          "id": 2,
+          "holder": 2,
+          "cardItem": 6,
+          "account": 2
+        }
+      ]
+    },
+    "work": {
+      "workstations": [
+        {
+          "id": 1,
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "capability": "fabricate",
+          "capacity": 1,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ],
+      "machines": [
+        {
+          "id": 1,
+          "position": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "fitClass": "cartridge",
+          "requiredResource": "correct",
+          "requiredRating": 2,
+          "installTicks": 3,
+          "inspectTicks": 2,
+          "testTicks": 2,
+          "access": {
+            "roles": [
+              "original",
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ]
+    },
+    "jobSystem": {
+      "checkIns": [],
+      "jobs": [
+        {
+          "id": 1,
+          "machineId": 1
+        }
+      ],
+      "assignments": [
+        {
+          "key": "initial-repair",
+          "actorId": 1,
+          "expires": 200,
+          "jobId": 1
+        }
+      ]
+    },
+    "authority": {
+      "slackMargin": 0,
+      "slackMinimum": 1000,
+      "graceTicks": 10,
+      "emaNumerator": 1,
+      "emaDenominator": 2,
+      "unacknowledgedTicks": 30,
+      "slackMaximum": 4000
+    },
+    "routines": {
+      "assignments": [
+        {
+          "cohort": 0,
+          "actorId": 1,
+          "restTile": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
+        {
+          "cohort": 0,
+          "actorId": 2,
+          "restTile": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        }
+      ],
+      "configuration": {
+        "dutyTicks": 100,
+        "cohorts": 3,
+        "dayTicks": 300,
+        "checkInWindow": 1,
+        "periodicCheckInTicks": 10
+      }
+    }
+  },
+  "disturbances": [],
+  "scriptedActors": [
+    {
+      "commands": [
+        {
+          "tick": 1,
+          "kind": "Login",
+          "target": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "tick": 2,
+          "kind": "PostMessage",
+          "target": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "serviceId": 1,
+          "message": {
+            "kind": "OrderAccepted",
+            "recipientKind": "Authority",
+            "subject": {
+              "subjectKind": "Attempt",
+              "subjectId": 1,
+              "attribute": "WorkStatus"
+            },
+            "claim": {
+              "kind": "Text",
+              "text": "Accepted"
+            },
+            "observedTick": 2,
+            "taskId": 1,
+            "attemptId": 1,
+            "relatedMessageId": 1
+          }
+        }
+      ],
+      "actorId": 1
+    }
+  ],
+  "assertions": [
+    {
+      "tick": 80,
+      "machineId": 1,
+      "kind": "MachineOperational",
+      "operational": true
+    },
+    {
+      "tick": 80,
+      "kind": "Accounting"
+    },
+    {
+      "attemptId": 1,
+      "tick": 24,
+      "state": "Present",
+      "kind": "MissingReport"
+    },
+    {
+      "tick": 23,
+      "attemptId": 1,
+      "kind": "MissingReport",
+      "state": "Absent"
+    },
+    {
+      "tick": 25,
+      "attemptId": 1,
+      "kind": "Expectation",
+      "state": "Cancelled"
+    },
+    {
+      "tick": 25,
+      "attemptId": 2,
+      "kind": "Expectation",
+      "state": "Absent"
+    },
+    {
+      "tick": 42,
+      "attemptId": 2,
+      "kind": "Expectation",
+      "state": "AwaitingResult"
+    },
+    {
+      "tick": 53,
+      "attemptId": 2,
+      "kind": "Expectation",
+      "state": "Satisfied"
+    },
+    {
+      "tick": 47,
+      "attemptId": 2,
+      "kind": "AttemptExecution",
+      "state": "CompletedPhysically"
+    },
+    {
+      "tick": 80,
+      "jobId": 1,
+      "kind": "JobAuthority",
+      "state": "WorkCompleted"
+    }
+  ],
+  "metrics": [
+    "movement",
+    "actions",
+    "resources",
+    "information"
+  ]
+}

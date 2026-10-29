@@ -1,0 +1,29 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "movement_exact", "catalog": "../content/tiles.json", "seed": 42, "horizon": 20,
+    "configuration": {"tickDurationMs":100,"itemActionTicks":1,"authorityNominalTicks":2},
+    "tiles": [
+      {"id":1,"definition":"storage","position":{"x":0,"y":0,"z":0},"traversalOverride":2},
+      {"id":2,"definition":"hull","position":{"x":1,"y":0,"z":0},"traversalOverride":6},
+      {"id":3,"definition":"industrial","position":{"x":2,"y":0,"z":0},"traversalOverride":10}
+    ],
+    "actors": [{"id":1,"name":"Courier","role":"worker","position":{"x":0,"y":0,"z":0},"scripted":true}],
+    "items": [{"id":1,"resource":"component","quantity":1,"locationKind":"TileContainer","owner":3}]
+  },
+  "scriptedActors": [{"actorId":1,"commands":[
+    {"tick":0,"kind":"Move","target":{"x":2,"y":0,"z":0}},
+    {"tick":11,"kind":"PickUp","target":{"x":2,"y":0,"z":0},"itemId":1},
+    {"tick":12,"kind":"PickUp","target":{"x":2,"y":0,"z":0},"itemId":1},
+    {"tick":14,"kind":"PutDown","target":{"x":2,"y":0,"z":0},"itemId":1}
+  ]}],
+  "assertions": [
+    {"tick":0,"kind":"ActorInTransit","actorId":1},
+    {"tick":11,"kind":"ActorInTransit","actorId":1},
+    {"tick":11,"kind":"LastFailure","actorId":1,"reason":"NotAtRequiredTile"},
+    {"tick":12,"kind":"ActorAt","actorId":1,"position":{"x":2,"y":0,"z":0}},
+    {"tick":13,"kind":"ItemHeld","actorId":1,"itemId":1},
+    {"tick":15,"kind":"ItemAtTile","itemId":1,"position":{"x":2,"y":0,"z":0}},
+    {"tick":20,"kind":"Accounting"}
+  ],
+  "metrics":["movement","actions","resources"]
+}

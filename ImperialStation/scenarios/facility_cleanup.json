@@ -1,0 +1,364 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "facility_cleanup",
+    "catalog": "../content/cleanup-work.json",
+    "seed": 42,
+    "horizon": 300,
+    "configuration": {
+      "itemActionTicks": 1,
+      "authorityNominalTicks": 1
+    },
+    "tiles": [
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 0
+        },
+        "definition": "command",
+        "id": 1,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 1
+        },
+        "definition": "hull",
+        "id": 2,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 2
+        },
+        "definition": "corridor",
+        "id": 3,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 1,
+          "x": 2
+        },
+        "definition": "command",
+        "id": 4,
+        "traversalOverride": 1
+      }
+    ],
+    "actors": [
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 0
+        },
+        "id": 1,
+        "name": "Original cleaner",
+        "role": "original-cleaner"
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 1,
+          "x": 2
+        },
+        "id": 2,
+        "name": "Replacement cleaner",
+        "role": "cleaner"
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 2
+        },
+        "id": 3,
+        "name": "Patrol guard",
+        "role": "guard"
+      }
+    ],
+    "items": [
+      {
+        "owner": 1,
+        "locationKind": "ActorInventory",
+        "id": 5,
+        "resource": "card",
+        "quantity": 1
+      },
+      {
+        "owner": 2,
+        "locationKind": "ActorInventory",
+        "id": 6,
+        "resource": "card",
+        "quantity": 1
+      },
+      {
+        "owner": 3,
+        "locationKind": "ActorInventory",
+        "id": 7,
+        "resource": "card",
+        "quantity": 1
+      },
+      {
+        "owner": 1,
+        "locationKind": "ActorInventory",
+        "id": 8,
+        "resource": "mop",
+        "quantity": 1
+      },
+      {
+        "owner": 2,
+        "locationKind": "ActorInventory",
+        "id": 9,
+        "resource": "mop",
+        "quantity": 1
+      }
+    ],
+    "information": {
+      "facts": [],
+      "repairGoals": [],
+      "configuration": {
+        "readPerMessageTicks": 0,
+        "latencyTicks": 2,
+        "postTicks": 1,
+        "readBaseTicks": 1,
+        "loginTicks": 3,
+        "readMaximumTicks": 1,
+        "inspectTicks": 2
+      },
+      "terminals": [
+        {
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "permittedRoles": [
+            "original-cleaner",
+            "guard"
+          ],
+          "capabilities": "Inbox, Post, Records",
+          "id": 1,
+          "capacity": 2
+        },
+        {
+          "position": {
+            "z": 0,
+            "y": 1,
+            "x": 2
+          },
+          "permittedRoles": [
+            "cleaner",
+            "guard"
+          ],
+          "capabilities": "Inbox, Post",
+          "id": 2,
+          "capacity": 2
+        }
+      ],
+      "credentials": [
+        {
+          "cardItem": 5,
+          "holder": 1,
+          "account": 1,
+          "id": 1
+        },
+        {
+          "id": 2,
+          "holder": 2,
+          "cardItem": 6,
+          "account": 2
+        },
+        {
+          "holder": 3,
+          "cardItem": 7,
+          "account": 3,
+          "id": 3
+        }
+      ]
+    },
+    "work": {
+      "workstations": [],
+      "machines": []
+    },
+    "jobSystem": {
+      "checkIns": [
+        {
+          "interval": 1000,
+          "actorId": 1,
+          "firstTick": 5
+        },
+        {
+          "interval": 20,
+          "actorId": 2,
+          "firstTick": 0
+        },
+        {
+          "interval": 20,
+          "actorId": 3,
+          "firstTick": 0
+        }
+      ],
+      "jobs": [],
+      "assignments": []
+    },
+    "authority": {
+      "slackMargin": 0,
+      "slackMinimum": 1000,
+      "graceTicks": 1000,
+      "emaNumerator": 1,
+      "emaDenominator": 2,
+      "unacknowledgedTicks": 30,
+      "slackMaximum": 4000
+    },
+    "routines": {
+      "assignments": [
+        {
+          "restTile": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "actorId": 1,
+          "cohort": 0
+        },
+        {
+          "restTile": {
+            "z": 0,
+            "y": 1,
+            "x": 2
+          },
+          "actorId": 2,
+          "cohort": 0
+        },
+        {
+          "restTile": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "actorId": 3,
+          "cohort": 0
+        }
+      ],
+      "configuration": {
+        "dutyTicks": 1000,
+        "cohorts": 3,
+        "periodicCheckInTicks": 1000,
+        "dayTicks": 3000,
+        "checkInWindow": 1
+      }
+    },
+    "cleanliness": {
+      "access": {
+        "roles": [
+          "original-cleaner",
+          "cleaner"
+        ],
+        "toolResource": "mop"
+      },
+      "meanSoilingTicks": 0,
+      "cleanUnitTicks": 3,
+      "dirt": [
+        {
+          "tileId": 3,
+          "units": 2
+        }
+      ]
+    },
+    "facility": {
+      "reportingRoles": [
+        "guard"
+      ],
+      "dirtThreshold": 2,
+      "repeatTicks": 36000,
+      "orderTicks": 900
+    }
+  },
+  "disturbances": [],
+  "scriptedActors": [],
+  "assertions": [
+    {
+      "tick": 0,
+      "kind": "FacilityTask",
+      "jobId": 1,
+      "state": "Absent"
+    },
+    {
+      "tick": 5,
+      "kind": "FacilityTask",
+      "jobId": 1,
+      "state": "Absent"
+    },
+    {
+      "tick": 7,
+      "kind": "FacilityTask",
+      "jobId": 1,
+      "state": "Assigned"
+    },
+    {
+      "tick": 28,
+      "kind": "LocalOrder",
+      "actorId": 2,
+      "attemptId": 1,
+      "state": "AcknowledgmentPending"
+    },
+    {
+      "tick": 30,
+      "kind": "LocalOrder",
+      "actorId": 2,
+      "attemptId": 1,
+      "state": "Working"
+    },
+    {
+      "tick": 39,
+      "kind": "Dirt",
+      "position": {
+        "z": 0,
+        "x": 2,
+        "y": 0
+      },
+      "quantity": 0
+    },
+    {
+      "tick": 39,
+      "kind": "FacilityTask",
+      "jobId": 1,
+      "state": "Assigned"
+    },
+    {
+      "tick": 47,
+      "kind": "FacilityTask",
+      "jobId": 1,
+      "state": "ReportedComplete"
+    },
+    {
+      "tick": 47,
+      "kind": "Expectation",
+      "attemptId": 1,
+      "state": "Satisfied"
+    },
+    {
+      "tick": 300,
+      "kind": "MissingReport",
+      "attemptId": 1,
+      "state": "Absent"
+    },
+    {
+      "tick": 300,
+      "kind": "Accounting"
+    }
+  ],
+  "metrics": [
+    "movement",
+    "actions",
+    "resources",
+    "information"
+  ]
+}

@@ -1,0 +1,345 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "roster_routines",
+    "catalog": "../content/tiles.json",
+    "seed": 42,
+    "horizon": 130,
+    "configuration": {
+      "itemActionTicks": 1
+    },
+    "tiles": [
+      {
+        "definition": "command",
+        "id": 1,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "traversalOverride": 2
+      },
+      {
+        "definition": "habitat",
+        "id": 2,
+        "position": {
+          "y": 0,
+          "x": 1,
+          "z": 0
+        },
+        "traversalOverride": 2
+      },
+      {
+        "definition": "habitat",
+        "id": 3,
+        "position": {
+          "y": 0,
+          "x": 2,
+          "z": 0
+        },
+        "traversalOverride": 2
+      }
+    ],
+    "actors": [
+      {
+        "name": "Citizen 1",
+        "id": 1,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      },
+      {
+        "name": "Citizen 2",
+        "id": 2,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      },
+      {
+        "name": "Citizen 3",
+        "id": 3,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      },
+      {
+        "name": "Citizen 4",
+        "id": 4,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      },
+      {
+        "name": "Citizen 5",
+        "id": 5,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      },
+      {
+        "name": "Citizen 6",
+        "id": 6,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      }
+    ],
+    "items": [
+      {
+        "quantity": 1,
+        "id": 1,
+        "owner": 1,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "quantity": 1,
+        "id": 2,
+        "owner": 2,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "quantity": 1,
+        "id": 3,
+        "owner": 3,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "quantity": 1,
+        "id": 4,
+        "owner": 4,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "quantity": 1,
+        "id": 5,
+        "owner": 5,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "quantity": 1,
+        "id": 6,
+        "owner": 6,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      }
+    ],
+    "information": {
+      "terminals": [
+        {
+          "capabilities": "Inbox, Post, Records",
+          "permittedRoles": [
+            "worker"
+          ],
+          "capacity": 1,
+          "id": 1,
+          "position": {
+            "y": 0,
+            "x": 0,
+            "z": 0
+          }
+        }
+      ],
+      "configuration": {
+        "loginTicks": 1,
+        "postTicks": 1,
+        "sessionTicks": 100,
+        "latencyTicks": 2,
+        "readMaximumTicks": 2,
+        "readBaseTicks": 2,
+        "readPerMessageTicks": 0
+      },
+      "credentials": [
+        {
+          "account": 1,
+          "cardItem": 1,
+          "id": 1,
+          "holder": 1
+        },
+        {
+          "account": 2,
+          "cardItem": 2,
+          "id": 2,
+          "holder": 2
+        },
+        {
+          "account": 3,
+          "cardItem": 3,
+          "id": 3,
+          "holder": 3
+        },
+        {
+          "account": 4,
+          "cardItem": 4,
+          "id": 4,
+          "holder": 4
+        },
+        {
+          "account": 5,
+          "cardItem": 5,
+          "id": 5,
+          "holder": 5
+        },
+        {
+          "account": 6,
+          "cardItem": 6,
+          "id": 6,
+          "holder": 6
+        }
+      ]
+    },
+    "routines": {
+      "configuration": {
+        "dayTicks": 60,
+        "cohorts": 3,
+        "periodicCheckInTicks": 10,
+        "dutyTicks": 20,
+        "checkInWindow": 5
+      },
+      "assignments": [
+        {
+          "actorId": 1,
+          "restTile": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "cohort": 0
+        },
+        {
+          "actorId": 2,
+          "restTile": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "cohort": 0
+        },
+        {
+          "actorId": 3,
+          "restTile": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "cohort": 1
+        },
+        {
+          "actorId": 4,
+          "restTile": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "cohort": 1
+        },
+        {
+          "actorId": 5,
+          "restTile": {
+            "y": 0,
+            "x": 2,
+            "z": 0
+          },
+          "cohort": 2
+        },
+        {
+          "actorId": 6,
+          "restTile": {
+            "y": 0,
+            "x": 2,
+            "z": 0
+          },
+          "cohort": 2
+        }
+      ]
+    }
+  },
+  "disturbances": [
+    {
+      "tick": 7,
+      "operationKey": "worker-3-cohort-update",
+      "type": "RosterChange",
+      "roster": {
+        "actorId": 3,
+        "restTile": {
+          "y": 0,
+          "x": 2,
+          "z": 0
+        },
+        "cohort": 0
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "KnowledgeValue",
+      "tick": 15,
+      "actorId": 3,
+      "fact": {
+        "subjectId": 3,
+        "attribute": "RosterVersion",
+        "subjectKind": "Actor"
+      },
+      "value": {
+        "kind": "Number",
+        "number": 3
+      }
+    },
+    {
+      "kind": "ActorAt",
+      "tick": 15,
+      "actorId": 3,
+      "position": {
+        "y": 0,
+        "x": 1,
+        "z": 0
+      }
+    },
+    {
+      "kind": "KnowledgeValue",
+      "tick": 39,
+      "actorId": 3,
+      "fact": {
+        "subjectId": 3,
+        "attribute": "RosterVersion",
+        "subjectKind": "Actor"
+      },
+      "value": {
+        "kind": "Number",
+        "number": 7
+      }
+    },
+    {
+      "tick": 130,
+      "kind": "Accounting"
+    }
+  ]
+}

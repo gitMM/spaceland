@@ -1,0 +1,291 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "planner_costs",
+    "catalog": "../content/work.json",
+    "seed": 42,
+    "horizon": 100,
+    "configuration": {
+      "itemActionTicks": 1
+    },
+    "tiles": [
+      {
+        "id": 1,
+        "definition": "industrial",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "id": 2,
+        "definition": "power",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 2
+        },
+        "definition": "storage",
+        "id": 3,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 3
+        },
+        "definition": "corridor",
+        "id": 4,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 4
+        },
+        "definition": "corridor",
+        "id": 5,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 5
+        },
+        "definition": "corridor",
+        "id": 6,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 6
+        },
+        "definition": "corridor",
+        "id": 7,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 7
+        },
+        "definition": "corridor",
+        "id": 8,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 8
+        },
+        "definition": "corridor",
+        "id": 9,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 9
+        },
+        "definition": "corridor",
+        "id": 10,
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 10
+        },
+        "definition": "corridor",
+        "id": 11,
+        "traversalOverride": 1
+      }
+    ],
+    "actors": [
+      {
+        "id": 1,
+        "name": "Autonomous engineer",
+        "role": "worker",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scripted": false
+      }
+    ],
+    "items": [
+      {
+        "id": 1,
+        "resource": "metal",
+        "quantity": 3,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 2,
+        "resource": "wire",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 3,
+        "resource": "tool",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 4,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "TileContainer",
+        "owner": 11
+      }
+    ],
+    "information": {
+      "facts": [
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Machine",
+            "attribute": "RequiredResource",
+            "subjectId": 1
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Resource",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Quantity",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "kind": "Coordinate",
+            "coordinate": {
+              "y": 0,
+              "z": 0,
+              "x": 10
+            }
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Location",
+            "subjectId": 4
+          },
+          "actorId": 1
+        }
+      ],
+      "repairGoals": [
+        {
+          "actorId": 1,
+          "machineId": 1
+        }
+      ]
+    },
+    "work": {
+      "workstations": [
+        {
+          "id": 1,
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "capability": "fabricate",
+          "capacity": 1,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ],
+      "machines": [
+        {
+          "id": 1,
+          "position": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "fitClass": "cartridge",
+          "requiredResource": "correct",
+          "requiredRating": 2,
+          "installTicks": 3,
+          "inspectTicks": 2,
+          "testTicks": 2,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ]
+    }
+  },
+  "disturbances": [],
+  "scriptedActors": [],
+  "assertions": [
+    {
+      "machineId": 1,
+      "tick": 100,
+      "kind": "MachineOperational",
+      "operational": true
+    },
+    {
+      "tick": 100,
+      "kind": "Accounting"
+    }
+  ],
+  "metrics": [
+    "movement",
+    "actions",
+    "resources",
+    "information"
+  ]
+}

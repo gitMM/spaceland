@@ -1,0 +1,41 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "personal_needs", "catalog": "../content/tiles.json", "seed": 42, "horizon": 30,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 4 },
+      { "id": 2, "definition": "habitat", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 4 }
+    ],
+    "actors": [
+      { "id": 1, "name": "Toilet seeker", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "name": "Off-duty resident", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } }
+    ],
+    "information": {},
+    "routines": {
+      "configuration": { "dayTicks": 240, "dutyTicks": 80, "cohorts": 3, "checkInWindow": 1, "periodicCheckInTicks": 30 },
+      "assignments": [
+        { "actorId": 1, "cohort": 2, "restTile": { "x": 1, "y": 0, "z": 0 } },
+        { "actorId": 2, "cohort": 2, "restTile": { "x": 1, "y": 0, "z": 0 } }
+      ]
+    },
+    "needs": {
+      "initial": [ { "actorId": 1, "kind": "Bladder", "q": 1800000000 }, { "actorId": 2, "kind": "WorkStrain", "q": 1800000000 } ],
+      "services": [
+        { "id": 1, "kind": "Toilet", "position": { "x": 1, "y": 0, "z": 0 }, "durationTicks": 2 },
+        { "id": 2, "kind": "RestSpot", "position": { "x": 1, "y": 0, "z": 0 }, "durationTicks": 5 }
+      ]
+    }
+  },
+  "assertions": [
+    { "tick": 3, "kind": "ActorInTransit", "actorId": 1 },
+    { "tick": 3, "kind": "ActorInTransit", "actorId": 2 },
+    { "tick": 4, "kind": "NeedActivities", "state": "Queued", "quantity": 2 },
+    { "tick": 5, "kind": "NeedService", "entityId": 1, "state": "Occupants", "quantity": 1 },
+    { "tick": 5, "kind": "NeedService", "entityId": 2, "state": "Occupants", "quantity": 1 },
+    { "tick": 7, "kind": "NeedActivities", "state": "Completed", "actorId": 1, "quantity": 1 },
+    { "tick": 10, "kind": "NeedActivities", "state": "Completed", "actorId": 2, "quantity": 1 },
+    { "tick": 30, "kind": "NeedQ", "actorId": 1, "state": "Bladder", "quantity": 230000 },
+    { "tick": 30, "kind": "NeedQ", "actorId": 2, "state": "WorkStrain", "quantity": 1799940000 },
+    { "tick": 30, "kind": "Accounting" }
+  ]
+}

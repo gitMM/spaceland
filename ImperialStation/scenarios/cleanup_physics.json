@@ -1,0 +1,41 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "cleanup_physics",
+    "catalog": "../content/cleanliness.json",
+    "seed": 42,
+    "horizon": 15,
+    "tiles": [
+      { "id": 1, "definition": "corridor", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "definition": "hull", "position": { "x": 1, "y": 0, "z": 0 } }
+    ],
+    "actors": [
+      { "id": 1, "accountId": 1, "role": "cleaner", "name": "First cleaner", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "accountId": 2, "role": "cleaner", "name": "Concurrent cleaner", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 3, "accountId": 3, "role": "observer", "name": "Remote observer", "position": { "x": 1, "y": 0, "z": 0 } }
+    ],
+    "information": {},
+    "cleanliness": { "cleanUnitTicks": 3, "meanSoilingTicks": 0, "dirt": [{ "tileId": 1, "units": 1 }] }
+  },
+  "disturbances": [{ "type": "Spill", "tick": 9, "tile": { "x": 0, "y": 0, "z": 0 } }],
+  "scriptedActors": [
+    { "actorId": 1, "commands": [
+      { "tick": 1, "kind": "Clean", "target": { "x": 0, "y": 0, "z": 0 } },
+      { "tick": 5, "kind": "Clean", "target": { "x": 0, "y": 0, "z": 0 } },
+      { "tick": 10, "kind": "Clean", "target": { "x": 0, "y": 0, "z": 0 } }
+    ] },
+    { "actorId": 2, "commands": [{ "tick": 1, "kind": "Clean", "target": { "x": 0, "y": 0, "z": 0 } }] }
+  ],
+  "assertions": [
+    { "tick": 0, "kind": "KnowledgeValue", "actorId": 1, "fact": { "subjectKind": "Tile", "subjectId": 1, "attribute": "Dirt" }, "value": { "kind": "Number", "number": 1 } },
+    { "tick": 3, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 1 },
+    { "tick": 4, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 0 },
+    { "tick": 8, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 0 },
+    { "tick": 9, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 4 },
+    { "tick": 12, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 4 },
+    { "tick": 13, "kind": "Dirt", "position": { "x": 0, "y": 0, "z": 0 }, "quantity": 3 },
+    { "tick": 15, "kind": "KnowledgeAbsent", "actorId": 3, "fact": { "subjectKind": "Tile", "subjectId": 1, "attribute": "Dirt" } },
+    { "tick": 15, "kind": "BeliefAbsent", "fact": { "subjectKind": "Tile", "subjectId": 1, "attribute": "Dirt" } },
+    { "tick": 15, "kind": "Accounting" }
+  ]
+}

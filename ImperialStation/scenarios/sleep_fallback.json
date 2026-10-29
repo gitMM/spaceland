@@ -1,0 +1,28 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "sleep_fallback", "catalog": "../content/tiles.json", "seed": 42, "horizon": 30,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 4 },
+      { "id": 2, "definition": "habitat", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 4 }
+    ],
+    "actors": [ { "id": 1, "name": "Unassigned resident", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "information": {},
+    "needs": {
+      "initial": [ { "actorId": 1, "kind": "SleepPressure", "q": 3060000000 }, { "actorId": 1, "kind": "WorkStrain", "q": 360000000 } ],
+      "services": [ { "id": 1, "kind": "RestSpot", "position": { "x": 1, "y": 0, "z": 0 }, "durationTicks": 5 } ]
+    }
+  },
+  "assertions": [
+    { "tick": 3, "kind": "ActorInTransit", "actorId": 1 },
+    { "tick": 4, "kind": "NeedActivities", "state": "Queued", "quantity": 1 },
+    { "tick": 5, "kind": "NeedService", "entityId": 1, "state": "Occupants", "quantity": 1 },
+    { "tick": 9, "kind": "NeedActivities", "state": "Completed", "quantity": 0 },
+    { "tick": 10, "kind": "NeedActivities", "state": "Completed", "quantity": 1 },
+    { "tick": 10, "kind": "NeedQ", "actorId": 1, "state": "WorkStrain", "quantity": 359940000 },
+    { "tick": 30, "kind": "NeedQ", "actorId": 1, "state": "SleepPressure", "quantity": 3060150000 },
+    { "tick": 30, "kind": "NeedActivities", "state": "Completed", "quantity": 1 },
+    { "tick": 30, "kind": "NeedService", "entityId": 1, "state": "Occupants", "quantity": 0 },
+    { "tick": 30, "kind": "Accounting" }
+  ]
+}

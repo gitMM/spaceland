@@ -6,7 +6,179 @@
 **Audience:** an LLM coding agent implementing the simulation and tools, and a human reviewer who gates each handoff
 **Companion file (non-normative):** `imperial_station_infiltration_roadmap.md` (former §23)
 
+## Implementation status — 2026-10-29
+
+This section records delivered work; it does not change the requirements below or
+certify completion of all H1–H4 gates. **The first release is still in progress.**
+
+The implementation lives in [`ImperialStation/`](../../../ImperialStation/README.md),
+a standalone .NET solution outside `Assets`. It has no runtime dependency on
+spaceland, DeathStar assets, Unity, rendering or network services, and can be copied
+out and built independently. Contracts, decision/planning code, simulation core,
+CLI runner and tests are separate projects.
+
+### Implemented and exercised
+
+| Area | Delivered behavior |
+| --- | --- |
+| Deterministic foundation | Ordered event phases; 3D weighted pathfinding and frozen movement timing; seeded random streams; finite actions, cancellation and resource accounting; canonical state digests, checkpoints and replay. |
+| Planning and knowledge | Bounded GOAP in the isolated Mind assembly; bounded private knowledge with provenance and eviction; published layout, local sensing and inspection; scoped delayed sensors. Some goal/dispatcher selection remains in Core and is an open architecture audit item. |
+| Communication and credentials | Physical credential-bound terminal sessions, queues, finite inbox reads/posts, delivery latency and separate authority beliefs; permission-filtered versioned record queries; autonomous known-card retrieval or HQ recovery with real replacement-card stock, pickup and renewed login. |
+| Work and resources | Fabrication, installation, functional testing, resource claims, stack operations and stashes; autonomous repair alternatives; distinct jobs, attempts and locally read orders; acknowledgments, suspension/resumption and delayed reports. |
+| Routines and authority | Cohort rosters and staggered check-ins; receipt-based expectations, off-duty extensions and learned timing correction; overdue incidents, bounded replacement dispatch and patrols with hourly admission accounting. |
+| Maintenance and institutions | Soiling, spills, finite cleaning, machine faults and wear; local reports drive facility work; QA, record-based audits and reprimands; detention decisions, guard preparation/search, cooperative custody, escort movement, finite intake, sentences, release and delayed receipts/revocations. Recovery from all negative institutional outcomes is not yet complete. |
+| Daily life | Exact fractional need accumulation; threshold interrupts; finite meals, toilets, rest and assigned sleep with queues and food conservation; autonomous relief, retained daily goals, berth allocation, sleep fallback and finite consenting conversations with bounded fact exchange. Full priority and multiday acceptance coverage remains open. |
+| Construction and housing | Physical material-consuming construction creates topology and real beds; bounded authority expansion planning reserves projects and pending capacity; workers read, acknowledge, gather materials, build and report autonomously; accepted completion credits each project once. Finite local surveys and delayed reports correct that project's believed capacity without changing physical beds or refunding spent materials. |
+| Verification and tools | CLI validation, execution, batch runs, replay and inspection; exported snapshots/traces and a static viewer; declared response-chain causal audits; generated recovery and construction cases; checkpoint, tracing, concurrency and metamorphic checks. Full viewer, observability and scale gates remain open. |
+
+### Latest verification evidence
+
+- Latest Release build: **zero warnings and zero errors**.
+- Latest complete suite: **816 passed, 0 failed, 0 skipped**, including the
+  specialized institutional controls and permission/checkpoint regressions. The saved
+  [test result](../../../ImperialStation/artifacts/institutional-tests/institutional-verified.trx)
+  records the complete Release regression. The initial stabilization run passed 785 tests.
+- The [current acceptance matrix](../../../ImperialStation/docs/acceptance-current.md)
+  inventories all **230 requirement IDs** and the T00–T27 gates. It distinguishes
+  component evidence from complete acceptance. The [integration report](../../../ImperialStation/docs/integration-baseline.md)
+  records two-day autonomous participation, shortages, recovery during ordinary
+  work, checkpoint continuation, scale measurements and remaining limits.
+- The supplied daily station proves all 12 citizens eat and sleep on both configured
+  days, work on both days, and also rest, use toilets and converse. All 24 scheduled
+  rests finish despite the work backlog; all 12 causal role audits pass. The shortened
+  day and rate/duration scaling are declared. The population baseline runs 2,048 real
+  active workers over 36,000 ticks and cohort transitions. Full T15 institutional
+  coverage and all T22 variants remain open.
+- The [finite recovery workload](../../../ImperialStation/docs/recovery-station.md)
+  now passes at 32 and 2,048 citizens. The five-day population run recovers 256 lost
+  credentials and 128 machine faults, receives work and patrol outcomes for 18
+  overdue incidents, and closes all 305 facility tasks. Every citizen eats and
+  sleeps each day; all 10,240 scheduled rests complete. Checkpoint continuation
+  matches exactly. Shortened days, generalist roles, missed routine windows and
+  performance limits are declared in the report; full release acceptance stays open.
+- The performance follow-up reduces that same 2,048-citizen primary execution
+  from 861.335 to 320.194 seconds (about 2.69× faster), with identical event counts
+  and final state. The complete small recovery/replay check takes about four
+  seconds, excluding build time. Derived indices and compact route-search storage
+  preserve the declared simulation rules; see the recovery report for evidence.
+- The [specialized institutional station](../../../ImperialStation/docs/institutional-station.md)
+  proves genuine bad installations and authenticated false reports followed by
+  autonomous verification, scoped audits, two reprimands, detention authorization,
+  physical escort/intake/release and resumed work. Eight small controls and a
+  2,048-citizen normal run pass with matching checkpoints. Machine-scoped records,
+  remembered own submissions, received-report-based replacement teams and off-duty
+  conversation consent fix the exposed failures. Snapshot format is now 43.
+  The complete 32-citizen command takes **3.309 seconds**, including checkpoint
+  continuation and exported evidence, excluding compilation. The 2,048-citizen
+  command takes **213.815 seconds** overall: 124.528 seconds primary simulation
+  and 84.968 seconds continuation. These two-day timings are not a speedup
+  comparison with the earlier five-day recovery workload.
+- [Capacity-correction scenario](../../../ImperialStation/scenarios/construction_capacity_correction.json):
+  an autonomous builder completes the habitat; an incorrect survey lowers believed
+  capacity from 16 to 8; local inspection and an autonomous terminal return report
+  restore belief to 16. Physical capacity remains 16 during both corrections.
+  The inspector's setup and inspection commands are explicit test triggers, not
+  evidence of autonomous survey dispatch.
+- The construction-survey replay matches final state, full trace and response-chain
+  proofs exactly. The [historical survey report](../../../ImperialStation/docs/h3-construction-surveys-progress.md)
+  records commands, event timings, hashes and limitations for checkpoint format
+  **42**. Current format is **43**; use the archived build for old binary checkpoints
+  or regenerate them from the scenarios with the current build.
+- [Generated construction coverage](../../../ImperialStation/docs/h3-construction-generated-progress.md)
+  exercises 20 seeds for each of seven variants, including delayed reports, need
+  interruption, shortages and vacant capacity, plus further concurrency controls.
+
+### Remaining first-release work
+
+- Identify initial completed capacity by berth/tile records instead of the current
+  aggregate seed; finish construction rejection/blocked-work follow-up, autonomous
+  survey dispatch and communication of new layout to other workers. R-AUT-01 and
+  R-AUT-06 are not fully closed by project reconciliation alone.
+- Complete the remaining work domains and nested recipe cases, and verify the full
+  priority policy across needs, reports, routines, recovery and institutional work.
+- Audit the remaining negative patrol/escort outcomes and reassignment variants.
+  The integrated audit-to-release chain and interrupted-escort replacement are
+  proven for the declared controls; the full T20 variant inventory remains open.
+- Extend population evidence beyond one institutional chain under background load;
+  finish the remaining daily-life variants,
+  calibration/backlog recovery, contention and staffing metrics, tuning sweeps,
+  observability and viewer validation. The current daily/population baselines do not
+  close these remaining H1–H4 acceptance obligations.
+
+Detailed incremental reports and earlier H1 traceability are linked from the
+[standalone README](../../../ImperialStation/README.md). Passing the current suite
+is evidence for implemented behavior, not a claim that every specified test exists.
+
+**Current user instruction:** keep the computer running. The earlier shutdown
+authorization was revoked on 2026-10-29; see the
+[updated instruction](../../../ImperialStation/docs/completion-instruction.md).
+
+### Execution status — integration and scale
+
+**Completed follow-up (2026-10-29):** the
+[specialized institutional station](../../../ImperialStation/docs/institutional-station.md):
+32-citizen audit-to-detention/escort/release chain and all eight declared controls
+pass with daily life enabled, including full-capacity waiting and replacement after
+escort interruption. The same generator passes at 2,048 citizens with matching
+checkpoint continuation. Only the declared misconduct trigger is scripted. The
+report preserves the original plan, evidence and remaining T20/T22/T15 limits.
+
+The sequence requested on 2026-10-29 is complete for its declared baseline scope.
+The record below preserves what was requested; it is not a new instruction to
+repeat completed work. The requirements and acceptance thresholds remain unchanged.
+
+1. **Stabilize the current increment.** Rebuild and run the complete Release suite,
+   reproduce any failures and repair their causes. Preserve unrelated ongoing work.
+2. **Create the current acceptance matrix.** Maintain
+   `ImperialStation/docs/acceptance-current.md` as the current requirement/test map.
+   Distinguish passing component evidence from complete acceptance gates, partial
+   coverage and checks not yet run. Historical increment reports remain historical.
+3. **Prove the integrated daily station.** Run a connected, adequately supplied
+   station for at least two configured days, with autonomous citizens, recurring
+   cohorts, ordinary work, terminal visits and all five daily activities. Measure
+   participation per citizen/day, service capacity, food/resource conservation,
+   routine priority and checkpoint continuation. Declare fixture overrides. Add
+   shortage and interruption controls; do not script citizen responses.
+4. **Run the population baseline.** Use the same simulation for 2,048 persistent
+   citizens, at least 1,024 active workers and 36,000 ticks spanning a cohort change.
+   Measure real planning, movement, work, needs, queues, allocations and throughput.
+   Separate the measured baseline from any still-unproven T15 institutional clauses.
+5. **Fix exposed failures and repeat affected checks.** First correct starvation,
+   accounting, information-boundary and continuation failures; then optimize measured
+   bottlenecks without changing semantics. Record exact commands and evidence in
+   `ImperialStation/docs/integration-baseline.md`, and update the current matrix.
+
+Keep the implementation headless. Additional infiltration features, a new generic
+framework and a simulation rewrite are outside this sequence. A green component
+suite or a fast population run alone does not close H1–H4 or establish playability.
+
+### Recommended next increment — close daily-life acceptance gaps
+
+Use the existing 32-citizen institutional workload for frequent iteration. First
+classify its 48 missed ordinary routine windows (2,887 at population scale) by
+cause: higher-priority obligations, committed actions, travel/queues, or policy
+failure. Passing meals/sleep and scheduled-rest checks does not settle those misses.
+Add focused evidence for unread rosters and due routines/check-ins under sustained
+work, then fix demonstrated failures and update T22 in the acceptance matrix.
+
+Run the affected small controls after behavioral changes; run the complete suite
+and same-generator population check at the increment boundary. After that, broaden
+concurrent institutional chains and seed coverage for T15/T20/T26. Construction
+follow-up, architecture separation and the other open matrix clauses remain release
+work. This is implementation guidance, not a change to normative requirements or
+evidence that these remaining checks have already passed.
+
 ## 0. How to use this document
+
+### Verified follow-up — finite disruption and recovery
+
+The current user goal extends the baseline: first expose and fix behavioral
+failures with 32 citizens, then run the same finite disruption/recovery workload
+with 2,048. Lost cards, equipment faults and overdue reports must resolve through
+ordinary citizen and institutional actions while meals, sleep and work continue.
+The [recovery report](../../../ImperialStation/docs/recovery-station.md) records
+the declared workload, failures, repairs and verification evidence. Both population
+sizes now pass the requested recovery goal; this does not close all T15/T22/T26 clauses.
 
 ### 0.1 Instructions to the implementing agent
 

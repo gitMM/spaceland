@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "station.contracts": {
+        "type": "Project"
+      },
+      "station.core": {
+        "type": "Project",
+        "dependencies": {
+          "Station.Contracts": "[1.0.0, )",
+          "Station.Mind": "[1.0.0, )"
+        }
+      },
+      "station.mind": {
+        "type": "Project",
+        "dependencies": {
+          "Station.Contracts": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

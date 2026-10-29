@@ -1,0 +1,36 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "recovery_identity", "catalog": "../content/tiles.json", "seed": 42, "horizon": 6,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "definition": "habitat", "position": { "x": 1, "y": 0, "z": 0 } }
+    ],
+    "actors": [ { "id": 1, "name": "Worker at recovery desk", "role": "worker", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "items": [ { "id": 101, "resource": "keycard", "quantity": 1, "locationKind": "TileContainer", "owner": 2 } ],
+    "information": {
+      "configuration": { "loginTicks": 1 },
+      "terminals": [ { "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "permittedRoles": [ "worker" ], "capabilities": "CredentialRecovery, Inbox, Post, Records" } ],
+      "credentials": [ { "id": 1, "holder": 1, "account": 1, "cardItem": 101 } ],
+      "recovery": { "identityCheckTicks": 3, "capabilities": [ { "actorId": 1, "accountId": 1 } ] },
+      "messages": [ { "senderAccount": 1, "deliveryTick": 0, "message": { "kind": "Peer", "recipientKind": "Account", "recipientAccount": 1, "subject": { "subjectKind": "Job", "subjectId": 1, "attribute": "WorkStatus" }, "claim": { "kind": "Number", "number": 1 }, "observedTick": 0 } } ]
+    }
+  },
+  "scriptedActors": [ { "actorId": 1, "commands": [
+    { "tick": 0, "kind": "Login", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 1, "kind": "RecoveryLogin", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 5, "kind": "ReadInbox", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 6, "kind": "Logout", "target": { "x": 0, "y": 0, "z": 0 } }
+  ] } ],
+  "assertions": [
+    { "tick": 0, "kind": "LastFailure", "actorId": 1, "reason": "MissingCredential" },
+    { "tick": 3, "kind": "Sessions", "state": "CredentialRecovery", "quantity": 0 },
+    { "tick": 4, "kind": "Sessions", "actorId": 1, "state": "CredentialRecovery", "quantity": 1 },
+    { "tick": 5, "kind": "Sessions", "state": "Normal", "quantity": 0 },
+    { "tick": 5, "kind": "LastFailure", "actorId": 1, "reason": "RecoverySessionRestricted" },
+    { "tick": 5, "kind": "MessageStage", "messageId": 1, "stage": "DeliveredToMailbox" },
+    { "tick": 6, "kind": "Sessions", "state": "CredentialRecovery", "quantity": 0 },
+    { "tick": 6, "kind": "ItemAtTile", "itemId": 101, "position": { "x": 1, "y": 0, "z": 0 } },
+    { "tick": 6, "kind": "Accounting" }
+  ]
+}

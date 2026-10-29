@@ -1,0 +1,853 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "escort_movement",
+    "catalog": "../content/escort.json",
+    "seed": 42,
+    "horizon": 800,
+    "configuration": {
+      "itemActionTicks": 1
+    },
+    "tiles": [
+      {
+        "id": 1,
+        "definition": "industrial",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "id": 2,
+        "definition": "power",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "traversalOverride": 1
+      },
+      {
+        "position": {
+          "y": 0,
+          "z": 0,
+          "x": 2
+        },
+        "definition": "storage",
+        "id": 3,
+        "traversalOverride": 1
+      }
+    ],
+    "actors": [
+      {
+        "id": 1,
+        "name": "Autonomous engineer",
+        "role": "worker",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "scripted": true
+      },
+      {
+        "id": 2,
+        "name": "Supervisor",
+        "role": "supervisor",
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        }
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 0
+        },
+        "role": "guard",
+        "name": "Guard 3",
+        "id": 3
+      },
+      {
+        "position": {
+          "z": 0,
+          "y": 0,
+          "x": 0
+        },
+        "role": "guard",
+        "name": "Guard 4",
+        "id": 4
+      }
+    ],
+    "items": [
+      {
+        "id": 1,
+        "resource": "metal",
+        "quantity": 3,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 2,
+        "resource": "wire",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 3,
+        "resource": "tool",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 1
+      },
+      {
+        "id": 4,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "TileContainer",
+        "owner": 3
+      },
+      {
+        "owner": 1,
+        "resource": "card",
+        "quantity": 1,
+        "id": 5,
+        "locationKind": "ActorInventory"
+      },
+      {
+        "id": 6,
+        "resource": "correct",
+        "quantity": 1,
+        "locationKind": "MachineSlot",
+        "owner": 1
+      },
+      {
+        "id": 7,
+        "resource": "card",
+        "quantity": 1,
+        "locationKind": "ActorInventory",
+        "owner": 2
+      },
+      {
+        "owner": 1,
+        "quantity": 1,
+        "id": 8,
+        "resource": "wrong",
+        "locationKind": "ActorInventory"
+      },
+      {
+        "owner": 1,
+        "resource": "wrong",
+        "locationKind": "ActorInventory",
+        "quantity": 1,
+        "id": 9
+      },
+      {
+        "locationKind": "ActorInventory",
+        "quantity": 1,
+        "resource": "card",
+        "id": 13,
+        "owner": 3
+      },
+      {
+        "locationKind": "ActorInventory",
+        "quantity": 1,
+        "resource": "card",
+        "id": 14,
+        "owner": 4
+      },
+      {
+        "quantity": 1,
+        "resource": "guard_equipment",
+        "id": 21,
+        "owner": 3,
+        "locationKind": "TileContainer"
+      },
+      {
+        "quantity": 1,
+        "resource": "guard_equipment",
+        "id": 22,
+        "owner": 3,
+        "locationKind": "TileContainer"
+      }
+    ],
+    "information": {
+      "facts": [
+        {
+          "value": {
+            "kind": "Text",
+            "text": "correct"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Resource",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Quantity",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "value": {
+            "kind": "Coordinate",
+            "coordinate": {
+              "y": 0,
+              "z": 0,
+              "x": 2
+            }
+          },
+          "key": {
+            "subjectKind": "Item",
+            "attribute": "Location",
+            "subjectId": 4
+          },
+          "actorId": 1
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 21,
+            "attribute": "Resource"
+          },
+          "value": {
+            "text": "guard_equipment",
+            "kind": "Text"
+          },
+          "actorId": 3
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 21,
+            "attribute": "Quantity"
+          },
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "actorId": 3
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 21,
+            "attribute": "LocationKind"
+          },
+          "value": {
+            "number": 0,
+            "kind": "Number"
+          },
+          "actorId": 3
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 21,
+            "attribute": "Location"
+          },
+          "value": {
+            "coordinate": {
+              "z": 0,
+              "y": 0,
+              "x": 2
+            },
+            "kind": "Coordinate"
+          },
+          "actorId": 3
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 22,
+            "attribute": "Resource"
+          },
+          "value": {
+            "text": "guard_equipment",
+            "kind": "Text"
+          },
+          "actorId": 4
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 22,
+            "attribute": "Quantity"
+          },
+          "value": {
+            "number": 1,
+            "kind": "Number"
+          },
+          "actorId": 4
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 22,
+            "attribute": "LocationKind"
+          },
+          "value": {
+            "number": 0,
+            "kind": "Number"
+          },
+          "actorId": 4
+        },
+        {
+          "key": {
+            "subjectKind": "Item",
+            "subjectId": 22,
+            "attribute": "Location"
+          },
+          "value": {
+            "coordinate": {
+              "z": 0,
+              "y": 0,
+              "x": 2
+            },
+            "kind": "Coordinate"
+          },
+          "actorId": 4
+        }
+      ],
+      "repairGoals": [],
+      "configuration": {
+        "readPerMessageTicks": 0,
+        "latencyTicks": 1,
+        "postTicks": 1,
+        "readBaseTicks": 1,
+        "loginTicks": 1,
+        "readMaximumTicks": 1,
+        "queryTicks": 3
+      },
+      "terminals": [
+        {
+          "permittedRoles": [
+            "worker"
+          ],
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 1
+          },
+          "id": 1
+        },
+        {
+          "id": 2,
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "permittedRoles": [
+            "supervisor"
+          ],
+          "capacity": 1,
+          "capabilities": "Inbox, Post, Records"
+        },
+        {
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "permittedRoles": [
+            "guard"
+          ],
+          "capacity": 1,
+          "capabilities": "Inbox, Post",
+          "id": 3
+        },
+        {
+          "position": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          },
+          "permittedRoles": [
+            "guard"
+          ],
+          "capacity": 1,
+          "capabilities": "Inbox, Post",
+          "id": 4
+        }
+      ],
+      "credentials": [
+        {
+          "cardItem": 5,
+          "holder": 1,
+          "account": 1,
+          "id": 1
+        },
+        {
+          "id": 2,
+          "holder": 2,
+          "account": 2,
+          "cardItem": 7
+        },
+        {
+          "holder": 3,
+          "cardItem": 13,
+          "account": 3,
+          "id": 3
+        },
+        {
+          "holder": 4,
+          "cardItem": 14,
+          "account": 4,
+          "id": 4
+        }
+      ],
+      "recordAccess": [
+        {
+          "kind": "WorkAttempt",
+          "actorId": 2,
+          "terminalId": 2,
+          "requiredRole": "supervisor"
+        },
+        {
+          "kind": "WorkReport",
+          "actorId": 2,
+          "terminalId": 2,
+          "requiredRole": "supervisor"
+        }
+      ]
+    },
+    "work": {
+      "workstations": [
+        {
+          "id": 1,
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "capability": "fabricate",
+          "capacity": 1,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ],
+      "machines": [
+        {
+          "id": 1,
+          "position": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "fitClass": "cartridge",
+          "requiredResource": "correct",
+          "requiredRating": 2,
+          "installTicks": 3,
+          "inspectTicks": 2,
+          "testTicks": 2,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        },
+        {
+          "id": 2,
+          "position": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "fitClass": "cartridge",
+          "requiredResource": "correct",
+          "requiredRating": 2,
+          "installTicks": 3,
+          "inspectTicks": 2,
+          "testTicks": 2,
+          "access": {
+            "roles": [
+              "worker"
+            ],
+            "toolResource": "tool"
+          }
+        }
+      ]
+    },
+    "jobSystem": {
+      "checkIns": [
+        {
+          "actorId": 2,
+          "firstTick": 0,
+          "interval": 20
+        }
+      ],
+      "jobs": [
+        {
+          "machineId": 1,
+          "id": 1
+        },
+        {
+          "machineId": 2,
+          "id": 2
+        }
+      ],
+      "assignments": [
+        {
+          "jobId": 1,
+          "actorId": 1,
+          "key": "repair",
+          "expires": 1000
+        },
+        {
+          "expires": 1000,
+          "actorId": 1,
+          "key": "repair-second",
+          "jobId": 2
+        }
+      ]
+    },
+    "authority": {
+      "graceTicks": 1000
+    },
+    "machineWear": {
+      "meanIntervalTicks": 0
+    },
+    "routines": {
+      "configuration": {
+        "dayTicks": 3000,
+        "periodicCheckInTicks": 20,
+        "dutyTicks": 1000,
+        "checkInWindow": 1,
+        "cohorts": 3
+      },
+      "assignments": [
+        {
+          "actorId": 2,
+          "cohort": 0,
+          "restTile": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          }
+        },
+        {
+          "cohort": 0,
+          "actorId": 3,
+          "restTile": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          }
+        },
+        {
+          "cohort": 0,
+          "actorId": 4,
+          "restTile": {
+            "z": 0,
+            "y": 0,
+            "x": 0
+          }
+        }
+      ]
+    },
+    "qualityAssurance": {
+      "samplePermille": 1000,
+      "delayTicks": 5,
+      "orderTicks": 1000,
+      "supervisorRole": "supervisor"
+    },
+    "personnel": {},
+    "detention": {
+      "sentenceTicks": 1000,
+      "orderTicks": 2000,
+      "escort": {
+        "destination": {
+          "z": 0,
+          "y": 0,
+          "x": 2
+        },
+        "facilityId": 1,
+        "requiredEquipment": "guard_equipment",
+        "rendezvous": {
+          "z": 0,
+          "y": 0,
+          "x": 0
+        }
+      }
+    }
+  },
+  "disturbances": [],
+  "scriptedActors": [
+    {
+      "commands": [
+        {
+          "kind": "Login",
+          "tick": 0,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "Install",
+          "itemId": 8,
+          "tick": 1,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "PostMessage",
+          "message": {
+            "recipientKind": "Authority",
+            "operationKey": "accept",
+            "kind": "OrderAccepted",
+            "subject": {
+              "attribute": "WorkStatus",
+              "subjectId": 1,
+              "subjectKind": "Attempt"
+            },
+            "attemptId": 1,
+            "claim": {
+              "kind": "Text",
+              "text": "Accepted"
+            },
+            "taskId": 1,
+            "observedTick": 4,
+            "relatedMessageId": 1
+          },
+          "tick": 4,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "PostMessage",
+          "message": {
+            "recipientKind": "Authority",
+            "attemptId": 1,
+            "claim": {
+              "kind": "Boolean",
+              "number": 1
+            },
+            "taskId": 1,
+            "kind": "WorkCompleted",
+            "observedTick": 5,
+            "operationKey": "complete",
+            "subject": {
+              "attribute": "Operational",
+              "subjectId": 1,
+              "subjectKind": "Machine"
+            }
+          },
+          "tick": 5,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "Login",
+          "tick": 7,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "Install",
+          "itemId": 9,
+          "tick": 8,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 2
+        },
+        {
+          "kind": "PostMessage",
+          "message": {
+            "recipientKind": "Authority",
+            "operationKey": "accept-second",
+            "kind": "OrderAccepted",
+            "subject": {
+              "attribute": "WorkStatus",
+              "subjectId": 2,
+              "subjectKind": "Attempt"
+            },
+            "attemptId": 2,
+            "claim": {
+              "kind": "Text",
+              "text": "Accepted"
+            },
+            "taskId": 2,
+            "observedTick": 11,
+            "relatedMessageId": 2
+          },
+          "tick": 11,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        },
+        {
+          "kind": "PostMessage",
+          "message": {
+            "recipientKind": "Authority",
+            "attemptId": 2,
+            "claim": {
+              "kind": "Boolean",
+              "number": 1
+            },
+            "taskId": 2,
+            "kind": "WorkCompleted",
+            "observedTick": 12,
+            "operationKey": "complete-second",
+            "subject": {
+              "attribute": "Operational",
+              "subjectId": 2,
+              "subjectKind": "Machine"
+            }
+          },
+          "tick": 12,
+          "target": {
+            "z": 0,
+            "x": 1,
+            "y": 0
+          },
+          "serviceId": 1
+        }
+      ],
+      "actorId": 1
+    }
+  ],
+  "assertions": [
+    {
+      "tick": 734,
+      "kind": "Accounting"
+    },
+    {
+      "kind": "EscortDispatch",
+      "entityId": 1,
+      "state": "TeamForming",
+      "tick": 734
+    },
+    {
+      "kind": "LocalGuardOrder",
+      "state": "TargetLocated",
+      "actorId": 3,
+      "tick": 734
+    },
+    {
+      "kind": "LocalGuardOrder",
+      "state": "TargetLocated",
+      "actorId": 4,
+      "tick": 734
+    },
+    {
+      "kind": "ReprimandCount",
+      "accountId": 1,
+      "quantity": 2,
+      "tick": 734
+    },
+    {
+      "kind": "DetentionAuthorizations",
+      "accountId": 1,
+      "state": "Authorized",
+      "quantity": 1,
+      "tick": 734
+    },
+    {
+      "kind": "Equipped",
+      "actorId": 3,
+      "itemId": 21,
+      "tick": 734
+    },
+    {
+      "kind": "Equipped",
+      "actorId": 4,
+      "itemId": 22,
+      "tick": 734
+    },
+    {
+      "kind": "ActorAt",
+      "position": {
+        "z": 0,
+        "y": 0,
+        "x": 2
+      },
+      "actorId": 3,
+      "tick": 734
+    },
+    {
+      "kind": "ActorAt",
+      "position": {
+        "z": 0,
+        "y": 0,
+        "x": 2
+      },
+      "actorId": 4,
+      "tick": 734
+    },
+    {
+      "quantity": 2,
+      "kind": "LocalGuardTeam",
+      "tick": 734,
+      "entityId": 1,
+      "state": "Formed"
+    },
+    {
+      "kind": "EscortGroup",
+      "tick": 734,
+      "entityId": 1,
+      "state": "AwaitingIntake",
+      "quantity": 3
+    },
+    {
+      "kind": "ActorAt",
+      "tick": 734,
+      "actorId": 1,
+      "position": {
+        "z": 0,
+        "y": 0,
+        "x": 2
+      }
+    }
+  ],
+  "metrics": [
+    "movement",
+    "actions",
+    "resources",
+    "information"
+  ]
+}

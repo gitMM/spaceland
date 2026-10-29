@@ -1,0 +1,33 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "autonomous_need_relief", "catalog": "../content/tiles.json", "seed": 42, "horizon": 100,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 4 },
+      { "id": 2, "definition": "habitat", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 4 },
+      { "id": 3, "definition": "habitat", "position": { "x": 2, "y": 0, "z": 0 }, "traversalOverride": 4 }
+    ],
+    "actors": [ { "id": 1, "name": "Resident", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "items": [ { "id": 1, "resource": "meal", "quantity": 2, "locationKind": "TileContainer", "owner": 3 } ],
+    "information": {},
+    "needs": {
+      "initial": [ { "actorId": 1, "kind": "Hunger", "q": 2520000000 } ],
+      "services": [
+        { "id": 1, "kind": "Cafeteria", "position": { "x": 1, "y": 0, "z": 0 }, "durationTicks": 5 },
+        { "id": 2, "kind": "Cafeteria", "position": { "x": 2, "y": 0, "z": 0 }, "durationTicks": 5 }
+      ]
+    }
+  },
+  "assertions": [
+    { "tick": 4, "kind": "NeedActivities", "state": "Queued", "quantity": 1 },
+    { "tick": 5, "kind": "NeedActivities", "state": "Rejected", "quantity": 1 },
+    { "tick": 10, "kind": "NeedService", "entityId": 2, "state": "Queued", "quantity": 1 },
+    { "tick": 11, "kind": "NeedService", "entityId": 2, "state": "Occupants", "quantity": 1 },
+    { "tick": 15, "kind": "NeedActivities", "state": "Completed", "quantity": 0 },
+    { "tick": 16, "kind": "NeedActivities", "state": "Completed", "quantity": 1 },
+    { "tick": 100, "kind": "NeedQ", "actorId": 1, "state": "Hunger", "quantity": 720600000 },
+    { "tick": 100, "kind": "NeedService", "entityId": 1, "state": "Queued", "quantity": 0 },
+    { "tick": 100, "kind": "NeedService", "entityId": 2, "state": "Occupants", "quantity": 0 },
+    { "tick": 100, "kind": "Accounting" }
+  ]
+}

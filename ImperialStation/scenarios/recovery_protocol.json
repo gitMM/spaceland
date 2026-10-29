@@ -1,0 +1,51 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "recovery_protocol", "catalog": "../content/credential-recovery.json", "seed": 42, "horizon": 909,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "command", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "definition": "corridor", "position": { "x": 1, "y": 0, "z": 0 } }
+    ],
+    "actors": [ { "id": 1, "name": "Worker at credential desk", "role": "worker", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "items": [
+      { "id": 10, "resource": "blank_keycard", "quantity": 2, "locationKind": "TileContainer", "owner": 1 },
+      { "id": 101, "resource": "keycard", "quantity": 1, "locationKind": "TileContainer", "owner": 2 }
+    ],
+    "work": { "workstations": [ { "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "capability": "CredentialIssuance", "access": { "roles": [ "worker" ] } } ] },
+    "information": {
+      "configuration": { "loginTicks": 1, "readBaseTicks": 1, "readPerMessageTicks": 0, "readMaximumTicks": 1, "postTicks": 1 },
+      "terminals": [ { "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "permittedRoles": [ "worker" ], "capabilities": "CredentialRecovery, Inbox, Post, Records" } ],
+      "credentials": [ { "id": 1, "holder": 1, "account": 1, "cardItem": 101 } ],
+      "recovery": { "capabilities": [ { "actorId": 1, "accountId": 1 } ], "desks": [ { "terminalId": 1, "workstationId": 1, "recipeId": 1 } ] },
+      "messages": [ { "senderAccount": 1, "deliveryTick": 0, "message": { "kind": "Peer", "recipientKind": "Account", "recipientAccount": 1, "subject": { "subjectKind": "Job", "subjectId": 1, "attribute": "WorkStatus" }, "claim": { "kind": "Number", "number": 1 }, "observedTick": 0 } } ]
+    }
+  },
+  "scriptedActors": [ { "actorId": 1, "commands": [
+    { "tick": 0, "kind": "RecoveryLogin", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 300, "kind": "PostLostCard", "serviceId": 1, "itemId": 101, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 305, "kind": "ReadRecoveryInbox", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 306, "kind": "IssueReplacement", "serviceId": 1, "itemId": 101, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 906, "kind": "PickUp", "itemId": 102, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 907, "kind": "Login", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 908, "kind": "ReadInbox", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } }
+  ] } ],
+  "assertions": [
+    { "tick": 299, "kind": "Sessions", "state": "CredentialRecovery", "quantity": 0 },
+    { "tick": 300, "kind": "Sessions", "state": "CredentialRecovery", "quantity": 1 },
+    { "tick": 302, "kind": "CredentialRecoveryCases", "state": "Authorized", "quantity": 0 },
+    { "tick": 303, "kind": "CredentialRecoveryCases", "state": "Authorized", "quantity": 1 },
+    { "tick": 305, "kind": "KnowledgeAbsent", "actorId": 1, "fact": { "subjectKind": "Credential", "subjectId": 1, "attribute": "RecoveryCase" } },
+    { "tick": 305, "kind": "MessageStage", "messageId": 3, "stage": "DeliveredToMailbox" },
+    { "tick": 306, "kind": "MessageStage", "messageId": 3, "stage": "Read" },
+    { "tick": 905, "kind": "ItemState", "itemId": 10, "quantity": 2, "locationKind": "TileContainer", "owner": 1 },
+    { "tick": 905, "kind": "CredentialRecoveryCases", "state": "Issued", "quantity": 0 },
+    { "tick": 906, "kind": "CredentialRecoveryCases", "state": "Issued", "quantity": 1 },
+    { "tick": 906, "kind": "ItemState", "itemId": 102, "quantity": 1, "locationKind": "ServiceOutput", "owner": 1 },
+    { "tick": 906, "kind": "ItemState", "itemId": 10, "quantity": 1, "locationKind": "TileContainer", "owner": 1 },
+    { "tick": 907, "kind": "ItemHeld", "actorId": 1, "itemId": 102 },
+    { "tick": 908, "kind": "Sessions", "state": "Normal", "quantity": 1 },
+    { "tick": 909, "kind": "MessageStage", "messageId": 1, "stage": "Read" },
+    { "tick": 909, "kind": "ItemAtTile", "itemId": 101, "position": { "x": 1, "y": 0, "z": 0 } },
+    { "tick": 909, "kind": "Accounting" }
+  ]
+}

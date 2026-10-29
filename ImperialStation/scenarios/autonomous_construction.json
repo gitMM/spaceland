@@ -1,0 +1,452 @@
+{
+  "initialState": {
+    "actors": [
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "builder",
+        "name": "Citizen 1",
+        "id": 1
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 2",
+        "id": 2
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 3",
+        "id": 3
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 4",
+        "id": 4
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 5",
+        "id": 5
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 6",
+        "id": 6
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 7",
+        "id": 7
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 8",
+        "id": 8
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 9",
+        "id": 9
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 10",
+        "id": 10
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 11",
+        "id": 11
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 12",
+        "id": 12
+      }
+    ],
+    "horizon": 20000,
+    "tiles": [
+      {
+        "definition": "habitat",
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "traversalOverride": 1,
+        "id": 1
+      },
+      {
+        "definition": "corridor",
+        "position": {
+          "x": 1,
+          "z": 0,
+          "y": 0
+        },
+        "traversalOverride": 1,
+        "id": 2
+      }
+    ],
+    "information": {
+      "credentials": [
+        {
+          "cardItem": 2,
+          "holder": 1,
+          "id": 1,
+          "account": 1
+        }
+      ],
+      "terminals": [
+        {
+          "capabilities": "Inbox, Post, Records",
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "id": 1,
+          "permittedRoles": [
+            "builder"
+          ]
+        }
+      ],
+      "configuration": {
+        "loginTicks": 2,
+        "readBaseTicks": 3,
+        "postTicks": 2,
+        "readMaximumTicks": 20,
+        "latencyTicks": 5,
+        "readPerMessageTicks": 1,
+        "sessionTicks": 1200
+      }
+    },
+    "schemaVersion": 1,
+    "needs": {
+      "services": [
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 1,
+          "assignedActorId": 1
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 2,
+          "assignedActorId": 2
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 3,
+          "assignedActorId": 3
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 4,
+          "assignedActorId": 4
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 5,
+          "assignedActorId": 5
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 6,
+          "assignedActorId": 6
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 7,
+          "assignedActorId": 7
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 8,
+          "assignedActorId": 8
+        }
+      ]
+    },
+    "catalog": "../content/autonomous-construction.json",
+    "items": [
+      {
+        "owner": 1,
+        "resource": "material",
+        "locationKind": "TileContainer",
+        "id": 1,
+        "quantity": 4
+      },
+      {
+        "owner": 1,
+        "quantity": 1,
+        "id": 2,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      }
+    ],
+    "id": "autonomous-construction",
+    "work": {},
+    "seed": 42,
+    "growth": {
+      "maximum": {
+        "x": 3,
+        "z": 0,
+        "y": 0
+      },
+      "believedCompletedBerths": 8,
+      "knownMaterials": [
+        {
+          "quantity": 4,
+          "resource": "material"
+        }
+      ],
+      "minimum": {
+        "x": 0,
+        "z": 0,
+        "y": 0
+      },
+      "reservePermille": 0
+    },
+    "authority": {},
+    "jobSystem": {},
+    "routines": {
+      "assignments": [
+        {
+          "cohort": 0,
+          "actorId": 1,
+          "restTile": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          }
+        }
+      ],
+      "configuration": {
+        "periodicCheckInTicks": 500,
+        "checkInWindow": 1,
+        "dutyTicks": 288000,
+        "cohorts": 3,
+        "dayTicks": 864000
+      }
+    },
+    "responseChainRoles": [
+      {
+        "triggerKind": "Event",
+        "trigger": {
+          "actorId": 0,
+          "tick": 0,
+          "type": "GrowthProjectCommitted"
+        },
+        "requiredEvents": [
+          {
+            "actorId": 0,
+            "type": "AuthorityOrderPosted"
+          },
+          {
+            "actorId": 1,
+            "type": "MessageRead"
+          },
+          {
+            "actorId": 1,
+            "type": "OrderAcknowledged"
+          },
+          {
+            "actorId": 1,
+            "type": "ActionCompleted",
+            "detail": "PickUp"
+          },
+          {
+            "actorId": 1,
+            "type": "ConstructionCompleted"
+          },
+          {
+            "actorId": 1,
+            "type": "ConstructionGoalCompleted"
+          },
+          {
+            "actorId": 0,
+            "type": "ConstructionCapacityAccepted"
+          }
+        ],
+        "actorId": 1,
+        "name": "habitat-builder"
+      }
+    ]
+  },
+  "scriptedActors": [],
+  "assertions": [
+    {
+      "kind": "Construction",
+      "state": "Completed",
+      "entityId": 1,
+      "tick": 20000
+    },
+    {
+      "kind": "HousingBerths",
+      "quantity": 16,
+      "tick": 20000
+    },
+    {
+      "kind": "GrowthBelievedBerths",
+      "quantity": 16,
+      "tick": 20000
+    },
+    {
+      "kind": "GrowthPendingBerths",
+      "quantity": 0,
+      "tick": 20000
+    },
+    {
+      "kind": "GrowthCommitments",
+      "quantity": 1,
+      "tick": 20000
+    },
+    {
+      "kind": "Accounting",
+      "tick": 20000
+    },
+    {
+      "kind": "HousingBerths",
+      "quantity": 8,
+      "tick": 18524
+    },
+    {
+      "kind": "HousingBerths",
+      "quantity": 16,
+      "tick": 18525
+    },
+    {
+      "kind": "GrowthBelievedBerths",
+      "quantity": 8,
+      "tick": 18537
+    },
+    {
+      "kind": "GrowthPendingBerths",
+      "quantity": 8,
+      "tick": 18537
+    },
+    {
+      "kind": "GrowthBelievedBerths",
+      "quantity": 16,
+      "tick": 18538
+    },
+    {
+      "kind": "GrowthPendingBerths",
+      "quantity": 0,
+      "tick": 18538
+    },
+    {
+      "kind": "ItemAbsent",
+      "tick": 18525,
+      "itemId": 1
+    }
+  ]
+}

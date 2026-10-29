@@ -1,0 +1,61 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "work_actions",
+    "catalog": "../content/work.json",
+    "seed": 42,
+    "horizon": 20,
+    "configuration": { "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "industrial", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 2 },
+      { "id": 2, "definition": "power", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 2 }
+    ],
+    "actors": [
+      { "id": 1, "name": "Work fixture actor", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 }, "scripted": true }
+    ],
+    "items": [
+      { "id": 1, "resource": "metal", "quantity": 3, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 2, "resource": "wire", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 3, "resource": "tool", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 4, "resource": "wrong", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 }
+    ],
+    "information": {},
+    "work": {
+      "workstations": [
+        { "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "capability": "fabricate", "capacity": 1, "access": { "roles": ["worker"], "toolResource": "tool" } }
+      ],
+      "machines": [
+        { "id": 1, "position": { "x": 1, "y": 0, "z": 0 }, "fitClass": "cartridge", "requiredResource": "correct", "requiredRating": 2,
+          "installTicks": 3, "inspectTicks": 2, "testTicks": 2, "access": { "roles": ["worker"], "toolResource": "tool" } }
+      ]
+    }
+  },
+  "disturbances": [],
+  "scriptedActors": [
+    { "actorId": 1, "commands": [
+      { "tick": 0, "kind": "ProduceRecipe", "target": { "x": 0, "y": 0, "z": 0 }, "serviceId": 1, "recipeId": 1 },
+      { "tick": 5, "kind": "PickUp", "target": { "x": 0, "y": 0, "z": 0 }, "itemId": 5 },
+      { "tick": 6, "kind": "Move", "target": { "x": 1, "y": 0, "z": 0 } },
+      { "tick": 8, "kind": "Install", "target": { "x": 1, "y": 0, "z": 0 }, "itemId": 4, "serviceId": 1 },
+      { "tick": 11, "kind": "InspectMachine", "target": { "x": 1, "y": 0, "z": 0 }, "serviceId": 1 },
+      { "tick": 13, "kind": "Install", "target": { "x": 1, "y": 0, "z": 0 }, "itemId": 5, "serviceId": 1 },
+      { "tick": 16, "kind": "FunctionalTest", "target": { "x": 1, "y": 0, "z": 0 }, "serviceId": 1 }
+    ] }
+  ],
+  "assertions": [
+    { "tick": 4, "kind": "ItemState", "itemId": 1, "quantity": 3, "locationKind": "ActorInventory", "owner": 1 },
+    { "tick": 4, "kind": "ItemAbsent", "itemId": 5 },
+    { "tick": 5, "kind": "ItemState", "itemId": 5, "quantity": 1, "locationKind": "ServiceOutput", "owner": 1 },
+    { "tick": 5, "kind": "ItemAbsent", "itemId": 2 },
+    { "tick": 6, "kind": "ItemHeld", "itemId": 5, "actorId": 1 },
+    { "tick": 10, "kind": "ItemHeld", "itemId": 4, "actorId": 1 },
+    { "tick": 11, "kind": "ItemState", "itemId": 4, "quantity": 1, "locationKind": "MachineSlot", "owner": 1 },
+    { "tick": 11, "kind": "MachineOperational", "machineId": 1, "operational": false },
+    { "tick": 13, "kind": "KnowledgeValue", "actorId": 1, "fact": { "subjectKind": "Machine", "subjectId": 1, "attribute": "InstalledResource" }, "value": { "kind": "Text", "text": "wrong" } },
+    { "tick": 16, "kind": "MachineOperational", "machineId": 1, "operational": true },
+    { "tick": 16, "kind": "ItemState", "itemId": 5, "quantity": 1, "locationKind": "MachineSlot", "owner": 1 },
+    { "tick": 16, "kind": "ItemAtTile", "itemId": 4, "position": { "x": 1, "y": 0, "z": 0 } },
+    { "tick": 18, "kind": "Accounting" }
+  ],
+  "metrics": ["movement", "actions", "resources", "information"]
+}

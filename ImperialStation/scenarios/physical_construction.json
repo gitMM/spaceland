@@ -1,0 +1,405 @@
+{
+  "initialState": {
+    "actors": [
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": true,
+        "role": "builder",
+        "name": "Citizen 1",
+        "id": 1
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 2",
+        "id": 2
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 3",
+        "id": 3
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 4",
+        "id": 4
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 5",
+        "id": 5
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 6",
+        "id": 6
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 7",
+        "id": 7
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 8",
+        "id": 8
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 9",
+        "id": 9
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 10",
+        "id": 10
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 11",
+        "id": 11
+      },
+      {
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "scripted": false,
+        "role": "citizen",
+        "name": "Citizen 12",
+        "id": 12
+      }
+    ],
+    "horizon": 18040,
+    "tiles": [
+      {
+        "definition": "habitat",
+        "position": {
+          "x": 0,
+          "z": 0,
+          "y": 0
+        },
+        "traversalOverride": 1,
+        "id": 1
+      },
+      {
+        "definition": "corridor",
+        "position": {
+          "x": 1,
+          "z": 0,
+          "y": 0
+        },
+        "traversalOverride": 1,
+        "id": 2
+      }
+    ],
+    "information": {},
+    "schemaVersion": 1,
+    "needs": {
+      "services": [
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 1,
+          "assignedActorId": 1
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 2,
+          "assignedActorId": 2
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 3,
+          "assignedActorId": 3
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 4,
+          "assignedActorId": 4
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 5,
+          "assignedActorId": 5
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 6,
+          "assignedActorId": 6
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 7,
+          "assignedActorId": 7
+        },
+        {
+          "position": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Bed",
+          "id": 8,
+          "assignedActorId": 8
+        }
+      ]
+    },
+    "construction": {
+      "projects": [
+        {
+          "tileId": 3,
+          "definitionId": "habitat",
+          "id": 1,
+          "site": {
+            "x": 2,
+            "z": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    "catalog": "../content/construction.json",
+    "items": [
+      {
+        "owner": 1,
+        "resource": "material",
+        "locationKind": "TileContainer",
+        "id": 1,
+        "quantity": 4
+      }
+    ],
+    "id": "physical_construction",
+    "work": {},
+    "seed": 42
+  },
+  "scriptedActors": [
+    {
+      "actorId": 1,
+      "commands": [
+        {
+          "tick": 0,
+          "target": {
+            "x": 0,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "PickUp",
+          "itemId": 1
+        },
+        {
+          "tick": 10,
+          "target": {
+            "x": 1,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Move"
+        },
+        {
+          "tick": 11,
+          "target": {
+            "x": 1,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Construct",
+          "serviceId": 1
+        },
+        {
+          "tick": 18012,
+          "target": {
+            "x": 2,
+            "z": 0,
+            "y": 0
+          },
+          "kind": "Move"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "tick": 0,
+      "quantity": 8,
+      "kind": "HousingBerths"
+    },
+    {
+      "tick": 0,
+      "entityId": 1,
+      "state": "Reserved",
+      "kind": "Construction"
+    },
+    {
+      "tick": 10,
+      "actorId": 1,
+      "kind": "ItemHeld",
+      "itemId": 1
+    },
+    {
+      "tick": 11,
+      "entityId": 1,
+      "state": "Building",
+      "kind": "Construction"
+    },
+    {
+      "tick": 18010,
+      "position": {
+        "x": 2,
+        "z": 0,
+        "y": 0
+      },
+      "kind": "TileCompleted",
+      "state": "Absent"
+    },
+    {
+      "tick": 18010,
+      "quantity": 8,
+      "kind": "HousingBerths"
+    },
+    {
+      "tick": 18010,
+      "actorId": 1,
+      "kind": "ItemHeld",
+      "itemId": 1
+    },
+    {
+      "tick": 18011,
+      "entityId": 1,
+      "state": "Completed",
+      "kind": "Construction"
+    },
+    {
+      "tick": 18011,
+      "position": {
+        "x": 2,
+        "z": 0,
+        "y": 0
+      },
+      "kind": "TileCompleted",
+      "state": "Completed"
+    },
+    {
+      "tick": 18011,
+      "quantity": 16,
+      "kind": "HousingBerths"
+    },
+    {
+      "tick": 18011,
+      "kind": "ItemAbsent",
+      "itemId": 1
+    },
+    {
+      "tick": 18033,
+      "actorId": 1,
+      "kind": "ActorAt",
+      "position": {
+        "x": 2,
+        "z": 0,
+        "y": 0
+      }
+    },
+    {
+      "tick": 18040,
+      "kind": "Accounting"
+    }
+  ]
+}

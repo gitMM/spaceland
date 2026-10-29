@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><LangVersion>12.0</LangVersion><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Station.Core/Station.Core.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../scenarios/generators/ConstructionGenerator.cs" Link="Generators/ConstructionGenerator.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../scenarios/generators/DailyStationGenerator.cs" Link="Generators/DailyStationGenerator.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../scenarios/generators/RecoveryStationGenerator.cs" Link="Generators/RecoveryStationGenerator.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../scenarios/generators/InstitutionalStationGenerator.cs" Link="Generators/InstitutionalStationGenerator.cs" /></ItemGroup>
+</Project>

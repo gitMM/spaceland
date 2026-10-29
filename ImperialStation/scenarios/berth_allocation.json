@@ -1,0 +1,35 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "berth_allocation", "catalog": "../content/tiles.json", "seed": 42, "horizon": 13,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 4 },
+      { "id": 2, "definition": "habitat", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 4 }
+    ],
+    "actors": [
+      { "id": 1, "name": "Applicant", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "name": "Other resident", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } }
+    ],
+    "items": [ { "id": 101, "resource": "keycard", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 } ],
+    "information": { "credentials": [ { "id": 1, "holder": 1, "account": 1, "cardItem": 101 } ] },
+    "needs": {
+      "initial": [ { "actorId": 1, "kind": "SleepPressure", "q": 3060000000 } ],
+      "services": [ { "id": 1, "kind": "Bed", "position": { "x": 1, "y": 0, "z": 0 }, "durationTicks": 5, "allocationTicks": 3 } ]
+    }
+  },
+  "assertions": [
+    { "tick": 3, "kind": "ActorInTransit", "actorId": 1 },
+    { "tick": 4, "kind": "ActorAt", "actorId": 1, "position": { "x": 1, "y": 0, "z": 0 } },
+    { "tick": 6, "kind": "KnowledgeAbsent", "actorId": 1, "fact": { "subjectKind": "Actor", "subjectId": 1, "attribute": "AssignedBerth" } },
+    { "tick": 6, "kind": "NeedActivities", "state": "Queued", "quantity": 0 },
+    { "tick": 7, "kind": "KnowledgeValue", "actorId": 1, "fact": { "subjectKind": "Actor", "subjectId": 1, "attribute": "AssignedBerth" }, "value": { "kind": "Number", "number": 1 } },
+    { "tick": 7, "kind": "NeedActivities", "state": "Queued", "quantity": 1 },
+    { "tick": 8, "kind": "NeedService", "entityId": 1, "state": "Occupants", "quantity": 1 },
+    { "tick": 12, "kind": "NeedActivities", "state": "Completed", "quantity": 0 },
+    { "tick": 13, "kind": "NeedActivities", "state": "Completed", "quantity": 1 },
+    { "tick": 13, "kind": "KnowledgeAbsent", "actorId": 2, "fact": { "subjectKind": "Actor", "subjectId": 1, "attribute": "AssignedBerth" } },
+    { "tick": 13, "kind": "NeedQ", "actorId": 1, "state": "SleepPressure", "quantity": 3059990000 },
+    { "tick": 13, "kind": "ItemHeld", "actorId": 1, "itemId": 101 },
+    { "tick": 13, "kind": "Accounting" }
+  ]
+}

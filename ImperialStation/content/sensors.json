@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "id": "station-sensors-v1",
+  "tiles": [
+    {
+      "id": "habitat",
+      "family": "Habitat",
+      "traversalTicks": 40,
+      "visualKey": "habitat",
+      "capabilities": []
+    },
+    {
+      "id": "industrial",
+      "family": "Industrial",
+      "traversalTicks": 40,
+      "visualKey": "industrial",
+      "capabilities": []
+    },
+    {
+      "id": "power",
+      "family": "Power",
+      "traversalTicks": 40,
+      "visualKey": "power",
+      "capabilities": []
+    },
+    {
+      "id": "life_support",
+      "family": "LifeSupport",
+      "traversalTicks": 40,
+      "visualKey": "life_support",
+      "capabilities": []
+    },
+    {
+      "id": "storage",
+      "family": "Storage",
+      "traversalTicks": 40,
+      "visualKey": "storage",
+      "capabilities": []
+    },
+    {
+      "id": "defense",
+      "family": "Defense",
+      "traversalTicks": 40,
+      "visualKey": "defense",
+      "capabilities": []
+    },
+    {
+      "id": "command",
+      "family": "Command",
+      "traversalTicks": 40,
+      "visualKey": "command",
+      "capabilities": []
+    },
+    {
+      "id": "corridor",
+      "family": "Corridor",
+      "traversalTicks": 40,
+      "visualKey": "corridor",
+      "capabilities": []
+    },
+    {
+      "id": "landing_pad",
+      "family": "LandingPad",
+      "traversalTicks": 40,
+      "visualKey": "landing_pad",
+      "capabilities": []
+    },
+    {
+      "id": "conduit",
+      "family": "Conduit",
+      "traversalTicks": 40,
+      "visualKey": "conduit",
+      "capabilities": []
+    },
+    {
+      "id": "hull",
+      "family": "Hull",
+      "traversalTicks": 40,
+      "visualKey": "hull",
+      "capabilities": []
+    },
+    {
+      "id": "truss",
+      "family": "Truss",
+      "traversalTicks": 40,
+      "visualKey": "truss",
+      "capabilities": []
+    }
+  ],
+  "resources": [
+    {
+      "id": "metal"
+    },
+    {
+      "id": "wire"
+    },
+    {
+      "id": "tool"
+    },
+    {
+      "rating": 2,
+      "fitClass": "cartridge",
+      "id": "correct"
+    },
+    {
+      "rating": 1,
+      "fitClass": "cartridge",
+      "id": "wrong"
+    }
+  ],
+  "recipes": [],
+  "perception": [
+    {
+      "attribute": "Location",
+      "subject": "Tile",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "TraversalTicks",
+      "subject": "Tile",
+      "mode": "InspectionOnly"
+    },
+    {
+      "attribute": "Location",
+      "subject": "Item",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "Resource",
+      "subject": "Item",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "Quantity",
+      "subject": "Item",
+      "mode": "InspectionOnly"
+    },
+    {
+      "attribute": "Present",
+      "subject": "Item",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "LocationKind",
+      "subject": "Item",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "LocationOwner",
+      "subject": "Item",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "Location",
+      "subject": "Machine",
+      "mode": "Passive"
+    },
+    {
+      "attribute": "Operational",
+      "subject": "Machine",
+      "mode": "InspectionOnly"
+    },
+    {
+      "attribute": "RequiredResource",
+      "subject": "Machine",
+      "mode": "InspectionOnly"
+    },
+    {
+      "attribute": "InstalledResource",
+      "subject": "Machine",
+      "mode": "InspectionOnly"
+    }
+  ]
+}

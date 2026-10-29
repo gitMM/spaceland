@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "station-foundation-v1",
+  "tiles": [
+    {"id":"habitat","family":"Habitat","traversalTicks":40,"visualKey":"habitat","capabilities":[]},
+    {"id":"industrial","family":"Industrial","traversalTicks":40,"visualKey":"industrial","capabilities":[]},
+    {"id":"power","family":"Power","traversalTicks":40,"visualKey":"power","capabilities":[]},
+    {"id":"life_support","family":"LifeSupport","traversalTicks":40,"visualKey":"life_support","capabilities":[]},
+    {"id":"storage","family":"Storage","traversalTicks":40,"visualKey":"storage","capabilities":[]},
+    {"id":"defense","family":"Defense","traversalTicks":40,"visualKey":"defense","capabilities":[]},
+    {"id":"command","family":"Command","traversalTicks":40,"visualKey":"command","capabilities":[]},
+    {"id":"corridor","family":"Corridor","traversalTicks":40,"visualKey":"corridor","capabilities":[]},
+    {"id":"landing_pad","family":"LandingPad","traversalTicks":40,"visualKey":"landing_pad","capabilities":[]},
+    {"id":"conduit","family":"Conduit","traversalTicks":40,"visualKey":"conduit","capabilities":[]},
+    {"id":"hull","family":"Hull","traversalTicks":40,"visualKey":"hull","capabilities":[]},
+    {"id":"truss","family":"Truss","traversalTicks":40,"visualKey":"truss","capabilities":[]}
+  ]
+}

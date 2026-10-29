@@ -1,0 +1,248 @@
+{
+  "initialState": {
+    "schemaVersion": 1,
+    "id": "daily_opportunities",
+    "catalog": "../content/tiles.json",
+    "seed": 42,
+    "horizon": 240,
+    "configuration": {
+      "itemActionTicks": 1
+    },
+    "tiles": [
+      {
+        "definition": "command",
+        "id": 1,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "traversalOverride": 4
+      },
+      {
+        "definition": "habitat",
+        "id": 2,
+        "position": {
+          "y": 0,
+          "x": 1,
+          "z": 0
+        },
+        "traversalOverride": 4
+      }
+    ],
+    "actors": [
+      {
+        "name": "Citizen 1",
+        "id": 1,
+        "position": {
+          "y": 0,
+          "x": 0,
+          "z": 0
+        },
+        "scripted": false,
+        "role": "worker"
+      }
+    ],
+    "items": [
+      {
+        "quantity": 1,
+        "id": 1,
+        "owner": 1,
+        "locationKind": "ActorInventory",
+        "resource": "card"
+      },
+      {
+        "owner": 2,
+        "resource": "meal",
+        "locationKind": "TileContainer",
+        "quantity": 20,
+        "id": 2
+      }
+    ],
+    "information": {
+      "terminals": [
+        {
+          "capabilities": "Inbox, Post, Records",
+          "permittedRoles": [
+            "worker"
+          ],
+          "capacity": 1,
+          "id": 1,
+          "position": {
+            "y": 0,
+            "x": 0,
+            "z": 0
+          }
+        }
+      ],
+      "configuration": {
+        "readMaximumTicks": 1,
+        "readPerMessageTicks": 0,
+        "postTicks": 1,
+        "latencyTicks": 2,
+        "readBaseTicks": 1,
+        "sessionTicks": 100,
+        "loginTicks": 1
+      },
+      "credentials": [
+        {
+          "account": 1,
+          "cardItem": 1,
+          "id": 1,
+          "holder": 1
+        }
+      ]
+    },
+    "routines": {
+      "assignments": [
+        {
+          "cohort": 0,
+          "restTile": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "actorId": 1
+        }
+      ],
+      "configuration": {
+        "dutyTicks": 80,
+        "periodicCheckInTicks": 30,
+        "dayTicks": 240,
+        "checkInWindow": 1,
+        "cohorts": 3
+      }
+    },
+    "needs": {
+      "services": [
+        {
+          "kind": "Cafeteria",
+          "position": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "durationTicks": 5,
+          "id": 1
+        },
+        {
+          "kind": "RestSpot",
+          "position": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "durationTicks": 5,
+          "id": 2
+        },
+        {
+          "kind": "Bed",
+          "position": {
+            "y": 0,
+            "x": 1,
+            "z": 0
+          },
+          "durationTicks": 30,
+          "assignedActorId": 1,
+          "id": 3
+        }
+      ],
+      "initial": [
+        {
+          "kind": "Hunger",
+          "q": 1080000000,
+          "actorId": 1
+        }
+      ]
+    }
+  },
+  "disturbances": [],
+  "assertions": [
+    {
+      "state": "Completed",
+      "tick": 39,
+      "quantity": 0,
+      "kind": "NeedActivities"
+    },
+    {
+      "state": "Pending",
+      "tick": 40,
+      "quantity": 1,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Occupants",
+      "tick": 46,
+      "entityId": 1,
+      "quantity": 1,
+      "kind": "NeedService"
+    },
+    {
+      "state": "Completed",
+      "tick": 51,
+      "quantity": 1,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Pending",
+      "tick": 60,
+      "quantity": 1,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Occupants",
+      "tick": 62,
+      "entityId": 2,
+      "quantity": 1,
+      "kind": "NeedService"
+    },
+    {
+      "state": "Completed",
+      "tick": 67,
+      "quantity": 2,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Unnecessary",
+      "tick": 100,
+      "quantity": 1,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Occupants",
+      "tick": 152,
+      "entityId": 3,
+      "quantity": 1,
+      "kind": "NeedService"
+    },
+    {
+      "state": "Pending",
+      "tick": 181,
+      "quantity": 1,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Completed",
+      "tick": 182,
+      "quantity": 3,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Unnecessary",
+      "tick": 240,
+      "quantity": 2,
+      "kind": "DailyGoals"
+    },
+    {
+      "state": "Completed",
+      "tick": 240,
+      "quantity": 3,
+      "kind": "NeedActivities"
+    },
+    {
+      "tick": 240,
+      "kind": "Accounting"
+    }
+  ],
+  "scriptedActors": []
+}

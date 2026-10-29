@@ -1,0 +1,73 @@
+{
+  "initialState": {
+    "responseChainRoles": [ {
+      "name": "recovery-worker", "actorId": 1, "triggerKind": "Event",
+      "trigger": { "type": "CardLost", "tick": 5, "actorId": 1, "itemId": 1 },
+      "requiredEvents": [
+        { "type": "CredentialRecoveryNeeded", "actorId": 1 },
+        { "type": "ActionRequested", "actorId": 1, "detail": "Move" },
+        { "type": "ActionCompleted", "actorId": 1, "detail": "RecoveryLogin" },
+        { "type": "ActionCompleted", "actorId": 1, "detail": "PostLostCard" },
+        { "type": "CredentialRevoked" },
+        { "type": "LostCardReportAccepted" },
+        { "type": "RecoveryReplyRead", "actorId": 1 },
+        { "type": "ReplacementCardIssued", "actorId": 1 },
+        { "type": "ActionCompleted", "actorId": 1, "detail": "PickUp" },
+        { "type": "ActionCompleted", "actorId": 1, "detail": "Login" },
+        { "type": "CredentialRecoveryCompleted", "actorId": 1 },
+        { "type": "ActionStarted", "actorId": 1, "detail": "Install" }
+      ]
+    } ],
+    "schemaVersion": 1, "id": "autonomous_recovery", "catalog": "../content/recovery-work.json", "seed": 42, "horizon": 100,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "industrial", "position": { "x": 0, "y": 0, "z": 0 }, "traversalOverride": 2 },
+      { "id": 2, "definition": "corridor", "position": { "x": 1, "y": 0, "z": 0 }, "traversalOverride": 2 },
+      { "id": 3, "definition": "corridor", "position": { "x": 2, "y": 0, "z": 0 }, "traversalOverride": 2 },
+      { "id": 4, "definition": "power", "position": { "x": 3, "y": 0, "z": 0 }, "traversalOverride": 2 },
+      { "id": 5, "definition": "command", "position": { "x": 4, "y": 0, "z": 0 }, "traversalOverride": 2 }
+    ],
+    "actors": [ { "id": 1, "name": "Autonomous worker", "role": "worker", "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "items": [
+      { "id": 1, "resource": "card", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 2, "resource": "tool", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 3, "resource": "part", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 },
+      { "id": 4, "resource": "blank", "quantity": 2, "locationKind": "TileContainer", "owner": 5 }
+    ],
+    "information": {
+      "configuration": { "loginTicks": 1, "readBaseTicks": 1, "readPerMessageTicks": 0, "readMaximumTicks": 1, "postTicks": 1, "latencyTicks": 1, "sessionTicks": 500 },
+      "terminals": [
+        { "id": 1, "position": { "x": 0, "y": 0, "z": 0 }, "permittedRoles": [ "worker" ] },
+        { "id": 2, "position": { "x": 4, "y": 0, "z": 0 }, "permittedRoles": [ "worker" ], "capabilities": "CredentialRecovery, Inbox, Post" }
+      ],
+      "credentials": [ { "id": 1, "holder": 1, "account": 1, "cardItem": 1 } ],
+      "facts": [ { "actorId": 1, "key": { "subjectKind": "Machine", "subjectId": 1, "attribute": "RequiredResource" }, "value": { "kind": "Text", "text": "part" } } ],
+      "recovery": { "identityCheckTicks": 3, "capabilities": [ { "actorId": 1, "accountId": 1 } ], "desks": [ { "terminalId": 2, "workstationId": 1, "recipeId": 1 } ] }
+    },
+    "work": {
+      "workstations": [ { "id": 1, "position": { "x": 4, "y": 0, "z": 0 }, "capability": "CredentialIssuance", "access": { "roles": [ "worker" ] } } ],
+      "machines": [ { "id": 1, "position": { "x": 3, "y": 0, "z": 0 }, "fitClass": "slot", "requiredResource": "part", "installTicks": 3, "inspectTicks": 2, "access": { "roles": [ "worker" ], "toolResource": "tool", "requiresCredential": true } } ]
+    },
+    "jobSystem": {
+      "jobs": [ { "id": 1, "machineId": 1 } ],
+      "assignments": [ { "key": "initial", "jobId": 1, "actorId": 1, "expires": 1000 } ],
+      "checkIns": [ { "actorId": 1, "firstTick": 0, "interval": 500 } ]
+    }
+  },
+  "disturbances": [ { "type": "CardLoss", "tick": 5, "actorId": 1, "itemId": 1 } ],
+  "assertions": [
+    { "tick": 5, "kind": "ActorInTransit", "actorId": 1 },
+    { "tick": 5, "kind": "LocalOrder", "actorId": 1, "attemptId": 1, "state": "Working" },
+    { "tick": 5, "kind": "CredentialRecoveryCases", "state": "Authorized", "quantity": 0 },
+    { "tick": 5, "kind": "KnowledgeAbsent", "actorId": 1, "fact": { "subjectKind": "Item", "subjectId": 1, "attribute": "Location" } },
+    { "tick": 5, "kind": "ItemHeld", "actorId": 1, "itemId": 3 },
+    { "tick": 100, "kind": "RecoveryAgent", "actorId": 1, "state": "Completed", "quantity": 1 },
+    { "tick": 100, "kind": "CredentialRecoveryCases", "state": "Issued", "quantity": 1 },
+    { "tick": 100, "kind": "ItemAtTile", "itemId": 1, "position": { "x": 0, "y": 0, "z": 0 } },
+    { "tick": 100, "kind": "ItemHeld", "actorId": 1, "itemId": 5 },
+    { "tick": 100, "kind": "ItemState", "itemId": 4, "quantity": 1, "locationKind": "TileContainer", "owner": 5 },
+    { "tick": 100, "kind": "MachineOperational", "machineId": 1, "operational": true },
+    { "tick": 100, "kind": "JobAuthority", "jobId": 1, "state": "WorkCompleted" },
+    { "tick": 100, "kind": "Accounting" }
+  ]
+}

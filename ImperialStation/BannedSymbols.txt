@@ -1,0 +1,18 @@
+P:System.DateTime.Now; Use simulation ticks.
+P:System.DateTime.UtcNow; Use simulation ticks.
+P:System.DateTimeOffset.Now; Use simulation ticks.
+P:System.DateTimeOffset.UtcNow; Use simulation ticks.
+T:System.Diagnostics.Stopwatch; Wall clock belongs in Runner.
+P:System.Environment.TickCount; Use simulation ticks.
+P:System.Environment.TickCount64; Use simulation ticks.
+T:System.Random; Use world-owned PCG32 streams.
+M:System.Guid.NewGuid; Use world-owned sequence IDs.
+M:System.Threading.Tasks.Task.Delay(System.Int32); No wall-clock gameplay.
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan); No wall-clock gameplay.
+M:System.Threading.Thread.Sleep(System.Int32); No wall-clock gameplay.
+M:System.Threading.Thread.Sleep(System.TimeSpan); No wall-clock gameplay.
+M:System.Collections.Generic.Dictionary`2.GetEnumerator; Use sorted deterministic collections.
+M:System.Collections.Generic.Dictionary`2.KeyCollection.GetEnumerator; Use sorted deterministic collections.
+M:System.Collections.Generic.Dictionary`2.ValueCollection.GetEnumerator; Use sorted deterministic collections.
+M:System.Collections.Generic.HashSet`1.GetEnumerator; Use sorted deterministic collections.
+M:System.Collections.Concurrent.ConcurrentDictionary`2.GetEnumerator; Use sorted deterministic collections.

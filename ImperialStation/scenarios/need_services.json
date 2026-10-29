@@ -1,0 +1,53 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "need_services", "catalog": "../content/tiles.json", "seed": 42, "horizon": 50,
+    "configuration": { "tickDurationMs": 100, "itemActionTicks": 1 },
+    "tiles": [ { "id": 1, "definition": "habitat", "position": { "x": 0, "y": 0, "z": 0 } } ],
+    "actors": [
+      { "id": 1, "name": "Resident", "role": "worker", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } },
+      { "id": 2, "name": "Neighbor", "role": "worker", "scripted": true, "position": { "x": 0, "y": 0, "z": 0 } }
+    ],
+    "items": [ { "id": 1, "resource": "meal", "quantity": 2, "locationKind": "TileContainer", "owner": 1 } ],
+    "needs": {
+      "initial": [
+        { "actorId": 1, "kind": "Hunger", "q": 2520000000 },
+        { "actorId": 2, "kind": "Hunger", "q": 2520000000 },
+        { "actorId": 1, "kind": "Bladder", "q": 1800000000 },
+        { "actorId": 1, "kind": "SleepPressure", "q": 1800000000 },
+        { "actorId": 1, "kind": "WorkStrain", "q": 1800000000 }
+      ],
+      "services": [
+        { "id": 1, "kind": "Cafeteria", "position": { "x": 0, "y": 0, "z": 0 }, "capacity": 1, "durationTicks": 5 },
+        { "id": 2, "kind": "Toilet", "position": { "x": 0, "y": 0, "z": 0 }, "durationTicks": 2 },
+        { "id": 3, "kind": "RestSpot", "position": { "x": 0, "y": 0, "z": 0 }, "durationTicks": 4 },
+        { "id": 4, "kind": "Bed", "position": { "x": 0, "y": 0, "z": 0 }, "durationTicks": 4, "assignedActorId": 1 }
+      ]
+    }
+  },
+  "scriptedActors": [
+    { "actorId": 1, "commands": [
+      { "tick": 0, "kind": "Eat", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } },
+      { "tick": 20, "kind": "UseToilet", "serviceId": 2, "target": { "x": 0, "y": 0, "z": 0 } },
+      { "tick": 30, "kind": "Rest", "serviceId": 3, "target": { "x": 0, "y": 0, "z": 0 } },
+      { "tick": 40, "kind": "Sleep", "serviceId": 4, "target": { "x": 0, "y": 0, "z": 0 } }
+    ] },
+    { "actorId": 2, "commands": [ { "tick": 0, "kind": "Eat", "serviceId": 1, "target": { "x": 0, "y": 0, "z": 0 } } ] }
+  ],
+  "assertions": [
+    { "tick": 0, "kind": "NeedService", "entityId": 1, "state": "Queued", "quantity": 2 },
+    { "tick": 1, "kind": "NeedService", "entityId": 1, "state": "Occupants", "quantity": 1 },
+    { "tick": 1, "kind": "NeedService", "entityId": 1, "state": "Queued", "quantity": 1 },
+    { "tick": 5, "kind": "NeedActivities", "state": "Completed", "quantity": 0 },
+    { "tick": 6, "kind": "NeedActivities", "state": "Completed", "quantity": 1 },
+    { "tick": 11, "kind": "NeedActivities", "state": "Completed", "quantity": 2 },
+    { "tick": 11, "kind": "ItemAbsent", "itemId": 1 },
+    { "tick": 23, "kind": "NeedQ", "actorId": 1, "state": "Bladder", "quantity": 0 },
+    { "tick": 35, "kind": "NeedQ", "actorId": 1, "state": "WorkStrain", "quantity": 1799952000 },
+    { "tick": 50, "kind": "NeedQ", "actorId": 1, "state": "Hunger", "quantity": 720300000 },
+    { "tick": 50, "kind": "NeedQ", "actorId": 1, "state": "Bladder", "quantity": 246000 },
+    { "tick": 50, "kind": "NeedQ", "actorId": 1, "state": "SleepPressure", "quantity": 1800190000 },
+    { "tick": 50, "kind": "NeedQ", "actorId": 1, "state": "WorkStrain", "quantity": 1799928000 },
+    { "tick": 50, "kind": "NeedActivities", "state": "Completed", "quantity": 5 },
+    { "tick": 50, "kind": "Accounting" }
+  ]
+}

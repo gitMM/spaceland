@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "station-cleanup-work-v1",
+  "tiles": [
+    {
+      "id": "habitat",
+      "family": "Habitat",
+      "traversalTicks": 2,
+      "capabilities": [
+        "Cleanable"
+      ]
+    },
+    {
+      "id": "industrial",
+      "family": "Industrial",
+      "traversalTicks": 2,
+      "capabilities": [
+        "Cleanable"
+      ]
+    },
+    {
+      "id": "power",
+      "family": "Power",
+      "traversalTicks": 2
+    },
+    {
+      "id": "life_support",
+      "family": "LifeSupport",
+      "traversalTicks": 2
+    },
+    {
+      "id": "storage",
+      "family": "Storage",
+      "traversalTicks": 2
+    },
+    {
+      "id": "defense",
+      "family": "Defense",
+      "traversalTicks": 2
+    },
+    {
+      "id": "command",
+      "family": "Command",
+      "traversalTicks": 2
+    },
+    {
+      "id": "corridor",
+      "family": "Corridor",
+      "traversalTicks": 2,
+      "capabilities": [
+        "Cleanable"
+      ]
+    },
+    {
+      "id": "landing_pad",
+      "family": "LandingPad",
+      "traversalTicks": 2
+    },
+    {
+      "id": "conduit",
+      "family": "Conduit",
+      "traversalTicks": 2
+    },
+    {
+      "id": "hull",
+      "family": "Hull",
+      "traversalTicks": 2
+    },
+    {
+      "id": "truss",
+      "family": "Truss",
+      "traversalTicks": 2
+    }
+  ],
+  "resources": [
+    {
+      "id": "card"
+    },
+    {
+      "id": "mop"
+    }
+  ]
+}

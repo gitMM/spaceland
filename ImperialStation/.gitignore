@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.dotnet/
+.nuget/
+.tools/
+artifacts/*
+!artifacts/.gitkeep
+!**/*.csproj
+!*.sln

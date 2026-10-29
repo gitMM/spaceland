@@ -1,0 +1,46 @@
+{
+  "initialState": {
+    "schemaVersion": 1, "id": "late_report", "catalog": "../content/jobs.json", "seed": 42, "horizon": 45,
+    "configuration": { "itemActionTicks": 1, "authorityNominalTicks": 1 },
+    "tiles": [
+      { "id": 1, "definition": "command", "position": {"x":0,"y":0,"z":0}, "traversalOverride": 20 },
+      { "id": 2, "definition": "power", "position": {"x":1,"y":0,"z":0}, "traversalOverride": 20 }
+    ],
+    "actors": [{ "id": 1, "name": "Reporting worker", "role": "worker", "position": {"x":0,"y":0,"z":0}, "scripted": true }],
+    "items": [{ "id": 1, "resource": "card", "quantity": 1, "locationKind": "ActorInventory", "owner": 1 }],
+    "information": {
+      "configuration": { "loginTicks": 1, "readBaseTicks": 1, "readPerMessageTicks": 0, "readMaximumTicks": 1, "postTicks": 1, "latencyTicks": 2, "sessionTicks": 100 },
+      "terminals": [{ "id": 1, "position": {"x":0,"y":0,"z":0}, "permittedRoles": ["worker"], "capabilities": "Post, Records" }],
+      "credentials": [{ "id": 1, "holder": 1, "account": 1, "cardItem": 1 }]
+    },
+    "work": { "machines": [{ "id": 1, "position": {"x":1,"y":0,"z":0}, "fitClass": "cartridge", "requiredResource": "correct", "installTicks": 3, "access": {"roles":["worker"]} }] },
+    "jobSystem": { "jobs": [{"id":1,"machineId":1}], "assignments": [{"key":"initial","jobId":1,"actorId":1,"expires":200}] },
+    "routines": { "configuration": {"dayTicks":30,"cohorts":3,"dutyTicks":10,"checkInWindow":1,"periodicCheckInTicks":10},
+      "assignments": [{"actorId":1,"cohort":0,"restTile":{"x":0,"y":0,"z":0}}] },
+    "authority": {"slackMinimum":1000,"slackMargin":0,"slackMaximum":4000,"graceTicks":0,"emaNumerator":1,"emaDenominator":2,"unacknowledgedTicks":30}
+  },
+  "scriptedActors": [{ "actorId": 1, "commands": [
+    {"tick":1,"kind":"Login","target":{"x":0,"y":0,"z":0},"serviceId":1},
+    {"tick":2,"kind":"PostMessage","target":{"x":0,"y":0,"z":0},"serviceId":1,"message":{
+      "kind":"OrderAccepted","recipientKind":"Authority","subject":{"subjectKind":"Attempt","subjectId":1,"attribute":"WorkStatus"},
+      "claim":{"kind":"Text","text":"Accepted"},"observedTick":2,"taskId":1,"attemptId":1,"relatedMessageId":1}},
+    {"tick":36,"kind":"Login","target":{"x":0,"y":0,"z":0},"serviceId":1},
+    {"tick":37,"kind":"PostMessage","target":{"x":0,"y":0,"z":0},"serviceId":1,"message":{
+      "kind":"WorkCompleted","recipientKind":"Authority","subject":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},
+      "claim":{"kind":"Boolean","number":1},"observedTick":37,"taskId":1,"attemptId":1}}
+  ]}],
+  "assertions": [
+    {"tick":3,"kind":"Expectation","attemptId":1,"state":"Absent"},
+    {"tick":5,"kind":"Expectation","attemptId":1,"state":"AwaitingResult"},
+    {"tick":14,"kind":"MissingReport","attemptId":1,"state":"Absent"},
+    {"tick":34,"kind":"Expectation","attemptId":1,"state":"AwaitingResult"},
+    {"tick":35,"kind":"Expectation","attemptId":1,"state":"Overdue"},
+    {"tick":35,"kind":"MissingReport","attemptId":1,"state":"Present"},
+    {"tick":39,"kind":"Expectation","attemptId":1,"state":"Overdue"},
+    {"tick":40,"kind":"Expectation","attemptId":1,"state":"Satisfied"},
+    {"tick":40,"kind":"BeliefValue","fact":{"subjectKind":"Machine","subjectId":1,"attribute":"Operational"},"value":{"kind":"Boolean","number":1}},
+    {"tick":45,"kind":"MachineOperational","machineId":1,"operational":false},
+    {"tick":45,"kind":"JobPhysical","jobId":1,"state":"Assigned"},
+    {"tick":45,"kind":"Accounting"}
+  ]
+}
