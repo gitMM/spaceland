@@ -485,7 +485,9 @@ a tube until you touch a surface, which becomes your floor (the camera eases rou
 the flat review station's homes and corridor, **2** the Foundry example on the curved grid, **R** respawns.
 
 The rooms within 15 m are built as you go, with mesh colliders for each room and its window glass (`StationInteriors`
-with `colliders`); the walker sweeps its capsule against them in its scene's physics, depenetrates (ignoring its lowest
+with `colliders`), and one or two 1.8 m reference people standing about each room on any of its walls (one in each
+tube) for scale (`people`, on by default everywhere interiors are built; no colliders); one more stands on the floor
+ahead of you at the start; the walker sweeps its capsule against them in its scene's physics, depenetrates (ignoring its lowest
 6 cm, so lamp bars and plate lips don't stop it), and drifts as a sphere round its eye. A junction's floor is mostly the
 openings of its branches, so there you drift rather than walk. `tools/tile-lab.sh walk` scripts it headless on both
 stages (deck into the window wall and up it, a push through the hatch into the next home, a push through a socket into

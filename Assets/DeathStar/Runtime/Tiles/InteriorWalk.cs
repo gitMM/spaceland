@@ -5,7 +5,8 @@ namespace DeathStar
 {
     // Walk the interiors (Death Star / Open Interior Walk, then Play): in magnetic boots (MagBootWalker), through the
     // flat review station's homes and the corridor bridging its trench (1), or the Foundry example's homes and junction
-    // on the curved grid (2). The rooms near the walker are built as it goes (StationInteriors, with colliders).
+    // on the curved grid (2). The rooms near the walker are built as it goes (StationInteriors, with colliders, and
+    // people standing about for scale); one more person stands on the floor ahead at the start.
     [DisallowMultipleComponent]
     public sealed class InteriorWalk : MonoBehaviour
     {
@@ -17,6 +18,7 @@ namespace DeathStar
         FoundrySettlement foundry;GameObject foundryRoot;
         StationInteriors interiors;
         MagBootWalker walker;
+        GameObject person;Mesh personMesh;
         GUIStyle style;
         TileLook.Saved saved;
 
@@ -27,12 +29,16 @@ namespace DeathStar
             Shader.SetGlobalFloat("_TileClay",0);Shader.SetGlobalFloat("_TileOverlay",0);
             viewer.nearClipPlane=0.05f;viewer.farClipPlane=400;viewer.fieldOfView=75;
             walker=new GameObject("Walker").AddComponent<MagBootWalker>();walker.eye=viewer;
+            personMesh=TileBuilder.Figure(0).ToMesh("Person");
+            person=new GameObject("Person ahead");person.AddComponent<MeshFilter>().sharedMesh=personMesh;
+            var r=person.AddComponent<MeshRenderer>();r.sharedMaterials=library.materials;r.renderingLayerMask=1u|StationInteriors.InteriorLayer;
             Load(0);
         }
         void OnDisable()
         {
             Unload();
             if(walker!=null)Destroy(walker.gameObject);
+            if(person!=null)Destroy(person);if(personMesh!=null)Destroy(personMesh);
             Cursor.lockState=CursorLockMode.None;Cursor.visible=true;
             if(library!=null)TileLook.Restore(saved);
         }
@@ -64,6 +70,10 @@ namespace DeathStar
             if(interiors==null||!interiors.Spawn(near,out var feet,out var up,out var forward,out _,out _))return;
             interiors.ShowAround(feet,interiors.radius);Physics.SyncTransforms();
             walker.Place(feet,up,forward);
+            // a person on the same floor 2.2 m ahead, facing back
+            var ahead=feet+forward.normalized*2.2f;
+            if(Physics.Raycast(ahead+up,-up,out var floor,2f,~(1<<2)))ahead=floor.point;
+            person.transform.SetPositionAndRotation(ahead,Quaternion.LookRotation(-forward,up));
         }
 
         void Update()

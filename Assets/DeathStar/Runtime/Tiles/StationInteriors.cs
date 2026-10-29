@@ -11,13 +11,16 @@ namespace DeathStar
     // Foundry's curved grid they are bent like the tiles (CurvedTileMesh.Bend) and distances use the cells' curved centres.
     // Lamps light only the interiors (rendering layer 1), so no light falls through walls onto the hull outside. With
     // colliders (always in play) each room gets a mesh collider and its tile's window glass another, for MagBootWalker.
+    // With people, each room gets a reference person or two (TileBuilder.Figure), standing on its walls for scale: a
+    // home's on any of its six walls (there is no up), a tube's on its flats, each placed by casting from the room's
+    // middle onto its own mesh, so they stand on the real, bent surfaces. They have no colliders.
     [ExecuteAlways]
     public sealed class StationInteriors : MonoBehaviour
     {
         public Transform ringCentre;
         public float radius=15,hold=4;
         public int perFrame=4;
-        public bool colliders;
+        public bool colliders,people=true;
         public float lampIntensity=4,lampRange=6;
         public Color lampColor=new Color(1f,0.9f,0.78f);
         public const uint InteriorLayer=1u<<1;
@@ -143,6 +146,7 @@ namespace DeathStar
                 go.AddComponent<MeshCollider>().sharedMesh=mesh;
                 glass=GlassMesh(cell,go.transform);if(glass!=null)go.AddComponent<MeshCollider>().sharedMesh=glass;
             }
+            if(people)People(cell,go.transform,mesh);
             SetGlass(cell,clear);
             built[cell]=(go,mesh,glass);
         }
@@ -190,5 +194,76 @@ namespace DeathStar
             ShowAround(ringCentre.position,radius,perFrame);
         }
         void OnDisable()=>Clear();
+        void OnDestroy(){foreach(var f in figures)Release(f);}
+
+        // ---------------------------------------------------------------- people for scale
+
+        Mesh[] figures=new Mesh[0];
+        Mesh[] Figures
+        {
+            get
+            {
+                if(figures.Length==2&&figures[0]!=null)return figures;
+                figures=new Mesh[2];
+                for(int i=0;i<2;i++){figures[i]=TileBuilder.Figure(i).ToMesh("Person "+i);figures[i].hideFlags=HideFlags.DontSave;}
+                return figures;
+            }
+        }
+        const float Tall=1.8f;
+        // One or two people in a home, one in a tube or junction, on walls the cell's hash picks: each stands where a ray
+        // from the room's middle (moved across the wall, clear of its hatch or socket) meets that wall square on, with
+        // room over its head.
+        void People(Vector3Int cell,Transform room,Mesh mesh)
+        {
+            var p=structure.cells[cell];var v=mesh.vertices;var t=mesh.triangles;
+            for(int i=0;i<v.Length;i++)v[i]=room.TransformPoint(v[i]);
+            uint h=(uint)(cell.x*73856093)^(uint)(cell.y*19349663)^(uint)(cell.z*83492791);
+            float R(int k){uint x=h^(uint)(k*0x9E3779B1U);x^=x>>16;x*=0x7feb352dU;x^=x>>15;x*=0x846ca68bU;x^=x>>16;return (x&0xFFFFFF)/16777216f;}
+            var c=centres[cell];bool tube=p.family==TileFamily.Corridor;
+            var links=tube?structure.CorridorLinks(cell,p):null;
+            bool run=tube&&links.Count==2&&links[0]==-links[1];
+            var walls=new List<Vector3Int>();
+            foreach(var d in TileStructure.Directions)
+                if(!tube||(run?Vector3.Dot(d,links[0])==0:!links.Contains(d)))walls.Add(d);
+            int want=tube?1:1+(R(1)<0.6f?1:0),placed=0;
+            for(int k=0;k<walls.Count*2&&placed<want;k++)
+            {
+                var n=walls[(int)(R(10+k)*walls.Count)%walls.Count];
+                var dir=FaceNormal(cell,n);
+                // two directions across the wall, as bent
+                var a=TileStructure.Directions[0];foreach(var d in TileStructure.Directions)if(Vector3.Dot(d,n)==0){a=d;break;}
+                var b=TileStructure.Cross(n,a);
+                Vector3 Across(Vector3Int d)=>Vector3.ProjectOnPlane(Centre(cell+d)-c,dir).normalized;
+                var origin=c;
+                if(run)origin+=Vector3.ProjectOnPlane(Centre(cell+links[0])-c,dir).normalized*(R(20+k)*2-1)*1.2f;
+                else if(tube)origin+=Across(a)*(R(20+k)-0.5f)*0.6f;
+                else origin+=Across(a)*(R(20+k)<0.5f?-1.4f:1.4f)+Across(b)*(R(30+k)*2-1)*0.9f;
+                if(!Hit(v,t,origin,dir,4,out var feet,out var normal)||Vector3.Dot(normal,-dir)<0.8f)continue;
+                var up=normal;
+                if(Hit(v,t,feet+up*0.05f,up,Tall+0.1f,out _,out _))continue;   // no room over its head
+                float turn=R(40+k)*Mathf.PI*2;var t1=Vector3.ProjectOnPlane(Across(a),up).normalized;var t2=Vector3.Cross(up,t1);
+                var facing=t1*Mathf.Cos(turn)+t2*Mathf.Sin(turn);
+                var go=new GameObject("Person"){hideFlags=HideFlags.DontSave};go.transform.SetParent(room,true);
+                go.transform.SetPositionAndRotation(feet,Quaternion.LookRotation(facing,up));
+                go.AddComponent<MeshFilter>().sharedMesh=Figures[(int)(R(50+k)*2)%2];
+                var r=go.AddComponent<MeshRenderer>();r.sharedMaterials=materials;r.renderingLayerMask=1u|InteriorLayer;
+                placed++;
+            }
+        }
+        // The nearest triangle of a world-space mesh (v, t) along a ray within max: where and its normal facing the ray.
+        static bool Hit(Vector3[] v,int[] t,Vector3 o,Vector3 d,float max,out Vector3 point,out Vector3 normal)
+        {
+            point=normal=default;float best=max;bool found=false;
+            for(int i=0;i+2<t.Length;i+=3)
+            {
+                Vector3 a=v[t[i]],e1=v[t[i+1]]-a,e2=v[t[i+2]]-a,p=Vector3.Cross(d,e2);float det=Vector3.Dot(e1,p);
+                if(Mathf.Abs(det)<1e-9f)continue;
+                float inv=1/det;var s=o-a;float u=Vector3.Dot(s,p)*inv;if(u<0||u>1)continue;
+                var q=Vector3.Cross(s,e1);float w=Vector3.Dot(d,q)*inv;if(w<0||u+w>1)continue;
+                float dist=Vector3.Dot(e2,q)*inv;if(dist<=1e-4f||dist>=best)continue;
+                best=dist;found=true;point=o+d*dist;normal=Vector3.Cross(e1,e2).normalized;if(Vector3.Dot(normal,d)>0)normal=-normal;
+            }
+            return found;
+        }
     }
 }
