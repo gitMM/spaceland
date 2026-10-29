@@ -477,21 +477,31 @@ than its radius.
 
 ### Interiors (greybox)
 
-Inside, up is always out from the station's core, whatever way a tile is turned (`TileBuilder.Interior.cs`): a Habitat
-or Corridor cell is one open room whose floor is the face towards the core (`TileBuilder.Down`), with light bars on its
-ceiling. On the Foundry's sphere grid that is the face whose normal points most nearly at the guide's centre; the flat
+Inside, up is always out from the station's core, whatever way a tile is turned (`TileBuilder.Interior.cs`): every
+solid family's cell (all but Conduit and Truss) is one open room, and a Corridor cell its tube; a room's floor is the
+face towards the core (`TileBuilder.Down`), with light bars on its ceiling. On the Foundry's sphere grid that is the face whose normal points most nearly at the guide's centre; the flat
 review stage's core lies far below it, so its floors are all -y faces. Cells whose centre lies within 4.5 m of the core
 are the zero-g hub (`TileBuilder.Hub`): no floor, light bars across the tile's axis and round 1.8 m hatches to every
 neighbour. The inner wall stands 0.4 m in from an exposed face (the window rows' depth, so their glass sits in it) and
 0.1 m from a face shared with a solid neighbour, so a home is about 4.2-4.8 m across and the 0.2 m wall between two
 rooms hides behind the mullion on the tile boundary. Window rows and corridor portholes are real openings in the same
 places as outside; a tile's axis only shapes its outside, so a home turned across the core gets a skylight, a floor
-window and upright rows in two walls.
+window and upright rows in two walls. A recess deeper than the window rows (Industrial's terraced pit, Storage's bay)
+stands into the room as a closed block (`Face.wells`, `Well`); a cell it leaves less than 1.2 m of room behind (a
+Storage bay or 2 × 2 hangar mouth) is all bay and has no room. Command's and Industrial's windows keep their fake rooms
+when the room is built: their glazed towers stand outside the cube.
+
+Rooms of one family side by side on one floor join into halls of up to 4 × 4 cells (`TileBuilder.Joins`, `Hall`): no
+wall between them, a 0.5 m column where four cells meet, the hall's blocks aligned on multiples of four along the
+station's axes so every cell agrees on them, and never across a floor that turns by more than 25° (the cube's edge). Walls,
+ceiling and floor step by 0.3 m where what lies behind them changes from cell to cell (a floor step is low enough to walk
+up), with a jamb closing each step; walls run 3 cm past the face between two cells of a hall. Halls stacked out from the
+core share one lift, rising from the cell that stands for each hall. Corridors never join a hall.
 
 Neighbours whose floors face the same way open into each other (`TileBuilder.WayBetween`): side by side through a
 1.3 × 2.2 m sliding door at floor level, stacked out from the core through 1.8 m round openings in floor and ceiling, a
 lift with a lit ring on the floor at its foot; the opening's frame is flush in a floor, which carries on across it.
-Neighbours whose floors face different ways stay closed. A corridor's tube (2.4 m across its flats) runs on through a
+Neighbours whose floors face different ways, or turn by more than 35° between them on the curved grid, stay closed. A corridor's tube (2.4 m across its flats) runs on through a
 home's socket into the room and ends at a sealed bulkhead against other tiles or in space; along a floor it carries a
 1.57 m walkway 0.9 m below its spine (2.1 m headroom, open over portholes in the floor, lamps in its upper corners only),
 and a stair of 0.25 m risers takes it down to the home's floor, steepening to 0.3 m risers and 0.2 m treads where a
@@ -499,8 +509,8 @@ lift's opening in the floor leaves it less room; out from the core the tube is a
 across its box.
 
 On the Foundry's curved grid the rooms are bent like the tiles (`CurvedTileMesh.Bend`): each inner wall keeps its
-depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall at the
-sheared cell's real angle (plus a few centimetres of overlap). Floors lie on the sphere's shells, so they are level;
+depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall,
+measured on the bent surfaces near both ends of their edge (bent faces are twisted), plus a few centimetres of overlap. Floors lie on the sphere's shells, so they are level;
 walls follow the lattice, so they lean by up to about 26° near the cube's diagonals, and doors lean with them (2.2 m tall
 along the wall, enough for an upright person). Lift openings, hatches, sockets and stairs are true size round their
 face's centre, with a plate sized to cover the wall's bent hole, so they meet the neighbour's half or the corridor's
@@ -523,7 +533,8 @@ them the corridor's two porthole sides and a home's socket are cut open under th
 fly camera (WASD, Space/Ctrl, Shift, scroll for speed) and **I** jumps into a home. `tools/tile-lab.sh interior` shoots
 the trench-wall homes, the homes stacked on them and the corridor from inside (floor, door, lift from below and above,
 stair, walkway) and from outside with and without interiors, and the Foundry example's stacks of homes round its hub
-the same way (`foundry-*.png`); on those and the Station example it checks build time, that every pane opens into its
+the same way (`foundry-*.png`), and the gallery's largest hall (`hall.png`); on those and the Station example it checks
+build time (builds the garbage collector paused are not timed), that every pane opens into its
 room, that rooms are closed but for their glass, doors, lifts, hatches and tubes, that there are doors and lifts, and
 that no corridor's outside shows inside its tube (`DeathStarRuns/Tiles/interior/`).
 

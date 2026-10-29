@@ -63,7 +63,7 @@ namespace DeathStar.EditorTools
             var centre=new Vector3(28f,5f,16f);
             interiors.ShowAround(centre,11f);
             checks.Add((interiors.Count>=8,$"gallery: rooms round the spot inside are built ({interiors.Count} in {interiors.BuildMs:0} ms)"));
-            RoomChecks("gallery",interiors,stage.structure,c=>TileStructure.Center(c),400,checks,notes);
+            RoomChecks("gallery",interiors,stage.structure,c=>interiors.RoomPoint(c),400,checks,notes);
             WayCounts("gallery",interiors,stage.structure,checks,true,false);
 
             // People for scale: one on a home's floor, one in the home above, one on the corridor's walkway.
@@ -94,6 +94,15 @@ namespace DeathStar.EditorTools
                 Person(1,new Vector3(26.4f,7.6f,18.8f),Vector3.up,new Vector3(1,0,0.4f));
                 Person(1,new Vector3(25.3f,4.1f,13.2f),Vector3.up,new Vector3(0,0,-1));
                 foreach(var (name,view,what) in InteriorViews)Shot(name,view,what,name=="room");
+                // The largest hall on the stage, from one corner cell across to the far one at eye height.
+                var halls=stage.structure.cells.Keys.Where(c=>new TileBuilder(stage.structure).Interior(c)).GroupBy(c=>interiors.Hall(c)).OrderByDescending(g=>g.Count()).First().ToList();
+                if(halls.Count>1)
+                {
+                    var lo=halls.OrderBy(c=>c.x+c.z).First();var hi=halls.OrderBy(c=>c.x+c.z).Last();
+                    interiors.ShowAround((TileStructure.Center(lo)+TileStructure.Center(hi))*0.5f,20);
+                    var from=interiors.Floor(lo);var to=interiors.Floor(hi);var dir=Vector3.ProjectOnPlane(to-from,Vector3.up).normalized;
+                    Shot("hall",new TileGallery.View(from-dir*1.2f+Vector3.up*Eye,to+Vector3.up*1.2f,Vector3.up,75),$"the largest hall, {halls.Count} cells of {stage.structure.cells[lo].family}: no walls between its cells, a column where four meet");
+                }
                 interiors.Clear();
                 var fake=InteriorViews.First(v=>v.name=="outside");
                 Shot("outside-fake",fake.view,"the same, interiors dropped: the windows' fake rooms (Tile Glass)");
@@ -125,19 +134,23 @@ namespace DeathStar.EditorTools
         // Every interior cell of a structure built, meshed (and bent) on its own: all build, and how long they take.
         static void BuildTimes(string where,TileBuilder builder,CurvedTileMesh warp,TileStructure s,List<(bool ok,string text)> checks,StringBuilder md)
         {
-            var times=new List<double>();int tris=0,cells=0,empty=0;
+            var times=new List<double>();int tris=0,cells=0,empty=0,collected=0;
+            // which cells have rooms and which halls they form, found once for the whole station as StationInteriors.Init does
+            foreach(var pair in s.cells)if(builder.Interior(pair.Key))builder.Hall(pair.Key);
             foreach(var pair in s.cells)
             {
                 if(!builder.Interior(pair.Key))continue;
+                int gc=System.GC.CollectionCount(0);
                 var sw=Stopwatch.StartNew();var t=builder.BuildInterior(pair.Key);var mesh=t.ToMesh("interior");if(warp!=null)warp.Bend(mesh,pair.Key);
-                times.Add(sw.Elapsed.TotalMilliseconds);
+                // a build the garbage collector paused is not timed: the pause is the whole run's allocations, not its own
+                if(System.GC.CollectionCount(0)==gc)times.Add(sw.Elapsed.TotalMilliseconds);else collected++;
                 int n=TileGallery.Triangles(mesh);tris+=n;cells++;if(n==0)empty++;
                 Object.DestroyImmediate(mesh);
             }
             times.Sort();
             double median=times.Count>0?times[times.Count/2]:0,max=times.Count>0?times[times.Count-1]:0;
             checks.Add((cells>0&&empty==0,$"{where}: every home and corridor with an interior builds it ({cells} cells, {empty} empty)"));
-            checks.Add((max<10,$"{where}: an interior builds and meshes in under 10 ms (median {median:0.00} ms, max {max:0.00} ms)"));
+            checks.Add((max<10,$"{where}: an interior builds and meshes in under 10 ms (median {median:0.00} ms, max {max:0.00} ms; {collected} paused by the garbage collector not timed)"));
             md.AppendLine($"{where}: {cells} interior cells, {tris/Mathf.Max(1,cells)} triangles each on average; build median {median:0.00} ms, max {max:0.00} ms.");
             md.AppendLine();
         }
@@ -237,7 +250,7 @@ namespace DeathStar.EditorTools
                 if(!pictures)
                 {
                     interiors.ShowAround(Vector3.zero,100000);
-                    RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),150,checks,notes);
+                    RoomChecks(name,interiors,s,c=>interiors.RoomPoint(c),150,checks,notes);
                     WayCounts(name,interiors,s,checks,false,false);
                     int open=0,closed=0;
                     foreach(var pair in s.cells)foreach(var d in TileStructure.Directions)
@@ -260,7 +273,7 @@ namespace DeathStar.EditorTools
                 WayCounts(name,interiors,s,checks,true,true);
                 var home=next+doorDir;
                 interiors.ShowAround(W(next,Vector3.zero),12);
-                RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),300,checks,notes);
+                RoomChecks(name,interiors,s,c=>interiors.RoomPoint(c),300,checks,notes);
                 interiors.ShowAround(W(entered,Vector3.zero),14);
 
                 Vector3 Up(Vector3Int c)=>-Normal(c,(Vector3)interiors.Down(c));
@@ -309,19 +322,19 @@ namespace DeathStar.EditorTools
         // columns found for them) and a hub if wanted.
         static void WayCounts(string where,StationInteriors interiors,TileStructure s,List<(bool ok,string text)> checks,bool lifts,bool hub)
         {
-            int doors=0,lift=0,hatches=0,tubes=0;
+            int doors=0,lift=0,hatches=0,tubes=0,open=0;
             foreach(var pair in s.cells)foreach(var d in TileStructure.Directions)
             {
                 if(d.x+d.y+d.z<0)continue;
                 switch(interiors.Way(pair.Key,pair.Key+d))
                 {
                     case TileBuilder.Way.Door:doors++;break;case TileBuilder.Way.Lift:lift++;break;
-                    case TileBuilder.Way.Hatch:hatches++;break;case TileBuilder.Way.Tube:tubes++;break;
+                    case TileBuilder.Way.Hatch:hatches++;break;case TileBuilder.Way.Tube:tubes++;break;case TileBuilder.Way.Open:open++;break;
                 }
             }
             int hubs=s.cells.Keys.Count(c=>TileBuilder.HasInterior(s.cells[c].family)&&!s.special.ContainsKey(c)&&interiors.Hub(c));
             checks.Add((doors>0&&(!lifts||lift>0&&interiors.Lifts.Count>0)&&(!hub||hubs>0),
-                $"{where}: homes open side by side through sliding doors and stacked through lifts ({doors} doors, {lift} lift openings in {interiors.Lifts.Count} lifts, {tubes} tube joints, {hatches} hub hatches round {hubs} hub rooms)"));
+                $"{where}: homes open side by side through sliding doors and stacked through lifts ({doors} doors, {lift} lift openings in {interiors.Lifts.Count} lifts, {tubes} tube joints, {hatches} hub hatches round {hubs} hub rooms, {open} open joins inside halls)"));
         }
 
         // Appends the world-space triangles of a mesh (one submesh, or all for -1) as vertex triples.

@@ -36,8 +36,14 @@ namespace DeathStar
         const float WalkwayHalf=TubeInner*0.4142f+TubeInner-WalkwayDepth-0.01f;
         // A stair's risers and treads: 0.25 m and 0.3 m, or as steep as 0.3 m and 0.2 m where the room is short of space.
         const float Riser=0.25f,Tread=0.3f,MaxRiser=0.3f,MinTread=0.2f,StairHalf=0.7f;
-        // How people pass between neighbouring interiors: a sliding door, a lift, a hub hatch, a corridor's tube.
-        public enum Way{None,Door,Lift,Hatch,Tube}
+        // How people pass between neighbouring interiors: a sliding door, a lift, a hub hatch, a corridor's tube, or no
+        // wall at all between two cells of one hall.
+        public enum Way{None,Door,Lift,Hatch,Tube,Open}
+        // Rooms of one family side by side on one floor join into halls of up to HallCells x HallCells; the blocks they
+        // join in align on multiples of HallCells along the station's axes, so every cell agrees on them.
+        public const int HallCells=4;
+        // Half-width of a column where four cells of a hall meet.
+        const float ColumnHalf=0.25f;
         // A junction's room is a box of this half-size, in metres, inside its 1.4 m box outside, so the tube's octagon
         // through each face keeps a frame round it; its rigid throats reach Throat from the centre.
         const float JunctionBox=1.32f,Throat=1.38f;
@@ -52,8 +58,9 @@ namespace DeathStar
         static readonly Finish Lamp=new Finish(TileSlot.Light,TilePattern.Plain,Color.white,0f).Mounted(Vector3.back);
         static readonly float[] NoPorts=new float[0];
 
-        public static bool HasInterior(TileFamily f)=>f==TileFamily.Habitat||f==TileFamily.Corridor;
-        public bool Interior(Vector3Int c)=>s.TryGet(c,out var p)&&HasInterior(p.family)&&!(curved!=null&&s.special.ContainsKey(c));
+        // Every solid family has rooms; a conduit's pipes and a truss's open frame have none.
+        public static bool HasInterior(TileFamily f)=>f!=TileFamily.Conduit&&f!=TileFamily.Truss;
+        public bool Interior(Vector3Int c)=>s.TryGet(c,out var p)&&HasInterior(p.family)&&!(curved!=null&&s.special.ContainsKey(c))&&(p.family==TileFamily.Corridor||Roomy(c));
 
         // The cell's interior, centred on the cell like its tile (bend it like the tile on curved stages); empty for
         // families without one.
@@ -97,8 +104,12 @@ namespace DeathStar
             bool round=ca&&cb||(ca||Fits(a,d,r))&&(cb||Fits(b,-d,r));
             if(Hub(a)||Hub(b))return !round?Way.None:tube?Way.Tube:Way.Hatch;
             var down=Down(a);if(Down(b)!=down)return Way.None;
-            if(d==down||d==-down)return round?Way.Lift:Way.None;
+            // a hall's lift rises from the cell that stands for it, so stacked halls of one plan share one column
+            if(d==down||d==-down)return round&&Hall(a)==a&&Hall(b)==b?Way.Lift:Way.None;
+            if(Joins(a,b))return Way.Open;
             if(tube)return round?Way.Tube:Way.None;
+            // floors that turn too far between them (a fold over the cube's edge) face different ways
+            if(curved!=null&&Vector3.Angle(FloorNormal(a),FloorNormal(b))>DoorFold)return Way.None;
             return DoorFits(a,d)&&DoorFits(b,-d)?Way.Door:Way.None;
         }
         // Whether people pass between neighbouring cells a and b at all.
@@ -118,9 +129,85 @@ namespace DeathStar
             head=sill+DoorHeight/k.y;half=DoorWidth*0.5f/k.x;
         }
 
-        // Depth of the inner wall below face n: a thin partition against a solid neighbour, the window rows' depth
-        // against anything else.
-        public float Inset(Vector3Int cell,Vector3Int n)=>s.Solid(cell+n)?Partition:Shell;
+        // Whether side-by-side neighbours a and b are one hall: rooms (not corridors) of one family whose floors face
+        // the same way, in the same aligned block across their floors, and whose floors turn by at most HallFold
+        // degrees between them (on the curved grid; a hall never folds over the cube's edge). A sliding door takes a
+        // turn of up to DoorFold.
+        const float HallFold=25,DoorFold=35;
+        bool Joins(Vector3Int a,Vector3Int b)
+        {
+            if(!Interior(a)||!Interior(b))return false;
+            var fa=s.cells[a].family;if(fa!=s.cells[b].family||fa==TileFamily.Corridor)return false;
+            var down=Down(a);var d=b-a;
+            if(down==Vector3Int.zero||Down(b)!=down||d==down||d==-down)return false;
+            int ax=AxisOf(d);if(Block(a[ax])!=Block(b[ax]))return false;
+            return curved==null||Vector3.Angle(FloorNormal(a),FloorNormal(b))<=HallFold;
+        }
+        readonly Dictionary<Vector3Int,Vector3> floorNormals=new Dictionary<Vector3Int,Vector3>();
+        Vector3 FloorNormal(Vector3Int c)=>floorNormals.TryGetValue(c,out var n)?n:floorNormals[c]=FaceNormal(c,Down(c));
+        static int Block(int v)=>v>=0?v/HallCells:(v+1)/HallCells-1;
+        // The cell that stands for the hall cell belongs to (the first of its cells in x, then y, then z order; itself
+        // if it stands alone), and how many cells the hall has.
+        readonly Dictionary<Vector3Int,(Vector3Int first,int size)> halls=new Dictionary<Vector3Int,(Vector3Int,int)>();
+        public Vector3Int Hall(Vector3Int cell)=>HallOf(cell).first;
+        (Vector3Int first,int size) HallOf(Vector3Int cell)
+        {
+            if(halls.TryGetValue(cell,out var h))return h;
+            var members=new List<Vector3Int>{cell};var seen=new HashSet<Vector3Int>{cell};
+            for(int i=0;i<members.Count;i++)
+                foreach(var d in TileStructure.Directions){var q=members[i]+d;if(!seen.Contains(q)&&Joins(members[i],q)){seen.Add(q);members.Add(q);}}
+            var first=cell;
+            foreach(var q in members)if(q.x<first.x||q.x==first.x&&(q.y<first.y||q.y==first.y&&q.z<first.z))first=q;
+            h=(first,members.Count);foreach(var q in members)halls[q]=h;
+            return h;
+        }
+
+        // Depth of the inner wall below face n: none towards a cell of the same hall, a thin partition against a solid
+        // neighbour, the window rows' depth against anything else. In a hall, floor, walls and ceiling step by 0.3 m
+        // where what lies behind them changes from cell to cell (a floor step is low enough to walk up), and a jamb
+        // closes each step (Room).
+        public float Inset(Vector3Int cell,Vector3Int n)=>Joins(cell,cell+n)?0:s.Solid(cell+n)?Partition:Shell;
+
+        // The recesses deeper than the window rows that the family's forms cut in each open face of a cell (Face.wells),
+        // found once. A cell whose recesses leave less than MinClear metres of room behind them (a hangar bay) is all bay
+        // and has no room.
+        const float MinClear=1.2f;
+        readonly Dictionary<Vector3Int,List<(Vector3Int n,(Rect r,float from,float to) w)>> cellWells=new Dictionary<Vector3Int,List<(Vector3Int,(Rect,float,float))>>();
+        List<(Vector3Int n,(Rect r,float from,float to) w)> Wells(Vector3Int cell)
+        {
+            if(cellWells.TryGetValue(cell,out var list))return list;
+            // empty while the forms run: a socket asks whether its tube opens into this cell's room
+            cellWells[cell]=list=new List<(Vector3Int,(Rect,float,float))>();
+            var found=new List<(Vector3Int,(Rect,float,float))>();var p=s.cells[cell];var primary=s.Primary(cell,p);
+            foreach(var n in TileStructure.Directions)
+            {
+                if(s.Solid(cell+n))continue;
+                var face=Forms(new TileMesh{dry=true},cell,p,n,primary);face.m.Pop();
+                foreach(var w in face.wells)found.Add((n,w));
+            }
+            list.AddRange(found);
+            return list;
+        }
+        bool Roomy(Vector3Int cell)
+        {
+            foreach(var (n,w) in Wells(cell))if(w.to+Partition>Cell*Stretch(cell,n)-Shell-MinClear)return false;
+            return true;
+        }
+        // Metres per station metre across a cell along n (1 on flat stages): recesses keep their depth in metres.
+        float Stretch(Vector3Int cell,Vector3Int n)=>curved==null?1:Mathf.Max(0.05f,curved.Scale(TileStructure.Center(cell),(Vector3)n));
+        // A point in the cell's room, in station space: its centre, moved out of any recess that stands into it from a
+        // face, past its back, so it lies in the open room.
+        public Vector3 RoomPoint(Vector3Int cell)
+        {
+            var c=TileStructure.Center(cell);
+            if(!Interior(cell))return c;
+            foreach(var (n,w) in Wells(cell))
+            {
+                float back=w.to+Partition,k=Stretch(cell,n);
+                if(back>Half*k&&w.r.Contains(Vector2.zero))c-=(Vector3)n*((back+0.3f)/k-Half);
+            }
+            return c;
+        }
         static Rect Mirror(Rect r)=>Rect.MinMaxRect(-r.xMax,r.yMin,-r.xMin,r.yMax);
         // Metres per station metre along face n's x and y round its centre (1 on flat stages).
         Vector2 FaceScale(Vector3Int cell,Vector3Int n,Vector3Int x,Vector3Int y)=>
@@ -134,18 +221,32 @@ namespace DeathStar
             return Vector3.Cross(curved.Map(q+u)-curved.Map(q-u),curved.Map(q+v)-curved.Map(q-v)).normalized*n[a];
         }
         // Face units from the centre of face n to the room's edge towards d, where this wall's inner surface meets the
-        // wall of face d. A curved cell is sheared: the meeting follows the angle between the two faces at their edge,
-        // in metres, and the wall runs most of the other wall's thickness past it (the faces' smoothed normals tilt the
-        // inner surfaces by a few centimetres at their edges), so the two always close without coming through.
-        float Reach(Vector3Int cell,Vector3Int n,Vector3Int d)
+        // wall of face d, and then most of that wall's thickness past it, so the two always close without coming
+        // through. A curved cell is sheared and its walls stand off their faces along the faces' smoothed normals, so
+        // the meeting is measured on the bent surfaces themselves: where this wall's inner surface, across the middle of
+        // the face, crosses the plane of the other's near their edge. Into a cell of the same hall (no wall d) it runs
+        // Overlap past the face between them, so the two cells' walls never part. tn: the wall's depth, if not its own.
+        const float Overlap=0.03f;
+        float Reach(Vector3Int cell,Vector3Int n,Vector3Int d)=>Reach(cell,n,d,Inset(cell,n));
+        float Reach(Vector3Int cell,Vector3Int n,Vector3Int d,float tn)
         {
-            float tn=Inset(cell,n),td=Inset(cell,d);
-            if(curved==null)return Half-td;
-            var edge=TileStructure.Center(cell)+(Vector3)(n+d)*Half;
-            Vector3 nn=CurvedNormal(n,edge-(Vector3)d*0.05f),nd=CurvedNormal(d,edge-(Vector3)n*0.05f);
-            float cos=-Vector3.Dot(nn,nd),sin=Mathf.Max(0.3f,Mathf.Sqrt(Mathf.Max(0,1-cos*cos)));
-            float metres=(td+tn*cos)/sin-Mathf.Min(0.1f,td*0.7f);
-            return Mathf.Max(0.2f,Half-metres/Mathf.Max(0.05f,curved.Scale(edge-(Vector3)(n+d)*0.05f,d)));
+            float td=Inset(cell,d),past=Mathf.Min(0.1f,td*0.7f)+(td==0?Overlap:0);
+            if(curved==null)return Half-td+past;
+            var c=TileStructure.Center(cell);Vector3 faceN=c+(Vector3)n*Half,faceD=c+(Vector3)d*Half,along=TileStructure.Cross(n,d);
+            var fn=new Vector4(n.x,n.y,n.z,Vector3.Dot((Vector3)n,c)+Half);var fd=new Vector4(d.x,d.y,d.z,Vector3.Dot((Vector3)d,c)+Half);
+            // A bent face is twisted, so the meeting drifts along the edge: measured near both ends (the drift is
+            // largest there), the wall runs as far as the further needs.
+            float reach=0.2f;
+            foreach(float e in new[]{-(Half-0.4f),Half-0.4f})
+            {
+                // the other wall's inner surface near the edge, as a plane (its normal out through face d)
+                var near=faceD+(Vector3)n*(Half-0.3f)+along*e;var w=curved.Position(near-(Vector3)d*td,fd);var nd=CurvedNormal(d,near);
+                // metres this wall's inner surface lies past that plane, u face units along d from face n's centre
+                float S(float u)=>Vector3.Dot(curved.Position(faceN+(Vector3)d*u+along*e-(Vector3)n*tn,fn)-w,nd);
+                const float u0=Half-0.6f,u1=Half;float s0=S(u0),s1=S(u1),k=(s1-s0)/(u1-u0);
+                reach=Mathf.Max(reach,k<0.05f?Half-td:u0+(past-s0)/k);
+            }
+            return reach;
         }
 
         // A room: six inner walls, each in the frame of the face outside it (x mirrored, so the wall faces in), at its
@@ -157,6 +258,8 @@ namespace DeathStar
             var primary=s.Primary(cell,p);var c=TileStructure.Center(cell);var down=Down(cell);bool hub=down==Vector3Int.zero;
             foreach(var n in TileStructure.Directions)
             {
+                var next=cell+n;var way=WayBetween(cell,next);
+                if(way==Way.Open)continue;
                 bool axial=n==p.axis||n==-p.axis;
                 var y=axial?p.side:p.axis;var x=TileStructure.Cross(y,-n);
                 float t=Inset(cell,n);var k=FaceScale(cell,n,x,y);
@@ -165,7 +268,7 @@ namespace DeathStar
                 Vector3 lx=TileStructure.Cross(y,n),ly=y;
                 Vector2 L(Vector3 v)=>new Vector2(Vector3.Dot(v,lx),Vector3.Dot(v,ly));
                 var holes=new List<Rect>();float opening=0;var plate=Vector2.zero;Rect door=default;
-                var next=cell+n;var way=WayBetween(cell,next);
+                List<(Rect r,float from,float to)> wells=null;
                 if(way==Way.Door)
                 {
                     DoorFrame(cell,n,out var across,out var up,out float sill,out float head,out float half);
@@ -187,10 +290,31 @@ namespace DeathStar
                         var w=Rect.MinMaxRect(Mathf.Max(r.xMin,room.xMin),Mathf.Max(r.yMin,room.yMin),Mathf.Min(r.xMax,room.xMax),Mathf.Min(r.yMax,room.yMax));
                         if(w.width>0.01f&&w.height>0.01f)holes.Add(Mirror(w));
                     }
+                    wells=face.wells;
                 }
                 m.surfaceFrame=new Vector4(n.x,n.y,n.z,Vector3.Dot((Vector3)n,c)+Half);
                 m.Push((Vector3)n*(Half-t),Quaternion.LookRotation((Vector3)n,(Vector3)y));
                 m.Wall(InnerWall,Mirror(room),holes);
+                if(wells!=null)foreach(var w in wells)Well(m,w,wells,room,t);
+                // Where this wall ends at a cell of the same hall whose own wall here stands nearer the face (or which has
+                // none, being open onward), a jamb on the face between them closes the step.
+                foreach(var d in TileStructure.Directions)
+                {
+                    if(d==n||d==-n||!Joins(cell,cell+d))continue;
+                    float step=t-Inset(cell+d,n);if(step<1e-3f)continue;
+                    // from where this wall meets that face to where the neighbour's would, on a sheared cell not square
+                    var e=L((Vector3)d);var M=Mirror(room);float r0=Reach(cell,n,d),r1=Reach(cell,n,d,t-step);
+                    if(Mathf.Abs(e.x)>0.5f)
+                    {
+                        float s0=Mathf.Sign(e.x);
+                        m.Quad(InnerWall,new Vector3(s0*r0,M.yMin,0),new Vector3(s0*r0,M.yMax,0),new Vector3(s0*r1,M.yMax,step),new Vector3(s0*r1,M.yMin,step),new Vector3(e.x,0,0),Vector3.up);
+                    }
+                    else
+                    {
+                        float s0=Mathf.Sign(e.y);
+                        m.Quad(InnerWall,new Vector3(M.xMin,s0*r0,0),new Vector3(M.xMax,s0*r0,0),new Vector3(M.xMax,s0*r1,step),new Vector3(M.xMin,s0*r1,step),new Vector3(0,e.y,0),Vector3.right);
+                    }
+                }
                 // flush in a floor, so people walk across it
                 if(opening>0)Opening(m,c+(Vector3)n*Half,opening,plate,t,opening==HatchRadius?InnerTrim:InnerWall,n==down?0.004f:0.03f);
                 if(way==Way.Door)Doorway(m,door,L(-(Vector3)down),t);
@@ -211,6 +335,49 @@ namespace DeathStar
                 m.Pop();
             }
             m.surfaceFrame=Vector4.zero;
+            if(!hub)Columns(m,cell,down);
+        }
+
+        // A recess the face's forms cut deeper than the wall (a hangar bay, a pit) stands into the room as a closed
+        // block, in the wall's frame (x mirrored, at depth t below the face): its sides from the wall, or from the back
+        // of the recess it opens from, to Partition behind its own back, and that back, open where a deeper recess goes
+        // on. Where it reaches the edge of the face it runs on to it, with no side there: behind the room's wall, which
+        // closes it however that wall leans, or on into the next cell of a hall, which carries it on.
+        static void Well(TileMesh m,(Rect r,float from,float to) w,List<(Rect r,float from,float to)> wells,Rect room,float t)
+        {
+            const float e=1e-3f;
+            // sides where the recess stops short of the face's edges (face frame: left, right, bottom, top)
+            bool l=w.r.xMin>-Half+e,r=w.r.xMax<Half-e,b=w.r.yMin>-Half+e,u=w.r.yMax<Half-e;
+            var clip=Rect.MinMaxRect(Mathf.Min(room.xMin,-Half),Mathf.Min(room.yMin,-Half),Mathf.Max(room.xMax,Half),Mathf.Max(room.yMax,Half));
+            var f=Rect.MinMaxRect(Mathf.Max(l?w.r.xMin:clip.xMin,clip.xMin),Mathf.Max(b?w.r.yMin:clip.yMin,clip.yMin),
+                Mathf.Min(r?w.r.xMax:clip.xMax,clip.xMax),Mathf.Min(u?w.r.yMax:clip.yMax,clip.yMax));
+            if(f.width<0.01f||f.height<0.01f)return;
+            var R=Mirror(f);
+            float z0=w.from>0?t-w.from-Partition:0,z1=t-w.to-Partition;
+            // mirrored: the face's left side is the wall frame's right
+            if(r)m.Quad(InnerWall,new Vector3(R.xMin,R.yMin,z0),new Vector3(R.xMin,R.yMax,z0),new Vector3(R.xMin,R.yMax,z1),new Vector3(R.xMin,R.yMin,z1),Vector3.left,Vector3.up);
+            if(l)m.Quad(InnerWall,new Vector3(R.xMax,R.yMin,z0),new Vector3(R.xMax,R.yMax,z0),new Vector3(R.xMax,R.yMax,z1),new Vector3(R.xMax,R.yMin,z1),Vector3.right,Vector3.up);
+            if(b)m.Quad(InnerWall,new Vector3(R.xMin,R.yMin,z0),new Vector3(R.xMax,R.yMin,z0),new Vector3(R.xMax,R.yMin,z1),new Vector3(R.xMin,R.yMin,z1),Vector3.down,Vector3.right);
+            if(u)m.Quad(InnerWall,new Vector3(R.xMin,R.yMax,z0),new Vector3(R.xMax,R.yMax,z0),new Vector3(R.xMax,R.yMax,z1),new Vector3(R.xMin,R.yMax,z1),Vector3.up,Vector3.right);
+            var deeper=new List<Rect>();
+            foreach(var o in wells)if(Mathf.Abs(o.from-w.to)<e)deeper.Add(Mirror(o.r));
+            m.Push(new Vector3(0,0,z1),Quaternion.identity);m.Wall(InnerWall,R,deeper);m.Pop();
+        }
+
+        // A column on each edge across the floor where four cells of one hall meet, floor to ceiling, built by the cell
+        // on the edge's lower side along both axes.
+        void Columns(TileMesh m,Vector3Int cell,Vector3Int down)
+        {
+            foreach(var a in TileStructure.Directions)foreach(var b in TileStructure.Directions)
+            {
+                if(a.x+a.y+a.z<0||b.x+b.y+b.z<0||AxisOf(a)>=AxisOf(b)||AxisOf(a)==AxisOf(down)||AxisOf(b)==AxisOf(down))continue;
+                if(!Joins(cell,cell+a)||!Joins(cell,cell+b)||!Joins(cell+a,cell+a+b)||!Joins(cell+b,cell+a+b))continue;
+                // a few centimetres into floor and ceiling, which keep their depth in metres from the bent faces
+                float lo=-(Half-Inset(cell,down))-0.05f,hi=Half-Inset(cell,-down)+0.05f;
+                m.Push(((Vector3)a+(Vector3)b)*Half,Quaternion.LookRotation(-(Vector3)down,(Vector3)a));
+                m.Box(InnerWall,new Vector3(0,0,(lo+hi)*0.5f),new Vector3(2*ColumnHalf,2*ColumnHalf,hi-lo),0.04f);
+                m.Pop();
+            }
         }
 
         // A sliding door's lining through the wall to its face, sill included (the neighbour lines the rest, and
