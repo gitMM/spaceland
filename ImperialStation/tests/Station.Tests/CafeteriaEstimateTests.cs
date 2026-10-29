@@ -91,4 +91,20 @@ public sealed class CafeteriaEstimateTests
         Assert.False(ConversationPolicy.MayShare(1, ConversationTopic.WitnessedProblem, none));
         Assert.True(ConversationPolicy.MayShare(1, ConversationTopic.WitnessedProblem, empty));
     }
+
+    [Fact]
+    public void VisiblyOccupiedIdenticalServiceOnTheSameTileIsNotChosen()
+    {
+        // Identical services sharing a tile (a facility's beds, two rest spots) were
+        // all chosen by lowest ID, so occupants queued behind each other beside a free one.
+        var tiles = new[] { new Tile(new(1), "Storage", Fixtures.A, traversalOverride: 4), new Tile(new(2), "Habitat", Fixtures.B, traversalOverride: 4) };
+        World Make(IEnumerable<FactSeed>? facts) => new("identical-services", 42, new WorldConfig(itemActionTicks: 1), Fixtures.Catalog, tiles,
+            new[] { new ActorSeed(new(1), "Resident", "worker", Fixtures.B) }, Array.Empty<Item>(), true,
+            information: new InformationSeed(publication: new PublicKnowledge(1, tiles.Select(t => new KnownTile(t.Id, t.Position, 4)), Array.Empty<PublicService>()), facts: facts),
+            needs: new NeedSeed(initial: new[] { new NeedInitialValue(new(1), NeedKind.WorkStrain, 0) },
+                services: new[] { new NeedServiceDefinition(1, NeedServiceKind.RestSpot, Fixtures.B, durationTicks: 250), new NeedServiceDefinition(2, NeedServiceKind.RestSpot, Fixtures.B, durationTicks: 250) }));
+        long Rest(World w) => NeedPlanning.Plan(w.ActorView(new(1)), NeedKind.WorkStrain).Steps.Last().Intent.ServiceId;
+        Assert.Equal(1, Rest(Make(null)));
+        Assert.Equal(2, Rest(Make(new[] { Fact(1, AttributeKind.EstimateTicks, 250), Fact(2, AttributeKind.EstimateTicks, 0) })));
+    }
 }

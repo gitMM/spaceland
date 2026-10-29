@@ -100,14 +100,20 @@ namespace Station.Core
                 !credentials.Values.Any(c => c.Definition.Card == i.Id) && i.Quantity > OtherMealReservations(i.Id.Value, action.Id.Value));
         }
         // Local, present-tense estimates: meals visibly available here and the
-        // wait implied by the queue ahead. Citizens never read a remote cafeteria.
+        // wait implied by the queue ahead. Citizens never read a remote service.
+        // Waits are recorded for cafeterias and for identical services sharing this
+        // tile (for example a facility's beds), where the visible choice matters.
         private void ObserveCafeterias(Actor actor, long cause)
         {
             if (Needs == null || Information == null) return;
-            foreach (var service in needServices.Values.Where(s => s.Definition.Kind == NeedServiceKind.Cafeteria && s.Definition.Position == actor.Position))
+            var here = needServices.Values.Where(s => s.Definition.Position == actor.Position && (s.Definition.Kind != NeedServiceKind.Bed || s.AssignedActorId == 0 || s.AssignedActorId == actor.Id.Value)).ToArray();
+            foreach (var service in here.Where(s => s.Definition.Kind == NeedServiceKind.Cafeteria || here.Count(o => o.Definition.Kind == s.Definition.Kind) > 1))
             {
-                long meals = AvailableItemsAt(actor.Position).Where(i => i.Resource == service.Definition.MealResource).Sum(i => i.Quantity);
-                ObservePerceived(actor, new FactKey(SubjectKind.Service, service.Definition.Id, AttributeKind.Quantity), FactValue.Integer(meals), EvidenceKind.Direct, service.Definition.Id, cause, true);
+                if (service.Definition.Kind == NeedServiceKind.Cafeteria)
+                {
+                    long meals = AvailableItemsAt(actor.Position).Where(i => i.Resource == service.Definition.MealResource).Sum(i => i.Quantity);
+                    ObservePerceived(actor, new FactKey(SubjectKind.Service, service.Definition.Id, AttributeKind.Quantity), FactValue.Integer(meals), EvidenceKind.Direct, service.Definition.Id, cause, true);
+                }
                 ObservePerceived(actor, new FactKey(SubjectKind.Service, service.Definition.Id, AttributeKind.EstimateTicks), FactValue.Integer(VisibleWait(service, actor)), EvidenceKind.Direct, service.Definition.Id, cause, true);
             }
         }
@@ -133,7 +139,7 @@ namespace Station.Core
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
-            if (service.Definition.Kind == NeedServiceKind.Cafeteria) ObserveCafeterias(actor, action.CauseId);
+            ObserveCafeterias(actor, action.CauseId);
             service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
         }
         private void RequestNeedGrant(NeedService service)

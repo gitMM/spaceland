@@ -42,8 +42,8 @@ namespace Station.Mind
             long localWait = here != null ? CafeteriaWait(view, here) : 0;
             long Wait(NeedServiceDefinition s)
             {
-                if (s.Kind != NeedServiceKind.Cafeteria) return 0;
                 long known = CafeteriaWait(view, s);
+                if (s.Kind != NeedServiceKind.Cafeteria) return Math.Max(0, known);
                 return known >= 0 ? known : localWait;
             }
             long Margin(NeedServiceDefinition s) => here != null && s.Id != here.Id && s.Kind == NeedServiceKind.Cafeteria ? s.DurationTicks : 0;

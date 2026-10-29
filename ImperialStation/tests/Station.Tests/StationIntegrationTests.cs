@@ -53,7 +53,7 @@ public sealed class StationIntegrationTests
         // Schema 46 ends daily sleep at the known wake time, prepares for sleep from
         // the citizen's own need rates, and records cafeteria estimates and terminal
         // outages, so this no-escort control's state changes beyond its schema byte.
-        Assert.Equal("496204f5b1dde45a521ed3a3bf3dad608c44f61d1b3386b8c0724380db18180a", measured.Digest);
+        Assert.Equal("f042a11b220d82b4ca6668f37d799c882b081cc21d010054ad184205341ba85e", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]
