@@ -362,3 +362,20 @@ the result, so no snapshot schema change is needed.
 | Keep authorization administrative | Guards must still read, form a team, travel, establish custody and complete intake. |
 | Persist count and record cutoffs as well as ticks | Later events in the same tick must not rewrite a prior institutional decision. |
 | Validate expiry arithmetic before allocating an authorization ID | Overflow cannot leave a partial authorization or corrupt its sequence. |
+
+## Staffing, timing and response decisions (2026-10-29)
+
+| Decision | Reason |
+| --- | --- |
+| Convert five cleaners per 64-person group into guards, three per cohort | One shift can field a two-guard team while a third patrols or takes a break; population and duty length stay fixed, and the redistribution is declared in the generator. |
+| Require published remaining duty when selecting responders | An order posted minutes before shift end is read at the post-duty visit and acted on a shift later. |
+| Hold escort teams for known detention capacity (policy option) | Waiting at a full intake let a guard's need become critical mid-custody; the authority uses only its own dispatches and receipts, never live occupancy. |
+| Withdraw and replace a team after a bounded acknowledgment deadline | Eventual acknowledgment is not a response time; the authority knows only posting and received acknowledgments, so withdrawal is an explicit message and late replies are rejected. |
+| Keep acknowledging guards eligible after withdrawal | Excluding every previously assigned guard exhausts small staggered rosters without evidence of unfitness. |
+| End daily sleep at the known wake time | A late or restarted sleep otherwise consumed the pre-duty meal and check-in hour; relief stays pro rata. |
+| Prepare for sleep from the citizen's own sleeping rates | The after-duty meal window can close below seek, leaving hunger or bladder predictably critical before waking. |
+| Keep the citizen in place during a co-located custody handoff | Autonomous routine travel otherwise escaped a handoff already in progress; external commands are unaffected. |
+| Remember terminal outages as private local observations | Travel previously reset retries; alternatives and growing rechecks need memory that only a later local observation clears. |
+| Use only fresh, learned cafeteria estimates with hysteresis | Choice must not read remote queues or stock, and an unknown alternative must not cause repeated switching. |
+| Confirm an ordered repair when the operational belief predates the order | A stale belief let a worker report completion of a machine that had faulted again. |
+

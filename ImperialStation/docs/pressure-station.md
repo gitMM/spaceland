@@ -2,10 +2,10 @@
 
 Requested 2026-10-29. Status: implementation and verification in progress.
 
-Next work: [staffing, daily timing and response times](acceptance-current.md#next-step--staffing-daily-timing-and-response-times),
-covering the six issues raised in the user's 32-person log review and their
-recommended fixes. That section defines the implementation order and verification
-requirements; expansion and physical emergency alarms remain deferred.
+Staffing, daily timing and response times: the six issues from the user's 32-person
+log review are implemented ([progress](staffing-response-progress.md), requirements in
+[acceptance-current.md](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)).
+Expansion and physical emergency alarms remain deferred.
 
 Completion clarification approved by the user: insufficient evidence is a valid
 explicit outcome. Every initial claim must have a completed verification and either
@@ -42,8 +42,14 @@ this workload or treat outstanding construction gates as required release work.
 The generator uses nine shortened configured days, each 36,000 ticks at 100 ms.
 Needs rates and routine durations inherit the explicitly accelerated daily fixture;
 this is not real-time calibration. Population, geometry, beds and supplies are fixed.
-Each 64-person group has two misconduct subjects, one supervisor and four guards;
+Each 64-person group has two misconduct subjects, one supervisor and nine guards;
 the remaining citizens clean and repair. The 32-person station uses one group.
+Staffing redistribution (2026-10-29, declared): five former cleaners per group
+(`b+8..b+12`) became guards, staggered three per cohort; previously four guards all
+worked cohort 0. Escort teams need an hour of published duty left, the authority holds
+a team while its own dispatches and receipts fill the declared facility capacity, and
+an escort team must acknowledge within two configured hours or is withdrawn and
+replaced. See [staffing and response progress](staffing-response-progress.md).
 There are four bad-installation/false-report cases per group. Only these initial
 actions are scripted. Each subject's two incidents run contiguously so an autonomous
 inbox read cannot start in a gap and interrupt the finite trigger. The population
@@ -78,6 +84,18 @@ read and on-duty boundary prove return to idle duty; that is counted separately.
 At least one released subject must resume a real available task.
 
 ## Current evidence
+
+- **Staffing and response build (schema 46, 2026-10-29, cloud run).** The 32-person
+  gate passes with exact state and every continuation event after restoring tick
+  12,000. The backlog clears at tick 198,000; four reprimands, two releases, both
+  released subjects resume work. There are 6 missed ordinary windows (previously 189),
+  all classified with zero retention violations, and 1 critical need interruption
+  (previously 168). Guard team-gap samples: 0 of 325. Maximum custody response:
+  10,001 ticks, caused only by the single detention slot. Full response tables are in
+  [staffing-response-progress.md](staffing-response-progress.md).
+- The 2,048-citizen run of this build is in progress; its result will be recorded here.
+- The complete suite passes all **857 tests**, zero failures or skips
+  (`artifacts/staffing-tests/staffing-response.trx` in the cloud run).
 
 - `artifacts/pressure-32-completion/` passes all nine-day gates and the independent
   assignment-history/case audit, including exact state and every continuation event.

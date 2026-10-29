@@ -23,11 +23,11 @@ Earlier 2,048-citizen trials exposed institutional backlogs and the inline check
 export limit; those defects are fixed, but population acceptance remains pending. Expansion
 is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`, with
 a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
-The latest complete suite passes **843 tests**, zero failures or skips, in
-`artifacts/pressure-tests/pressure-all-completion.trx`. Authenticated original replies
+The latest complete suite passes **857 tests**, zero failures or skips
+(staffing and response build; earlier: 843 in `artifacts/pressure-tests/pressure-all-completion.trx`). Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,
-reply handling, and checkpoint fixes. Snapshot schema is 45. Explicit evidence-based
+reply handling, and checkpoint fixes. Snapshot schema is 46. Explicit evidence-based
 review outcomes are acceptable per the user's clarification; unfinished audits,
 unread decisions, and open escorts remain failures.
 The roster-search population trial reached 59 of 63 required releases; its remaining
@@ -42,9 +42,20 @@ requirement; replay cannot turn that primary failure into a passing population g
 
 ## Next step — staffing, daily timing and response times
 
-Requested after the user's review of the 32-person logs (2026-10-29). This is the
-next implementation and verification step, not a completed milestone. Keep the
+Requested after the user's review of the 32-person logs (2026-10-29). Keep the
 station layout and population fixed; expansion remains deferred.
+
+**Status (2026-10-29): all six items are implemented and verified at 32 citizens.**
+See [staffing and response progress](staffing-response-progress.md). Summary:
+(1) nine guards per 64-person group, three per cohort, by declared conversion of five
+cleaners; zero team-gap coverage samples. (2) Bounded escort acknowledgment deadlines
+with withdrawal, reassignment and rejected late replies. (3) Sleep ends at the known
+wake time, with sleep preparation from the citizen's own rates; missed windows
+189 → 6, critical interruptions 168 → 1. (4) Cafeteria choice from fresh learned queue
+and stock estimates with hysteresis. (5) Remembered terminal outages shared by
+reporting, check-ins, audits and recovery. (6) Response-time stages, declared limits,
+causes and an overnight control. The 2,048-citizen result is recorded in
+[pressure-station.md](pressure-station.md#current-evidence). The original request follows.
 
 1. **Stagger guard shifts.** The pressure generator currently places every guard
    in cohort 0, leaving predictable gaps in security coverage. Distribute guard
