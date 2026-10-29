@@ -39,6 +39,30 @@ public sealed class AuditTests
     }
 
     [Fact]
+    public void BoundAuditDeskIsRecheckedDespiteAnUnvisitedRememberedOutage()
+    {
+        // The supervisor learns that a far desk (3) is down, then posts at a nearer working
+        // one (4) and never revisits it. That less-confirmed outage stays due forever; the
+        // alternatives rule rechecked only it, so the audit never retried its own desk (2).
+        // The 256-citizen pressure run left one case pending this way.
+        var w = Load(j => {
+            var info = j["initialState"]!["information"]!;
+            var far = info["terminals"]![1]!.DeepClone(); far["id"] = 3; far["capabilities"] = "Inbox, Post"; far["position"]!["x"] = 2; info["terminals"]!.AsArray().Add(far);
+            var near = info["terminals"]![1]!.DeepClone(); near["id"] = 4; near["capabilities"] = "Inbox, Post"; near["position"]!["x"] = 1; info["terminals"]!.AsArray().Add(near);
+            foreach (var actor in j["initialState"]!["actors"]!.AsArray()) if ((long)actor!["id"]! == Supervisor.Value) actor["position"]!["x"] = 2;
+        }).CreateWorld(42, true);
+        w.ScheduleTerminalChange(0, 3, false, false); w.ScheduleTerminalChange(0, 2, false, false); w.ScheduleTerminalChange(4030, 2, true, true);
+        w.AdvanceTo(8000);
+        Assert.Equal(AuditStatus.ReadyToFile, Audit(w).Status);
+        Assert.Contains(w.InspectTerminalOutages(Supervisor), o => o.TerminalId == 3 && o.Observations == 1);
+        // The bound desk's rechecks still back off; restoration is learned only on arrival.
+        var learned = w.Trace.Where(e => e.Type == "TerminalOutageLearned" && e.TerminalId == 2).Select(e => e.Tick).ToArray();
+        Assert.True(learned.Length >= 4); Assert.All(learned.Zip(learned.Skip(1)), p => Assert.True(p.Second > p.First));
+        Assert.Contains(w.Trace, e => e.Type == "TerminalRestorationObserved" && e.TerminalId == 2 && e.Tick > 4030);
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    [Fact]
     public void UnrelatedMachineHistoryCannotExhaustTheAuditPageBudget()
     {
         var w = Load(j => {

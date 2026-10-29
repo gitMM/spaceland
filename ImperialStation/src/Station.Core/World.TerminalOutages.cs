@@ -75,6 +75,11 @@ namespace Station.Core
             var recheck = own.Values.Where(o => o.RetryAt <= NeedNow).OrderBy(o => o.Backoff).ThenBy(o => o.LastObservedTick).ThenBy(o => o.TerminalId).FirstOrDefault();
             return own.Values.Where(o => o != recheck).Select(o => o.TerminalId).ToArray();
         }
+        // A query bound to one terminal has no alternative to alternate with: it avoids that
+        // terminal only while the remembered outage is inside its own wait, whatever other
+        // outages the citizen remembers, and otherwise rechecks it.
+        private long BoundTerminalRetry(Id<ActorTag> actor, long terminal) =>
+            terminalOutages.TryGetValue(actor.Value, out var own) && own.TryGetValue(terminal, out var o) && o.RetryAt > NeedNow ? o.RetryAt : -1;
         // An agent left without any eligible terminal waits for its own backoff and
         // for the earliest remembered outage to become due for a bounded recheck.
         private long NextTerminalRecheck(Id<ActorTag> actor, long backoffRetry)
