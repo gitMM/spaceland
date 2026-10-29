@@ -14,10 +14,17 @@ namespace Station.Contracts
         public string GuardRole { get; }
         public int GuardCount { get; }
         public long EquipTicks { get; }
-        public EscortDispatchPolicy(long facilityId, Coord destination, Coord rendezvous, string requiredEquipment, string guardRole = "guard", int guardCount = 2, long equipTicks = 50)
+        // Published-roster duty a selected guard must still have; zero disables it.
+        public long MinimumRemainingDutyTicks { get; }
+        // Bounded wait for every selected guard's acknowledgment; zero disables reassignment.
+        public long AcknowledgmentTicks { get; }
+        public EscortDispatchPolicy(long facilityId, Coord destination, Coord rendezvous, string requiredEquipment, string guardRole = "guard", int guardCount = 2, long equipTicks = 50,
+            long minimumRemainingDutyTicks = 0, long acknowledgmentTicks = 0)
         {
-            if (facilityId < 1 || string.IsNullOrWhiteSpace(requiredEquipment) || string.IsNullOrWhiteSpace(guardRole) || guardCount < 1 || guardCount > 8 || equipTicks < 1) throw new ArgumentException("Invalid escort dispatch policy.");
+            if (facilityId < 1 || string.IsNullOrWhiteSpace(requiredEquipment) || string.IsNullOrWhiteSpace(guardRole) || guardCount < 1 || guardCount > 8 || equipTicks < 1 ||
+                minimumRemainingDutyTicks < 0 || acknowledgmentTicks < 0) throw new ArgumentException("Invalid escort dispatch policy.");
             FacilityId = facilityId; Destination = destination; Rendezvous = rendezvous; RequiredEquipment = requiredEquipment; GuardRole = guardRole; GuardCount = guardCount; EquipTicks = equipTicks;
+            MinimumRemainingDutyTicks = minimumRemainingDutyTicks; AcknowledgmentTicks = acknowledgmentTicks;
         }
     }
     public sealed class EscortOrderPayload
@@ -49,6 +56,7 @@ namespace Station.Contracts
         public bool Same(EscortOrderPayload p) => DispatchId == p.DispatchId && AuthorizationId == p.AuthorizationId && SubjectAccountId == p.SubjectAccountId && SubjectActorId == p.SubjectActorId && Expires == p.Expires &&
             SentenceTicks == p.SentenceTicks && Dispatch.FacilityId == p.Dispatch.FacilityId && Dispatch.Destination.Equals(p.Dispatch.Destination) && Dispatch.Rendezvous.Equals(p.Dispatch.Rendezvous) &&
             Dispatch.RequiredEquipment == p.Dispatch.RequiredEquipment && Dispatch.GuardRole == p.Dispatch.GuardRole && Dispatch.GuardCount == p.Dispatch.GuardCount && Dispatch.EquipTicks == p.Dispatch.EquipTicks &&
+            Dispatch.MinimumRemainingDutyTicks == p.Dispatch.MinimumRemainingDutyTicks && Dispatch.AcknowledgmentTicks == p.Dispatch.AcknowledgmentTicks &&
             JustifyingCases.SequenceEqual(p.JustifyingCases) && Guards.SequenceEqual(p.Guards) && Candidates.SequenceEqual(p.Candidates);
     }
 }

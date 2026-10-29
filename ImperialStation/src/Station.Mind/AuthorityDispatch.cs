@@ -10,11 +10,14 @@ namespace Station.Mind
         public static IReadOnlyList<long> EscortTeam(IAuthorityView view, long excludedActor, EscortDispatchPolicy policy, IEnumerable<DispatchCandidate> candidates)
         {
             var team = candidates.Where(c => c.Person.ActorId != excludedActor && c.Person.Role == policy.GuardRole && c.Person.Roster != null &&
-                    c.Person.Roster.OnDuty(view.Tick) && !c.Committed && c.KnownOrigin.HasValue)
+                    RemainsOnDuty(c.Person.Roster, view.Tick, policy.MinimumRemainingDutyTicks) && !c.Committed && c.KnownOrigin.HasValue)
                 .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, policy.Rendezvous, view.NominalTravelTicks)))
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).Distinct().Take(policy.GuardCount).ToArray();
             return team.Length == policy.GuardCount ? team : Array.Empty<long>();
         }
+        // Uses only the published roster: a guard about to go off duty would read the
+        // order at their post-duty visit and leave the team to a later shift.
+        public static bool RemainsOnDuty(RosterPayload roster, long tick, long minimum) => roster.OnDuty(tick) && roster.NextBoundary(tick) - tick >= Math.Max(1, minimum);
         public static long CleanupReplacement(IAuthorityView view, Id<TileTag> tile, long excludedActor, IEnumerable<DispatchCandidate> candidates)
         {
             var job = view.Publication.Work?.Cleanable.SingleOrDefault(c => c.Tile == tile);

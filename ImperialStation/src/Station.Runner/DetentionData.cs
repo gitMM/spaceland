@@ -32,7 +32,9 @@ public sealed class EscortDispatchData
     public string GuardRole { get; set; } = "guard";
     public int GuardCount { get; set; } = 2;
     public long EquipTicks { get; set; } = 50;
-    public EscortDispatchPolicy ToPolicy() => new(FacilityId, Destination.ToCoord(), Rendezvous.ToCoord(), RequiredEquipment, GuardRole, GuardCount, EquipTicks);
+    public long MinimumRemainingDutyTicks { get; set; }
+    public long AcknowledgmentTicks { get; set; }
+    public EscortDispatchPolicy ToPolicy() => new(FacilityId, Destination.ToCoord(), Rendezvous.ToCoord(), RequiredEquipment, GuardRole, GuardCount, EquipTicks, MinimumRemainingDutyTicks, AcknowledgmentTicks);
 }
 public sealed class DetentionRequestData
 {

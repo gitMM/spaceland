@@ -32,24 +32,34 @@ namespace Station.Mind
             internal ulong Location(Coord at)
             { if (!Locations.TryGetValue(at, out ulong bit)) { bit = Bit("At:" + at); Locations.Add(at, bit); } return bit; }
         }
-        public static PlanResult Plan(IActorView view, long machineId, int candidates = 3, int maxDepth = 8, int nodeBudget = 512)
+        // An order issued after the citizen's last condition observation is new
+        // evidence of a fault: an older "operational" belief must be confirmed locally.
+        public static PlanResult Plan(IActorView view, long machineId, int candidates = 3, int maxDepth = 8, int nodeBudget = 512, long operationalObservedAfter = -1)
         {
             if (candidates < 1 || candidates > 30) throw new ArgumentException("Invalid repair candidate limit.");
             if (view.CurrentTile == null || view.PublicKnowledge?.Work == null) return new PlanResult(PlanOutcome.NoPlan);
-            try { return Build(view, machineId, candidates, maxDepth, nodeBudget); }
+            try { return Build(view, machineId, candidates, maxDepth, nodeBudget, operationalObservedAfter); }
             catch (BindingLimit) { return new PlanResult(PlanOutcome.BudgetExhausted); }
         }
-        private static PlanResult Build(IActorView view, long machineId, int k, int depth, int budget)
+        private static PlanResult Build(IActorView view, long machineId, int k, int depth, int budget, long freshAfter)
         {
             var catalog = view.PublicKnowledge!.Work!;
             var machine = catalog.Equipment.SingleOrDefault(m => m.Id == machineId);
             if (machine == null) return new PlanResult(PlanOutcome.NoPlan);
             var known = new SortedDictionary<FactKey, FactValue>(); foreach (var fact in view.Knowledge) known.Add(fact.Key, fact.Value);
             FactValue? Fact(SubjectKind subject, long id, AttributeKind attribute) => known.TryGetValue(new FactKey(subject, id, attribute), out var value) ? value : (FactValue?)null;
-            if (Fact(SubjectKind.Machine, machineId, AttributeKind.Operational)?.Equals(FactValue.Boolean(true)) == true)
+            var condition = view.Knowledge.FirstOrDefault(f => f.Key.Equals(new FactKey(SubjectKind.Machine, machineId, AttributeKind.Operational)));
+            bool believedOperational = condition != null && condition.Value.Equals(FactValue.Boolean(true));
+            if (believedOperational && condition!.ObservedTick >= freshAfter)
                 return new PlanResult(PlanOutcome.PlanFound);
             var d = new Domain(); ulong goal = d.Bit("MachineOperational:" + machineId);
             d.Initial |= d.Location(view.CurrentTile!.Value); ulong atMachine = d.Location(machine.Position);
+            if (believedOperational)
+            {
+                d.Actions.Add(new SymbolicAction("ConfirmCondition:" + machineId, atMachine, goal, goal, 0, machine.InspectTicks,
+                    new ActionIntent(view.Actor, ActionKind.InspectMachine, machine.Position, serviceId: machineId)));
+                AddTravel(view, d); return GoapPlanner.Search(new PlanningProblem(d.Initial, goal, d.Predicates, d.Actions), depth, budget);
+            }
             var required = Fact(SubjectKind.Machine, machineId, AttributeKind.RequiredResource);
             if (required?.Kind != FactValueKind.Text || string.IsNullOrWhiteSpace(required.Value.Text))
             {

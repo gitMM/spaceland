@@ -20,10 +20,18 @@ public static partial class PressureStation
         var subjects = new List<long>();
         var supervisors = new List<long>();
         var guards = new List<long>();
+        // Declared staffing redistribution (2026-10-29): each 64-person group
+        // converts five former cleaners (b+8..b+12) into guards, giving nine
+        // guards staggered three per cohort. Population and duty length are
+        // unchanged; one shift can supply a two-guard team while a third guard
+        // patrols or takes a break. Formerly all four guards shared cohort 0.
+        var guardCohorts = new Dictionary<long, int>();
         for (int b = 0; b < population; b += 64)
         {
             subjects.Add(b + 1); subjects.Add(b + 7); supervisors.Add(b + 2);
-            guards.AddRange(Enumerable.Range(b + 3, 4).Select(i => (long)i));
+            var group = Enumerable.Range(b + 3, 4).Concat(Enumerable.Range(b + 8, 5)).Select(i => (long)i).Where(i => i <= population).ToArray();
+            for (int g = 0; g < group.Length; g++) guardCohorts[group[g]] = g % 3;
+            guards.AddRange(group);
         }
         foreach (var a in s.Actors)
         {
@@ -34,7 +42,8 @@ public static partial class PressureStation
         var nonCleaners = supervisors.Concat(guards).ToHashSet();
         s.JobSystem!.Jobs.RemoveAll(j => nonCleaners.Contains(j.Id));
         s.JobSystem.Assignments.RemoveAll(a => nonCleaners.Contains(a.ActorId));
-        foreach (var r in s.Routines!.Assignments.Where(r => s.Actors.Single(a => a.Id == r.ActorId).Role != "cleaner")) r.Cohort = 0;
+        foreach (var r in s.Routines!.Assignments.Where(r => s.Actors.Single(a => a.Id == r.ActorId).Role != "cleaner"))
+            r.Cohort = guardCohorts.TryGetValue(r.ActorId, out int cohort) ? cohort : 0;
         s.Cleanliness!.MeanSoilingTicks = 0;
         s.Cleanliness.Access.Roles.Add("worker"); s.Cleanliness.Access.RequiresCredential = true;
         foreach (var d in s.Cleanliness.Dirt) d.Units = 400;
@@ -52,7 +61,7 @@ public static partial class PressureStation
         s.QualityAssurance = new() { SamplePermille = 1000, DelayTicks = 50, OrderTicks = s.Horizon };
         s.Personnel = new();
         s.Detention = new() { SentenceTicks = 15000, OrderTicks = s.Horizon,
-            Escort = new() { FacilityId = 1, Destination = At(5), Rendezvous = At(0), RequiredEquipment = "guard_equipment", EquipTicks = 50 },
+            Escort = new() { FacilityId = 1, Destination = At(5), Rendezvous = At(0), RequiredEquipment = "guard_equipment", EquipTicks = 50, MinimumRemainingDutyTicks = StationBaseline.Day / 24 },
             Facilities = new() { new() { Id = 1, Position = At(5), Capacity = groups, IntakeTicks = 100, ReleaseTicks = 100 } } };
         catalog.Resources.AddRange(new[] { new ResourceData { Id = "correct", FitClass = "cartridge", Rating = 2 }, new ResourceData { Id = "wrong", FitClass = "cartridge", Rating = 1 }, new ResourceData { Id = "guard_equipment" }, new ResourceData { Id = "blank" } });
         catalog.Recipes.Add(new() { Id = 1, Capability = "CredentialIssuance", Duration = 50, Inputs = new() { new() { Resource = "blank", Quantity = 1 } }, Outputs = new() { new() { Resource = "card", Quantity = 1 } } });

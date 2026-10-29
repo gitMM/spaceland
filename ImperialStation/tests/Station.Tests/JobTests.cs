@@ -111,9 +111,11 @@ public sealed class JobTests
     [Fact]
     public void BelievedCompletionDoesNotCompletePhysicalJob()
     {
+        // A belief older than the order is confirmed locally before any claim.
         var w = Make(falseBelief: true, hasPart: false); w.AdvanceTo(15);
-        Assert.Equal("WorkCompleted", w.InspectJobs()[0].AuthorityStatus);
-        Assert.Equal(WorkExecution.Assigned, w.InspectJobs()[0].PhysicalStatus); Assert.False(w.InspectMachines()[0].Operational);
+        Assert.Equal("WorkBlocked", w.InspectJobs()[0].AuthorityStatus);
+        Assert.Contains(w.Trace, e => e.Type == "ObservationRecorded" && e.ActorId == Worker.Value && e.Detail.StartsWith("Machine:1/Operational = 0", StringComparison.Ordinal));
+        Assert.Equal(WorkExecution.Blocked, w.InspectJobs()[0].PhysicalStatus); Assert.False(w.InspectMachines()[0].Operational);
         Assert.DoesNotContain(w.Trace, e => e.Type == "ItemInstalled"); Assert.Empty(w.InspectResourceTransactions());
     }
     [Fact]
@@ -169,11 +171,11 @@ public sealed class JobTests
     [Fact]
     public void RepeatedAuthenticatedReportOperationKeyDoesNotDuplicateRecordMutation()
     {
-        var w = Make(falseBelief: true, hasPart: false); w.AdvanceTo(10);
-        var result = w.InspectMessages().Single(m => m.Draft.Kind == MessageKind.WorkCompleted);
+        var w = Make(falseBelief: true, hasPart: false); w.AdvanceTo(13);
+        var result = w.InspectMessages().Single(m => m.Draft.Kind == MessageKind.WorkBlocked);
         long received = w.InspectWorkHistory().Count(h => h.Kind == "WorkReportReceived");
-        w.Submit(11, new(Worker, ActionKind.Login, Home, serviceId: 1));
-        w.Submit(12, new(Worker, ActionKind.PostMessage, Home, serviceId: 1, message: result.Draft)); w.AdvanceTo(15);
+        w.Submit(14, new(Worker, ActionKind.Login, Home, serviceId: 1));
+        w.Submit(15, new(Worker, ActionKind.PostMessage, Home, serviceId: 1, message: result.Draft)); w.AdvanceTo(18);
         Assert.Equal(received, w.InspectWorkHistory().Count(h => h.Kind == "WorkReportReceived"));
         Assert.Equal(2, w.InspectWorkAttempts()[0].ReportMessageIds.Count); Assert.False(w.InspectMachines()[0].Operational);
         Assert.Equal(w.Digest(), World.Restore(w.Serialize()).Digest());

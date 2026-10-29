@@ -38,6 +38,7 @@ public static partial class PressureStation
         public long DuplicateActiveAssignments { get; set; }
         public int CitizensWithContinuingShifts { get; set; }
         public double ReplaySeconds { get; set; }
+        public ResponseTimes.Report? ResponseTimes { get; set; }
         public List<string> Failures { get; set; } = new();
     }
     public static Result Execute(LoadedScenario scenario, string? output = null)
@@ -64,6 +65,7 @@ public static partial class PressureStation
         void Hash(IncrementalHash hash, TraceEvent e) => hash.AppendData(Encoding.UTF8.GetBytes(Runs.EventJson(e) + "\n"));
         if (output != null) Directory.CreateDirectory(output);
         using var trace = output == null ? null : new StreamWriter(Path.Combine(output, "pressure-trace.jsonl"));
+        var responses = new ResponseTimes.Tracker(scenario.Scenario);
         result.Participation = StationBaseline.Execute(scenario, output, requireDaily: false,
             requiresPhysicalWork: id => roles[id] is "cleaner" or "worker", permittedExternalTrigger: IsTrigger,
             observe: (w, tick) =>
@@ -83,6 +85,7 @@ public static partial class PressureStation
                 }
                 foreach (var e in w.Trace)
                 {
+                    responses.Observe(e);
                     if (e.Id != previous + 1) result.TraceGaps++; previous = e.Id;
                     result.Events[e.Type] = result.Events.GetValueOrDefault(e.Type) + 1;
                     if (e.Type is "CustodyBegan" or "DetentionReleaseDue" or "ConversationConsented") protocolCauses.Add(e.Id, e.Type);
@@ -97,6 +100,7 @@ public static partial class PressureStation
                     if (e.Tick > checkpointTick) Hash(originalHash, e);
                     if (s.Actors.Count <= 32 || e.Type is "CardLost" or "MachineFaulted" or "ReprimandAccepted" or "DetentionReleased" or "FacilityTaskResponse") trace?.WriteLine(Runs.EventJson(e));
                 }
+                responses.Sample(w, tick);
                 if (tick == checkpointTick)
                 {
                     checkpoint = w.Serialize();
@@ -123,6 +127,7 @@ public static partial class PressureStation
                 result.Phases.Add(phase); Console.Error.WriteLine(JsonData.Write(phase));
             });
         var world = final!;
+        result.ResponseTimes = responses.Finish(world, ResponseTimes.Limits.Pressure(StationBaseline.Day), world.Detention?.Escort?.GuardCount ?? 2);
         result.Failures.AddRange(result.Participation.Failures);
         void Require(bool ok, string reason) { if (!ok) result.Failures.Add(reason); }
         result.Reprimands = world.InspectReprimands().Count;
@@ -216,6 +221,9 @@ public static partial class PressureStation
         if (result.Failures.Count > 0) result.Status = "assertion_failed";
         if (output != null)
         {
+            File.WriteAllText(Path.Combine(output, "response-times.json"), JsonData.Write(result.ResponseTimes));
+            var summary = result.ResponseTimes; result.ResponseTimes = new ResponseTimes.Report { Limits = summary!.Limits, Stages = summary.Stages, Unresolved = summary.Unresolved, MissCauses = summary.MissCauses,
+                GuardTeamGapSamples = summary.GuardTeamGapSamples, Shifts = summary.Shifts, Incidents = summary.Incidents, MissedIncidents = summary.MissedIncidents };
             File.WriteAllText(Path.Combine(output, "pressure-result.json"), JsonData.Write(result));
             File.WriteAllText(Path.Combine(output, "institutions.json"), JsonData.Write(new { jobs = world.InspectJobs(), attempts = world.InspectWorkAttempts(), facility = world.InspectFacilityTasks(), incidents = world.InspectMissingReports(), patrols = world.InspectPatrolOrders(),
                 reprimands = world.InspectReprimands(), authorizations = world.InspectDetentionAuthorizations(), dispatches = world.InspectEscortDispatches(), stays, guards = world.InspectGuardAssignments(), recoveries = world.InspectCredentialRecoveryCases(),

@@ -44,7 +44,8 @@ namespace Station.Core
             if (planningBudgetTick != processingTick) { planningBudgetTick = processingTick; planningRequestsThisTick = 0; }
             if (planningRequestsThisTick >= planner.RequestsPerTick) { RequestRepairDecision(agent, checked(processingTick + 1)); return; }
             planningRequestsThisTick++; PlannerRequests++;
-            var result = RepairPlanning.Plan(ActorView(actorId), agent.Pending[0], planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            long orderIssued = agent.Attempts.TryGetValue(agent.Pending[0], out long ordered) && localOrders.TryGetValue(ordered, out var known) && messages.TryGetValue(known.OrderMessageId, out var order) ? order.Draft.ObservedTick : -1;
+            var result = RepairPlanning.Plan(ActorView(actorId), agent.Pending[0], planner.Candidates, planner.MaximumDepth, planner.NodeBudget, orderIssued);
             PlannerExpansions += result.Expansions; agent.LastOutcome = result.Outcome; agent.LastCost = result.Cost;
             if (result.Outcome == PlanOutcome.PlanFound)
             {

@@ -64,7 +64,7 @@ namespace Station.Core
                 // commitments. Pending cases otherwise rescan every citizen's work
                 // history even when the entire guard roster is off duty.
                 var guards = AuthorityDispatch.EscortTeam(view, subject.ActorId, policy, view.Personnel.Where(p =>
-                    p.ActorId != subject.ActorId && p.Role == policy.GuardRole && p.Roster != null && p.Roster.OnDuty(view.Tick) &&
+                    p.ActorId != subject.ActorId && p.Role == policy.GuardRole && p.Roster != null && AuthorityDispatch.RemainsOnDuty(p.Roster, view.Tick, policy.MinimumRemainingDutyTicks) &&
                     !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId)).Select(Candidate));
                 if (guards.Count != policy.GuardCount) { dispatch.Reason = "InsufficientKnownOnDutyUncommittedGuards"; continue; }
                 var payload = new EscortOrderPayload(authorization.Id, authorization.AccountId, authorization.ActorId, authorization.Expires, authorization.SentenceTicks, policy, authorization.JustifyingCases, guards, sites, nextMessage);
