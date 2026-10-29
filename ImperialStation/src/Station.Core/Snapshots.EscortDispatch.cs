@@ -52,7 +52,7 @@ namespace Station.Core
                 if (d.Payload == null)
                 {
                     if (ids.Length != 0 || d.DispatchedTick != -1 || !(d.Status is EscortDispatchStatus.AwaitingGuards or EscortDispatchStatus.Expired or EscortDispatchStatus.Cancelled) ||
-                        d.Status == EscortDispatchStatus.AwaitingGuards && !(d.Reason is "AwaitingGuardTeam" or "NoKnownSubjectSearchLocation" or "InsufficientKnownOnDutyUncommittedGuards")) throw new ArgumentException("Invalid pending escort dispatch.");
+                        d.Status == EscortDispatchStatus.AwaitingGuards && !(d.Reason is "AwaitingGuardTeam" or "NoKnownSubjectSearchLocation" or "InsufficientKnownOnDutyUncommittedGuards" or "AwaitingKnownDetentionCapacity")) throw new ArgumentException("Invalid pending escort dispatch.");
                 }
                 else
                 {

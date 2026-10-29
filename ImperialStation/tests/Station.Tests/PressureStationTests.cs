@@ -41,6 +41,20 @@ public sealed class PressureStationTests
     }
 
     [Fact]
+    public void CheckpointDuringAKnownCapacityHoldRestoresExactly()
+    {
+        // The second authorization waits for the single detention slot before any team is
+        // chosen; the 256-citizen run first captured a checkpoint in this state.
+        var w = PressureStation.Create().CreateWorld();
+        w.AdvanceTo(14000);
+        Assert.Contains(w.InspectEscortDispatches(), d => d.Payload == null && d.Status == Station.Core.EscortDispatchStatus.AwaitingGuards && d.Reason == "AwaitingKnownDetentionCapacity");
+        var copy = Station.Core.World.Restore(w.Serialize());
+        Assert.Equal(w.Serialize(), copy.Serialize());
+        w.AdvanceTo(16000); copy.AdvanceTo(16000);
+        Assert.Equal(w.Serialize(), copy.Serialize());
+    }
+
+    [Fact]
     public void PopulationGeneratorCreatesRealIndependentBedsAndScaledMisconduct()
     {
         var scenario = PressureStation.Create(256);
