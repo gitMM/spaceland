@@ -96,9 +96,10 @@ Consequences exposed and fixed:
   an activity admitted while its window was open but recorded as missed. The pressure
   gate requires zero.
 
-32-person results: missed ordinary windows **189 → 6** (two late eligibilities, three
-travel-across-closure meals, one custody); critical need interruptions **168 → 1**;
-288 of 288 scheduled rests complete; every citizen eats and sleeps each day.
+32-person results: missed ordinary windows **189 → 12** (two late eligibilities, six
+travel-across-closure meals, one custody, three sleeps begun only after a committed
+move or meal ended); critical need interruptions **168 → 1**; 288 of 288 scheduled
+rests complete; every citizen eats and sleeps each day.
 
 ## Item 5 — remembered terminal outages
 
@@ -114,8 +115,8 @@ rechecked, so citizens do not alternate between terminals known to be down.
 
 `TerminalOutageTests` covers the alternative terminal, travel retention, local
 restoration discovery, bounded rechecks and records permission. In the pressure
-fixture both public terminals fail together; failed terminal attempts fell from 472
-to 427.
+fixture both public terminals fail together; failed attempts at a missing service
+(nearly all terminal attempts) fell from 472 to 428.
 
 ## Item 4 — cafeteria estimates
 
@@ -129,10 +130,16 @@ alternative, and a known alternative must beat it by a whole meal. Each
 reconsideration is traced; the pressure gate allows at most one per meal.
 
 `CafeteriaEstimateTests` covers knowledge boundaries, a useful alternative, staleness,
-the empty-counter rule, hysteresis and shareable provenance. In the 32-person run
-there are 8 reconsiderations, at most one per meal, all after district 2's counter ran
-out near tick 322,500. Cafeteria failures fell from 33 to 0 because empty counters are
-now seen on arrival.
+the empty-counter rule, hysteresis and shareable provenance. The 32-person run makes no
+reconsideration in the final build (an intermediate build made 8, all after district
+2's counter ran out near tick 322,500). Cafeteria failures fell from 33 to 0 because
+empty counters are now seen on arrival.
+
+The same observation covers identical services sharing a tile. Beds, rest spots and
+toilets on one tile were all chosen by lowest ID, so detainees queued at one bed beside
+free ones and could miss a day's sleep at 2,048 people. A citizen now records the wait
+it sees at each identical service it may use there, and a visibly occupied one loses
+to a free neighbour (`VisiblyOccupiedIdenticalServiceOnTheSameTileIsNotChosen`).
 Pre-existing and unchanged: nearly every citizen eats at district 2's cafeteria
 (bedrooms sit beside it), which exhausts its 960 meals on day 9 in the baseline too.
 
@@ -160,17 +167,18 @@ ends without custody. No duplicate custody is possible, but the work is wasted.
 
 ## 32-person evidence (this build)
 
-All pressure gates pass, with exact state and continuation-event replay from tick 12,000.
-The backlog clears at tick 198,000 (previously 258,000). Four reprimands, two releases;
-both released subjects resume work. Maximum individual failed actions: 26.
+All pressure gates pass, with exact state and continuation-event replay from tick 12,000
+(digest `be1aa167…`). The backlog clears at tick 222,000 (previously 258,000). Four
+reprimands, two releases; both released subjects resume work. Maximum individual failed
+actions: 26.
 
 | Category | Total median | p95 | max | Previous max | Misses (cause) |
 | --- | --- | --- | --- | --- | --- |
 | Custody | 823 | 10,001 | 10,001 | 28,719 | 1 (AwaitingKnownDetentionCapacity) |
-| MachineFault | 31,535 | 33,236 | 33,236 | 62,952 | 4 (no uncommitted cleaner; order read off duty) |
-| MissingReport | 1,722 | 2,610 | 2,610 | 25,843 | 1 stage (responder off duty) |
-| CardLoss | 12 | 6,761 | 6,761 | 6,498 | 0 |
-| Spill | 40,993 | 115,237 | 115,237 | 159,203 | 4 (initial 400-unit tile backlog) |
+| MachineFault | 31,535 | 33,266 | 33,266 | 62,952 | 4 (no uncommitted cleaner; order read off duty) |
+| MissingReport | 1,398 | 2,610 | 2,610 | 25,843 | 1 stage (responder off duty) |
+| CardLoss | 14 | 6,761 | 6,761 | 6,498 | 0 |
+| Spill | 40,962 | 138,537 | 138,537 | 159,203 | 6 (initial 400-unit tile backlog; responders asleep or off duty) |
 
 Remaining causes, not fixed in this step:
 - **Machine faults** at tick 6,000 wait for a qualified cleaner. All cleaners are

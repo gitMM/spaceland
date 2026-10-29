@@ -87,14 +87,14 @@ At least one released subject must resume a real available task.
 
 - **Staffing and response build (schema 46, 2026-10-29, cloud run).** The 32-person
   gate passes with exact state and every continuation event after restoring tick
-  12,000. The backlog clears at tick 198,000; four reprimands, two releases, both
-  released subjects resume work. There are 6 missed ordinary windows (previously 189),
+  12,000. The backlog clears at tick 222,000; four reprimands, two releases, both
+  released subjects resume work. There are 12 missed ordinary windows (previously 189),
   all classified with zero retention violations, and 1 critical need interruption
   (previously 168). Guard team-gap samples: 0 of 325. Maximum custody response:
   10,001 ticks, caused only by the single detention slot. Full response tables are in
   [staffing-response-progress.md](staffing-response-progress.md).
 - The 2,048-citizen run of this build is in progress; its result will be recorded here.
-- The complete suite passes all **857 tests**, zero failures or skips
+- The complete suite passes all **858 tests**, zero failures or skips
   (`artifacts/staffing-tests/staffing-response.trx` in the cloud run).
 
 - `artifacts/pressure-32-completion/` passes all nine-day gates and the independent
