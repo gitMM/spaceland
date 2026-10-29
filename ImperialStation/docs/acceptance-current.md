@@ -23,7 +23,7 @@ Earlier 2,048-citizen trials exposed institutional backlogs and the inline check
 export limit; those defects are fixed, but population acceptance remains pending. Expansion
 is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`, with
 a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
-The latest complete suite passes **858 tests**, zero failures or skips
+The latest complete suite passes **860 tests**, zero failures or skips
 (staffing and response build; earlier: 843 in `artifacts/pressure-tests/pressure-all-completion.trx`). Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,

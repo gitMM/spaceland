@@ -95,8 +95,21 @@ At least one released subject must resume a real available task.
   10,000 ticks, caused only by the single detention slot. Repairs may pre-empt cleanup
   (machine-fault ordering wait 30,126 → 0) and spills are measured by their own units.
   Full response tables are in [staffing-response-progress.md](staffing-response-progress.md).
-- The 256-citizen run of this build is in progress; its result will be recorded here. The 2,048-citizen run was stopped at the user's request (overkill for this step).
-- The complete suite passes all **858 tests**, zero failures or skips
+- **256 citizens, same build (2026-10-29, cloud run).** All pressure gates pass with exact
+  state and continuation-event replay from tick 12,000 (digest `fe17e866…`; primary
+  148 s, replay 134 s). The backlog clears at tick 264,000; 14 reprimands, 6 releases,
+  all six released subjects resume work; two cases end as evidence-based
+  `NeedsReview`/`StaleWorkRecords`. No guard team-gap samples (0 of 325), 69 missed
+  ordinary windows (all classified, zero retention violations), no critical need
+  interruption, every citizen eats and sleeps each day, at most one cafeteria
+  reconsideration per meal. One escort team was withdrawn and replaced at its
+  acknowledgment deadline. Machine-fault ordering never waits (maximum 0 ticks).
+  Getting this run green exposed and fixed two defects: restore rejected an
+  authorization waiting for detention capacity before team selection, and an audit
+  never rechecked its bound desk while its supervisor remembered an unvisited, less
+  confirmed outage elsewhere (one case stayed pending). The 2,048-citizen run was
+  stopped at the user's request (overkill for this step).
+- The complete suite passes all **860 tests**, zero failures or skips
   (`artifacts/staffing-tests/staffing-response.trx` in the cloud run).
 
 - `artifacts/pressure-32-completion/` passes all nine-day gates and the independent

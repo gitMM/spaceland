@@ -195,6 +195,16 @@ tile's older backlog remains covered by the recovery gate.
 The population baseline's pinned digest changed only through the schema bump; every
 counted result of the 128-citizen baseline is identical.
 
+Two defects found by the 256-citizen run, both fixed with targeted controls:
+- **Capacity hold on restore.** A checkpoint taken while an authorization waited for
+  detention capacity before any team was chosen failed validation
+  (`CheckpointDuringAKnownCapacityHoldRestoresExactly`).
+- **Bound audit desk.** Audits used the alternatives rule that keeps only the
+  least-confirmed due outage eligible. A supervisor who remembered a far outage it never
+  revisited (13 at 256) never retried its own desk, so one case stayed pending. A bound
+  records query now rechecks its desk whenever that outage's own wait has passed
+  (`BoundAuditDeskIsRecheckedDespiteAnUnvisitedRememberedOutage`).
+
 ## 32-person evidence (this build)
 
 All pressure gates pass, with exact state and continuation-event replay from tick 12,000
@@ -219,6 +229,24 @@ Machine-fault ordering is now immediate (maximum wait 30,126 → 0 ticks). What 
   2); adding one would move these orders to the next shift's responder.
 - **Spills** still miss stage limits when the responder's shift ends mid-cleanup or
   the report waits for a terminal.
+
+## 256-person evidence (this build)
+
+All pressure gates pass with exact replay (see [pressure-station.md](pressure-station.md#current-evidence)).
+Backlog clears at tick 264,000; 14 reprimands, 6 releases; 69 missed ordinary windows
+(36 meals travelling across closure, 28 late eligibilities, 2 custody, 3 committed
+actions or higher priority); 0 critical interruptions; 0 guard gap samples.
+
+| Category | n | Total median | p95 | max | Misses | Main stage causes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Custody | 6 | 2,174 | 16,317 | 16,317 | 1 | detention capacity; one replacement team after an acknowledgment deadline |
+| MachineFault | 48 | 31,851 | 32,945 | 33,300 | 33 | acknowledgment: order read only after the outage and shift end (33) |
+| MissingReport | 29 | 2,138 | 70,562 | 71,644 | 6 | ordering: no uncommitted qualified responder (6) |
+| CardLoss | 48 | 25 | 6,634 | 6,916 | 0 | — |
+| Spill | 48 | 14,605 | 175,689 | 182,973 | 12 | reporting during the terminal outage (25); responders off duty or asleep |
+
+Two missing-report acknowledgment stages are attributed `UnknownResponder` (the tracker
+could not link a responder); the 32-person gate requires none.
 
 Commands from `ImperialStation/`:
 
