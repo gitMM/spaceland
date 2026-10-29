@@ -9,8 +9,9 @@ namespace DeathStar
 
     // Settlement tiles, massing level. A tile is a 5 m cube of armour; every exposed face gets the station-wide
     // greeble relief (GreebleField) plus its family's large form. Faces against solid neighbours are not built, so
-    // cubes merge with no seams. Forms follow the face and the tile's own axes, never a world up. Inside, the tile's
-    // axis is its up: two 2.5 m decks, so windows sit at eye height on each deck and rows line up across the station.
+    // cubes merge with no seams. Forms follow the face and the tile's own axes, never a world up. Window rows follow the
+    // tile's axis in two 2.5 m bands and line up across the station; inside, a Habitat or Corridor is one room with no up
+    // (TileBuilder.Interior.cs) whose openings are those rows.
     //   Hull        the relief; small windows and round EVA hatches on some faces
     //   Habitat     two rows of windows under angled visors on faces across its axis; rows join along neighbours
     //   Industrial  a terraced pit with a gantry and a control tower on the main face; asymmetric masses elsewhere
@@ -358,6 +359,13 @@ namespace DeathStar
                 f.m.Annulus(Armor,inner,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.back,0.5f,1);
             }
             f.bare.Add(Whole);
+            // Open into a room: the tube runs on through the wall. The hole, a little over the tube's true size, lies
+            // inside the collar.
+            if(Opens(f.cell,f.cell+f.n))
+            {
+                var k=f.Local(0,0);const float h=TubeInner+0.1f;
+                f.recess.Add(Rect.MinMaxRect(-h/k.x,-h/k.y,h/k.x,h/k.y));
+            }
         }
 
         // Where a conduit plugs into this face: a manifold block round the pipe ends.
@@ -839,10 +847,13 @@ namespace DeathStar
             float stretch=RunStretch(cell,A),k=1/stretch;
             using var tube=m.BeginTube("corridor",TileStructure.Center(cell),A);
             var oct=Octagon(1.4f);
-            m.Prism(Armor,oct,Vector3.zero,B,C,A,-Half,Half,false);
             // Ribs keep their 0.34 m width and a pitch near 1.25 m; portholes sit between them.
             var rib=Octagon(Mathf.Clamp(FaceRoom(cell,A)*0.5f-0.05f,1.5f,1.75f));
             int ribs=Mathf.Max(1,Mathf.RoundToInt(Cell*stretch/1.25f));float pitch=Cell/ribs;
+            // The two sides with portholes are open under the glass, so the tube's interior shows through it.
+            var ports=new float[ribs-1];for(int r=1;r<ribs;r++)ports[r-1]=-Half+r*pitch;
+            m.Prism(Armor,oct,Vector3.zero,B,C,A,-Half,Half,false,PortholeEdges);
+            foreach(int i in new[]{0,4})TubeSide(m,Armor,oct,i,B,C,A,-Half,Half,ports,PortholeHalf*k,PortholeHalf,false);
             for(int r=0;r<ribs;r++)
             {
                 float t=-Half+(r+0.5f)*pitch;
@@ -880,24 +891,43 @@ namespace DeathStar
         {
             // A compact pressure junction with half-tubes to every occupied neighbour. Empty corners remain open.
             var center=TileStructure.Center(cell);Vector3 up=p.axis;
-            using(m.BeginFixed("junction",center,new Vector4(up.x,up.y,up.z,Vector3.Dot(center,up))))
-                m.Box(Armor,Vector3.zero,Vector3.one*2.8f,0.28f);
+            // rigid all through, so the room inside it (TileBuilder.Interior.cs) stays inside it on a bent cell
+            // faces a branch leaves through stay plain: their carving would stand across the branch inside
+            int plain=0;foreach(var d in links){int ax=AxisOf(d);plain|=1<<(ax*2+(d[ax]>0?1:0));}
+            using(m.BeginRigid("junction",center,new Vector4(up.x,up.y,up.z,Vector3.Dot(center,up))))
+                m.Box(Armor,Vector3.zero,Vector3.one*2.8f,0.28f,plain);
             foreach(var d in links)
             {
                 Vector3 a=d,b=Vector3.Dot(d,p.side)==0?p.side:p.Third,c=Vector3.Cross(b,a);
                 float k=1/RunStretch(cell,a);
                 using var branch=m.BeginTube("corridor branch",center,a);
                 var oct=Octagon(1.4f);var rib=Octagon(1.75f);
-                m.Prism(Armor,oct,Vector3.zero,b,c,a,1,Half,false);
-                m.Prism(Armor,rib,Vector3.zero,b,c,a,1.8f-0.15f*k,1.8f+0.15f*k,false);
-                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.8f-0.15f*k,-1);
-                m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,1.8f+0.15f*k,1);
-                var next=cell+d;
-                if(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor)continue;
+                var next=cell+d;bool collared=!(s.TryGet(next,out var q)&&q.family==TileFamily.Corridor);
+                float collar0=collared?Half-0.45f*k:Half;
+                // The tube from inside the box and its rib, placed by true distance from the centre, so they clear the
+                // room in the box (TileBuilder.Interior.cs) however the run is bent; a run too short for the rib has none.
+                float a0=Mathf.Min(Along(cell,a,1.36f),collar0),r0=Along(cell,a,1.65f),r1=Along(cell,a,1.95f);
+                m.Prism(Armor,oct,Vector3.zero,b,c,a,a0,Half,false);
+                if(r1<collar0-0.05f)
+                {
+                    m.Prism(Armor,rib,Vector3.zero,b,c,a,r0,r1,false);
+                    m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,r0,-1);
+                    m.Annulus(Armor,oct,rib,Vector3.zero,b,c,a,r1,1);
+                }
+                if(!collared)continue;
                 var collar=Octagon(CollarRadius(FaceRoom(cell,a)));
                 m.Prism(Armor,collar,Vector3.zero,b,c,a,Half-0.45f*k,Half,!s.Solid(next));
                 m.Annulus(Armor,oct,collar,Vector3.zero,b,c,a,Half-0.45f*k,-1);
             }
+        }
+        // Station metres along a from the cell's centre to the point of the run's spine that lies metres from the centre
+        // on the curved grid (metres itself on flat stages).
+        float Along(Vector3Int cell,Vector3 a,float metres)
+        {
+            if(curved==null)return metres;
+            var c=TileStructure.Center(cell);var o=curved.Map(c);float lo=0,hi=Cell;
+            for(int i=0;i<20;i++){float mid=(lo+hi)*0.5f;if((curved.Map(c+a*mid)-o).magnitude<metres)lo=mid;else hi=mid;}
+            return (lo+hi)*0.5f;
         }
         static Vector2[] Octagon(float r)
         {

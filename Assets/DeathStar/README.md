@@ -443,3 +443,50 @@ triangles each view saves), `fold` (remeasures the fold), `orbit` (tiles and chu
 `bevel` (Bevel Width and Roundness), `precision` (the stage 4 km from the origin looks the same), `greeble` (the far
 level's traced station relief against the mesh relief, 110-400 m).
 
+
+### Interiors (greybox)
+
+People wear magnetic boots, so there is no up inside either: a Habitat or Corridor cell is one open room whose six
+walls are all floors (`TileBuilder.Interior.cs`). The inner wall stands 0.4 m in from an exposed face (the window rows'
+depth, so their glass sits in it) and 0.1 m from a face shared with a solid neighbour, so a home is about 4.2-4.8 m
+across and the 0.2 m wall between two rooms hides behind the mullion on the tile boundary. Window rows and corridor
+portholes are real openings in the same places as outside. Homes open into each other through 1.8 m octagonal hatches;
+a corridor's tube (2.4 m across its flats) runs on through a home's socket into the room and ends at a sealed bulkhead
+against other tiles or in space. Light bars sit on the faces across the tile's axis and in the tube's corners.
+
+On the Foundry's curved grid the rooms are bent like the tiles (`CurvedTileMesh.Bend`): each inner wall keeps its
+depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall at the
+sheared cell's real angle (plus a few centimetres of overlap). Hatches and sockets are true size round their face's
+centre, with a plate sized to cover the wall's bent hole, so they meet the neighbour's half or the corridor's true-size
+tube exactly; a face too small for its opening stays closed and the corridor ends at a bulkhead. Tubes bend like the
+corridor outside. A junction's room is a rigid 2.64 m box (`TileMesh.BeginRigid`: a fixed part with no foot dropped onto
+the surface), with a short rigid throat and a trim ring at each branch that cover the joint with the bent lining. To keep
+the outside out of it, the junction's box outside is rigid too, its faces where branches leave stay uncarved, and its
+branch tubes and ribs are placed by true distance from the centre. Wedge and apex cells (ridges and crowns) have no
+interiors yet. In the Block Foundry, **F** toggles a fly camera (WASD, Q/E, Shift, scroll for speed).
+
+`StationInteriors` builds the rooms within 15 m of the camera (nearest first, kept to 19 m), with a lamp each that
+lights only interiors (rendering layer 1) and, in play, a mesh collider; those tiles' windows switch to
+`DeathStar/Tile Clear Glass`, so the real room shows through them, while further windows keep Tile Glass's fake rooms.
+To expose them the corridor's two porthole sides and a home's socket are cut open under the glass. In the gallery, **F**
+toggles a fly camera (WASD, Space/Ctrl, Shift, scroll for speed) and **I** jumps into a home.
+`tools/tile-lab.sh interior` shoots the trench-wall homes and corridor from inside on several walls and from outside
+with and without interiors, and the Foundry example's homes and junction the same way (`foundry-*.png`); on those and
+the Station example it checks build time, that every pane opens into its room, that rooms are closed but for their
+glass, hatches and tubes, and that no corridor's outside shows inside its tube (`DeathStarRuns/Tiles/interior/`).
+
+### Interior walk (magnetic boots)
+
+**Death Star → Open Interior Walk**, then Play: walk the interiors in first person (`InteriorWalk`, `MagBootWalker`).
+Click to capture the mouse (Esc releases it); WASD walk, Shift run, mouse look. The boots hold you to whatever is under
+your feet and your up follows that floor: walk into a wall to step onto it, and walk over the lip of a hatch or socket
+into its lining. Space releases the boots and pushes off where you look: you drift, curled up, through a hatch or along
+a tube until you touch a surface, which becomes your floor (the camera eases round instead of snapping). **1** loads
+the flat review station's homes and corridor, **2** the Foundry example on the curved grid, **R** respawns.
+
+The rooms within 15 m are built as you go, with mesh colliders for each room and its window glass (`StationInteriors`
+with `colliders`); the walker sweeps its capsule against them in its scene's physics, depenetrates (ignoring its lowest
+6 cm, so lamp bars and plate lips don't stop it), and drifts as a sphere round its eye. A junction's floor is mostly the
+openings of its branches, so there you drift rather than walk. `tools/tile-lab.sh walk` scripts it headless on both
+stages (deck into the window wall and up it, a push through the hatch into the next home, a push through a socket into
+the corridor and on along it) and writes frames from its eye to `DeathStarRuns/Tiles/walk/`.

@@ -43,12 +43,16 @@ namespace DeathStar
             public Vector3[] nearBefore,farBefore;public List<Vector4> frames,anchors,farAnchors;
         }
         public int MeshCount=>tiles.Count;
-        public FoundrySettlement(Transform parent,Material[] materials)
+        // clearGlass: windows with a built room behind them (StationInteriors); without it they keep their fake rooms.
+        public FoundrySettlement(Transform parent,Material[] materials,Material clearGlass=null)
         {
-            this.parent=parent;this.materials=materials;debugProperties.SetFloat(OverlayId,0);
+            this.parent=parent;this.materials=materials;this.clearGlass=clearGlass;debugProperties.SetFloat(OverlayId,0);
             kit=parent.GetComponent<StationKit>();if(!kit)kit=parent.gameObject.AddComponent<StationKit>();   // props near the camera
+            Interiors=parent.GetComponent<StationInteriors>();if(!Interiors)Interiors=parent.gameObject.AddComponent<StationInteriors>();
         }
-        readonly StationKit kit;
+        readonly StationKit kit;readonly Material clearGlass;
+        // The rooms of homes and corridors near the viewer; every rebuild drops them, and they come back as it moves.
+        public StationInteriors Interiors {get;}
         // Renderer overrides keep this build independent of the gallery/lab's global colour switch.
         // Both LODs and every newly rebuilt tile receive the same state, without regenerating geometry.
         public void SetColorCoding(bool enabled)=>SetDebugView(enabled?DebugView.Family:DebugView.Off);
@@ -104,6 +108,12 @@ namespace DeathStar
             }
             LastTimings=timings;
             if(kit)kit.MarkDirty();
+            if(Interiors)
+            {
+                var renderers=new Dictionary<Vector3Int,MeshRenderer[]>();
+                foreach(var pair in tiles)renderers[pair.Key]=pair.Value.renderers.ToArray();
+                Interiors.Init(next,builder,materials,clearGlass,renderers,warp);
+            }
             StationVoxelGi.Invalidate();
         }
         // One tile's near and far meshes, bent onto the grid when there is a warp (null if it builds nothing), its time
@@ -146,6 +156,6 @@ namespace DeathStar
                 return b;
             }
         }
-        public void Dispose(){foreach(var c in new List<Vector3Int>(tiles.Keys))Remove(c);Structure=null;StationVoxelGi.Invalidate();}
+        public void Dispose(){if(Interiors)Interiors.Clear();foreach(var c in new List<Vector3Int>(tiles.Keys))Remove(c);Structure=null;StationVoxelGi.Invalidate();}
     }
 }

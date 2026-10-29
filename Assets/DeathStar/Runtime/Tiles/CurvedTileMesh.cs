@@ -200,10 +200,11 @@ namespace DeathStar
                 if(anchor.w>=0.5f&&((Vector3)f).sqrMagnitude>=0.5f)
                 {
                     // Fixed-size part: placed rigidly, so it is true size throughout. Its foot (the lowest Foot metres)
-                    // drops along the normal onto the curved surface, which falls away from the anchor's tangent plane.
+                    // drops along the normal onto the curved surface, which falls away from the anchor's tangent plane;
+                    // a part begun with TileMesh.BeginRigid (w 1.25) has no foot.
                     var rigid=Rigid(anchor,f);var placed=rigid.MultiplyPoint3x4(p);var pivot=(Vector3)anchor;
                     float h=Vector3.Dot(p-pivot,(Vector3)f);
-                    if(h<Foot)
+                    if(h<Foot&&anchor.w<1.1f)
                     {
                         Transform(pivot+Metric(anchor,f).MultiplyVector(p-pivot),f,out var surface,out _,out _,out _);
                         var up=rigid.MultiplyVector((Vector3)f);

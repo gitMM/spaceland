@@ -25,7 +25,7 @@ namespace DeathStar
             set=>DebugMode=value?DebugView.Family:DebugView.Off;
         }
         public FoundrySettlement Settlement {get;private set;}
-        Material[] generatedMaterials;
+        Material[] generatedMaterials;Material generatedClear;
         GameObject settlementLights;
         TileLook.Saved savedEnvironment;
         public BlockConstruction Model { get; private set; }
@@ -62,6 +62,8 @@ namespace DeathStar
         // Only cells placed more than halfway from the view centre to the screen edge pull the camera.
         const float PanTolerance=0.5f;
         bool autoPan;
+        // Fly: the camera moves itself (WASD, Q/E along its own axes) instead of orbiting the focus, to go inside rooms.
+        bool fly;Vector3 eye;float flySpeed=2.5f;
         bool showHud=true,removeMode,hasHover;
         BlockFace hovered;
         string message="Click a face to attach a block.", failure;
@@ -107,8 +109,11 @@ namespace DeathStar
                 }
                 materials=generatedMaterials;
             }
-            Settlement=new FoundrySettlement(transform,materials);
+            var clear=tileLibrary!=null?tileLibrary.clearGlass:null;
+            if(clear==null){var shader=Shader.Find("DeathStar/Tile Clear Glass");if(shader!=null){clear=generatedClear=new Material(shader);TileLook.ConfigureClearGlass(clear);}}
+            Settlement=new FoundrySettlement(transform,materials,clear);
             Settlement.SetDebugView(debugView);
+            Settlement.Interiors.ringCentre=viewer!=null?viewer.transform:null;
             settlementLights=new GameObject("Settlement lighting");settlementLights.transform.SetParent(transform,false);
             TileLook.AddLights(settlementLights.transform);savedEnvironment=TileLook.ApplyEnvironment(tileLibrary);
             if(tileLibrary!=null&&tileLibrary.post!=null)
@@ -306,6 +311,20 @@ namespace DeathStar
                 if(ctrl&&keys.zKey.wasPressedThisFrame){if(shift)Redo();else Undo();}
                 if(ctrl&&keys.yKey.wasPressedThisFrame)Redo();
                 if(ctrl&&keys.sKey.wasPressedThisFrame)SaveBuild();
+                if(!ctrl&&keys.fKey.wasPressedThisFrame)
+                {
+                    var rotation=Quaternion.Euler(pitch,yaw,0);
+                    if(!fly)eye=viewer.transform.position;else{focus=targetFocus=eye+rotation*Vector3.forward*distance;autoPan=false;}
+                    fly=!fly;
+                }
+                if(fly&&!ctrl)
+                {
+                    var move=Vector3.zero;
+                    if(keys.wKey.isPressed)move.z+=1;if(keys.sKey.isPressed)move.z-=1;
+                    if(keys.dKey.isPressed)move.x+=1;if(keys.aKey.isPressed)move.x-=1;
+                    if(keys.eKey.isPressed)move.y+=1;if(keys.qKey.isPressed)move.y-=1;
+                    eye+=Quaternion.Euler(pitch,yaw,0)*move*(flySpeed*(shift?4:1)*Time.unscaledDeltaTime);
+                }
             }
             hasHover=false;HidePreview();
             if(mouse!=null)
@@ -319,7 +338,9 @@ namespace DeathStar
                     if(mouse.rightButton.isPressed){yaw+=delta.x*0.2f;pitch=Mathf.Clamp(pitch-delta.y*0.2f,-85,85);}
                     if(mouse.middleButton.isPressed)
                     {float scale=distance*0.0015f;targetFocus-=viewer.transform.right*delta.x*scale+viewer.transform.up*delta.y*scale;autoPan=false;}
-                    targetDistance=Mathf.Clamp(targetDistance*Mathf.Exp(-mouse.scroll.ReadValue().y*0.07f),1,500);
+                    float scroll=mouse.scroll.ReadValue().y;
+                    if(fly)flySpeed=Mathf.Clamp(flySpeed*Mathf.Exp(scroll*0.02f),0.5f,40);
+                    else targetDistance=Mathf.Clamp(targetDistance*Mathf.Exp(-scroll*0.07f),1,500);
                     if(!mouse.rightButton.isPressed&&!mouse.middleButton.isPressed&&Pick(viewer.ScreenPointToRay(position),out hovered,out _))
                     {
                         bool remove=removeMode||shift;
@@ -341,7 +362,7 @@ namespace DeathStar
             else{focus=Vector3.Lerp(focus,targetFocus,t);focusVelocity=Vector3.zero;}
             distance=Mathf.Lerp(distance,targetDistance,t);
             Quaternion rotation=Quaternion.Euler(pitch,yaw,0);
-            viewer.transform.SetPositionAndRotation(focus+rotation*new Vector3(0,0,-distance),rotation);
+            viewer.transform.SetPositionAndRotation(fly?eye:focus+rotation*new Vector3(0,0,-distance),rotation);
             // Shift the construction into the open area beside the tool panel.
             viewer.lensShift=new Vector2(showHud?-Mathf.Min(0.15f,155*UiScale/Mathf.Max(1,Screen.width)):0,0);
             viewer.nearClipPlane=0.03f;viewer.farClipPlane=Mathf.Max(1000,distance*4);
@@ -422,7 +443,7 @@ namespace DeathStar
             if(GUI.Button(new Rect(36,595,78,27),"New build",button))NewBuild();
             if(GUI.Button(new Rect(120,595,78,27),"Save build",button))SaveBuild();
             if(GUI.Button(new Rect(204,595,78,27),"Load build",button))LoadBuild();
-            GUI.Label(new Rect(36,632,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel",small);
+            GUI.Label(new Rect(36,632,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel · F: fly (WASD, Q/E)",small);
             GUI.Label(new Rect(36,690,246,36),$"{Model.Count:N0} blocks  /  {ExposedFaces:N0} exposed faces\nCtrl Z / Y: undo / redo · Ctrl S: save",kicker);
             float width=Screen.width/UiScale;
             string status=Time.unscaledTime<messageUntil?message:hasHover?previewText??"Click to attach a block · Shift + click to remove":"Choose a face to begin · Right drag to orbit";
@@ -447,6 +468,7 @@ namespace DeathStar
             if(Settlement!=null){Settlement.Dispose();Settlement=null;TileLook.Restore(savedEnvironment);}
             if(settlementLights!=null)Release(settlementLights);
             if(generatedMaterials!=null){foreach(var m in generatedMaterials)Release(m);generatedMaterials=null;}
+            if(generatedClear!=null){Release(generatedClear);generatedClear=null;}
             foreach(var chunk in chunks.Values){if(chunk.root!=null)Release(chunk.root);if(chunk.mesh!=null)Release(chunk.mesh);}
             chunks.Clear();groups.Clear();
             foreach(var line in outline)if(line!=null)Release(line.gameObject);

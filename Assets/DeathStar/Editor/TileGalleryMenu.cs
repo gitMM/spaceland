@@ -41,6 +41,7 @@ namespace DeathStar.EditorTools
                 var m=Material($"{MaterialDir}/Tile{slot}.mat",slot==TileSlot.Glass?"DeathStar/Tile Glass":"DeathStar/Tile Surface");
                 TileLook.Configure(m,slot);EditorUtility.SetDirty(m);lib.materials[i]=m;
             }
+            lib.clearGlass=Material(MaterialDir+"/TileClearGlass.mat","DeathStar/Tile Clear Glass");TileLook.ConfigureClearGlass(lib.clearGlass);EditorUtility.SetDirty(lib.clearGlass);
             lib.sky=Material(MaterialDir+"/TileSky.mat","DeathStar/Space Sky");TileLook.ConfigureSky(lib.sky);EditorUtility.SetDirty(lib.sky);
             var cube=TileLook.MakeReflection();
             var reflection=AssetDatabase.LoadAssetAtPath<Cubemap>(ReflectionPath);

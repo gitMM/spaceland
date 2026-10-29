@@ -65,6 +65,9 @@ namespace DeathStar
         public readonly List<(string name,int start,int end)> fixedParts=new List<(string,int,int)>();
         // frame: the plane the part stands on, for parts not on a face (connector hubs); default the current face.
         public FixedPart BeginFixed(string name,Vector3 anchor,Vector4? frame=null)=>new FixedPart(this,name,new Vector4(anchor.x,anchor.y,anchor.z,1),frame,fixedParts);
+        // A fixed part that stays rigid all through: none of it drops onto the bent surface (CurvedTileMesh.Foot), for
+        // parts that stand free rather than on a face, such as a corridor junction's box.
+        public FixedPart BeginRigid(string name,Vector3 anchor,Vector4 frame)=>new FixedPart(this,name,new Vector4(anchor.x,anchor.y,anchor.z,1.25f),frame,fixedParts);
         // Tube parts (corridors, conduits): a true-size cross-section round the spine through origin along axis A
         // (a lattice direction); the run follows the cells. Ranges let the lab check joints and widths.
         public readonly List<(string name,int start,int end)> tubeParts=new List<(string,int,int)>();
@@ -180,15 +183,16 @@ namespace DeathStar
         static Vector3 Axis(int a){var v=Vector3.zero;v[a]=1;return v;}
         static Vector3 P(int a,float va,int b,float vb,int k,float vk){var p=Vector3.zero;p[a]=va;p[b]=vb;p[k]=vk;return p;}
 
-        public void Box(in Finish f,Vector3 center,Vector3 size,float chamfer=0)
+        // plain: faces (bit axis * 2 + 1 for the + side) left uncarved, e.g. where a tube leaves through them.
+        public void Box(in Finish f,Vector3 center,Vector3 size,float chamfer=0,int plain=0)
         {
             if(dry)return;
             Vector3 h=size*0.5f;if(coarse>0)chamfer=0;
             SolidBox(center,h);
-            ChamferedBox(f,center,h,Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f));
+            ChamferedBox(f,center,h,Mathf.Min(chamfer,Mathf.Min(h.x,Mathf.Min(h.y,h.z))*0.5f),plain);
         }
         // Chamfered edges catch grazing light.
-        void ChamferedBox(in Finish f,Vector3 o,Vector3 h,float c)
+        void ChamferedBox(in Finish f,Vector3 o,Vector3 h,float c,int plain=0)
         {
             for(int a=0;a<3;a++)
             {
@@ -196,7 +200,8 @@ namespace DeathStar
                 for(int s=-1;s<=1;s+=2)
                 {
                     float hb=h[b]-c,hk=h[k]-c,ha=s*h[a];
-                    Quad(f,o+P(a,ha,b,-hb,k,-hk),o+P(a,ha,b,hb,k,-hk),o+P(a,ha,b,hb,k,hk),o+P(a,ha,b,-hb,k,hk),Axis(a)*s,Axis(b));
+                    var face=(plain&(1<<(a*2+(s>0?1:0))))!=0?f.With(TilePattern.Plain):f;
+                    Quad(face,o+P(a,ha,b,-hb,k,-hk),o+P(a,ha,b,hb,k,-hk),o+P(a,ha,b,hb,k,hk),o+P(a,ha,b,-hb,k,hk),Axis(a)*s,Axis(b));
                     if(c<=0)continue;
                     for(int s2=-1;s2<=1;s2+=2)
                     {

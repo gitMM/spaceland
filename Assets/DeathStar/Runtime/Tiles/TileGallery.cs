@@ -37,6 +37,9 @@ namespace DeathStar
             public readonly List<Mesh> meshes=new List<Mesh>();
             public readonly List<Label> labels=new List<Label>();
             public readonly Dictionary<TileFamily,(int triangles,Bounds bounds)> stats=new Dictionary<TileFamily,(int,Bounds)>();
+            // Each cell's tile renderers (all levels of detail), and the rooms built near the viewer.
+            public readonly Dictionary<Vector3Int,MeshRenderer[]> renderers=new Dictionary<Vector3Int,MeshRenderer[]>();
+            public StationInteriors interiors;
             public int triangles,farTriangles,tiles;
             public double buildMs;
             public void Destroy()
@@ -69,7 +72,8 @@ namespace DeathStar
                 mesh.hideFlags=HideFlags.DontSave;stage.meshes.Add(mesh);
                 if(far!=null){far.hideFlags=HideFlags.DontSave;stage.meshes.Add(far);}
                 if(mid!=null){mid.hideFlags=HideFlags.DontSave;stage.meshes.Add(mid);}
-                AddTile(station,name,mesh,mid,far,TileStructure.Center(pair.Key),lib,dontSave);
+                var tile=AddTile(station,name,mesh,mid,far,TileStructure.Center(pair.Key),lib,dontSave);
+                stage.renderers[pair.Key]=tile.GetComponentsInChildren<MeshRenderer>();
                 stage.triangles+=t.TriangleCount;stage.farTriangles+=far!=null?Triangles(far):t.TriangleCount;stage.tiles++;
                 if(specimenCells.TryGetValue(pair.Key,out var fam)&&fam==pair.Value.family)stage.stats[fam]=(t.TriangleCount,t.Bounds);
             }
@@ -112,6 +116,8 @@ namespace DeathStar
             }
             // the view from orbit: chunk massing, baked when first needed
             if(lib!=null)root.AddComponent<StationChunks>().Build(stage.structure,lib.materials[(int)TileSlot.Paint]);
+            // rooms round the viewer: in play they follow the camera, the lab places them
+            if(lib!=null){stage.interiors=root.AddComponent<StationInteriors>();stage.interiors.Init(stage.structure,builder,lib.materials,lib.clearGlass,stage.renderers);}
             stage.buildMs=sw.Elapsed.TotalMilliseconds;
             StationVoxelGi.Invalidate();
             return stage;
@@ -125,14 +131,15 @@ namespace DeathStar
         // the relief trace on plain armour (the mid level); from about 110 m (~45 px) it takes the far level, with coarse
         // forms and kits.
         public const float MidDetail=0.6f,NearDetail=0.16f;
-        static void AddTile(GameObject parent,string name,Mesh near,Mesh mid,Mesh far,Vector3 position,TileLibrary lib,bool dontSave)
+        static GameObject AddTile(GameObject parent,string name,Mesh near,Mesh mid,Mesh far,Vector3 position,TileLibrary lib,bool dontSave)
         {
-            if(far==null){Add(parent,name,near,position,Quaternion.identity,lib,dontSave);return;}
+            if(far==null)return Add(parent,name,near,position,Quaternion.identity,lib,dontSave).gameObject;
             var go=Node(name,parent.transform,dontSave);go.transform.localPosition=position;
             var r0=Add(go,"Near",near,Vector3.zero,Quaternion.identity,lib,dontSave);
             var r1=mid!=null?Add(go,"Mid",mid,Vector3.zero,Quaternion.identity,lib,dontSave):null;
             var r2=Add(go,"Far",far,Vector3.zero,Quaternion.identity,lib,dontSave);
             SetLods(go.AddComponent<LODGroup>(),r0,r1,r2);
+            return go;
         }
         // Near, mid (may be null) and far. Through a narrow band at each handover both levels draw, whole: they show the
         // same plates (the traced ones sit a little behind real ones, so geometry wins), so nothing pops and nothing is
@@ -168,6 +175,9 @@ namespace DeathStar
         public static View CraftView=>new View(new Vector3(110,27,10),new Vector3(80,12,33),Vector3.up,42);
         public static View PodView=>new View(new Vector3(4,17,-17),new Vector3(21,8,1),Vector3.up,40);
         public static View Seams=>new View(C(2.6f,0.9f,-4.6f),C(6.2f,0.4f,0f),Vector3.up,44);
+        // Inside a home in the trench's far wall (greybox interiors), standing on its deck at eye height: its windows and
+        // the hatch to the next home, which the corridor bridging the trench opens into.
+        public static View Room=>new View(new Vector3(31.8f,4.25f,21.9f),new Vector3(27.6f,4.1f,18.2f),Vector3.up,75);
         // Close-up of a specimen from the diagonal the sun lights best (or the opposite one), framed with its own up.
         public static View SpecimenView(in TileStructure.Specimen sp,bool back)
         {
@@ -188,6 +198,8 @@ namespace DeathStar
         Volume grayscale;
         VolumeProfile grayProfile;
         bool showHud=true,showLabels,gray,coded=true;
+        // Fly: the camera moves itself (WASD along its own axes) instead of orbiting a focus, to go inside.
+        bool fly;Vector3 eye;float flySpeed=2.5f;
         Vector3 focus,targetFocus;
         Quaternion rot=Quaternion.identity,targetRot=Quaternion.identity;
         float distance=80,targetDistance=80,fov=38;
@@ -201,6 +213,7 @@ namespace DeathStar
             Shader.SetGlobalFloat("_TileClay",0);
             Shader.SetGlobalFloat("_TileOverlay",coded?1:0);
             if(!Application.isPlaying)return;
+            if(stage.interiors!=null&&viewer!=null)stage.interiors.ringCentre=viewer.transform;
             grayProfile=ScriptableObject.CreateInstance<VolumeProfile>();
             grayProfile.Add<ColorAdjustments>(true).saturation.Override(-100f);
             grayscale=new GameObject("Grayscale check").AddComponent<Volume>();grayscale.transform.SetParent(stage.root.transform,false);
@@ -219,6 +232,12 @@ namespace DeathStar
             targetFocus=v.target;targetDistance=(v.position-v.target).magnitude;
             targetRot=Quaternion.LookRotation(v.target-v.position,v.up);fov=v.fov;
             if(snap){focus=targetFocus;distance=targetDistance;rot=targetRot;}
+        }
+        void Fly(bool on)
+        {
+            if(on)eye=focus-rot*Vector3.forward*distance;
+            else{focus=targetFocus=eye+rot*Vector3.forward*distance;targetDistance=distance;}
+            fly=on;
         }
         void Update()
         {
@@ -240,21 +259,35 @@ namespace DeathStar
                 if(kb.uKey.wasPressedThisFrame)Go(Under,false);
                 if(kb.qKey.isPressed)targetRot*=Quaternion.Euler(0,0,70*dt);
                 if(kb.eKey.isPressed)targetRot*=Quaternion.Euler(0,0,-70*dt);
+                if(kb.fKey.wasPressedThisFrame)Fly(!fly);
+                if(kb.iKey.wasPressedThisFrame){Go(Room,true);Fly(true);}
+                if(fly)
+                {
+                    var move=Vector3.zero;
+                    if(kb.wKey.isPressed)move.z+=1;if(kb.sKey.isPressed)move.z-=1;
+                    if(kb.dKey.isPressed)move.x+=1;if(kb.aKey.isPressed)move.x-=1;
+                    if(kb.spaceKey.isPressed)move.y+=1;if(kb.leftCtrlKey.isPressed)move.y-=1;
+                    eye+=rot*move*(flySpeed*(kb.leftShiftKey.isPressed?4:1)*dt);
+                }
             }
             if(mouse!=null)
             {
                 Vector2 d=mouse.delta.ReadValue();
                 // Trackball: turn about the camera's own axes, so there is no world up to snap to.
                 if(mouse.rightButton.isPressed)targetRot*=Quaternion.Euler(-d.y*0.25f,d.x*0.25f,0);
-                if(mouse.middleButton.isPressed)targetFocus-=(rot*Vector3.right*d.x+rot*Vector3.up*d.y)*distance*0.0015f;
+                if(!fly&&mouse.middleButton.isPressed)targetFocus-=(rot*Vector3.right*d.x+rot*Vector3.up*d.y)*distance*0.0015f;
                 float scroll=mouse.scroll.ReadValue().y;
-                if(Mathf.Abs(scroll)>0.01f)targetDistance=Mathf.Clamp(targetDistance*Mathf.Pow(0.9f,Mathf.Sign(scroll)),3f,400f);
+                if(Mathf.Abs(scroll)>0.01f)
+                {
+                    if(fly)flySpeed=Mathf.Clamp(flySpeed*Mathf.Pow(1.25f,Mathf.Sign(scroll)),0.5f,40f);
+                    else targetDistance=Mathf.Clamp(targetDistance*Mathf.Pow(0.9f,Mathf.Sign(scroll)),3f,400f);
+                }
             }
             float k=1-Mathf.Exp(-dt*10f);
             focus=Vector3.Lerp(focus,targetFocus,k);distance=Mathf.Lerp(distance,targetDistance,k);rot=Quaternion.Slerp(rot,targetRot,k);
             viewer.fieldOfView=Mathf.Lerp(viewer.fieldOfView,fov,k);
-            viewer.farClipPlane=distance+260f;
-            viewer.transform.SetPositionAndRotation(focus-rot*Vector3.forward*distance,rot);
+            viewer.farClipPlane=fly?400f:distance+260f;
+            viewer.transform.SetPositionAndRotation(fly?eye:focus-rot*Vector3.forward*distance,rot);
         }
 
         void OnGUI()
@@ -273,17 +306,18 @@ namespace DeathStar
             }
             if(!showHud)return;
             int legend=coded?Families.Length:0;
-            GUI.color=new Color(0,0,0,0.55f);GUI.DrawTexture(new Rect(12*s,12*s,360*s,(150+legend*19)*s),Texture2D.whiteTexture);GUI.color=Color.white;
+            GUI.color=new Color(0,0,0,0.55f);GUI.DrawTexture(new Rect(12*s,12*s,360*s,(170+legend*19)*s),Texture2D.whiteTexture);GUI.color=Color.white;
             for(int i=0;i<legend;i++)
             {
-                var c=TileLook.FamilyColor(Families[i]);float y=(160+i*19)*s;
+                var c=TileLook.FamilyColor(Families[i]);float y=(180+i*19)*s;
                 GUI.color=c.a>0?c.gamma:new Color(0.55f,0.55f,0.55f);GUI.DrawTexture(new Rect(24*s,y+3*s,14*s,14*s),Texture2D.whiteTexture);
                 GUI.color=Color.white;GUI.Label(new Rect(46*s,y,300*s,20*s),Title(Families[i]),hudStyle);
             }
-            GUI.Label(new Rect(22*s,18*s,350*s,140*s),
+            GUI.Label(new Rect(22*s,18*s,350*s,160*s),
                 "<b>Settlement tiles — phase 1: massing</b>\n"+
                 "1–9 - = Backspace specimens · 0 fragment · O station · T trench · U underside\n"+
                 "Right drag tumble · Q/E roll · middle drag pan · scroll zoom\n"+
+                $"F fly {(fly?"on":"off")}: WASD Space Ctrl, Shift fast, scroll speed · I inside a home ({stage.interiors?.Count??0} rooms)\n"+
                 $"C colour code {(coded?"on":"off")} · L labels {(showLabels?"on":"off")} · G greyscale {(gray?"on":"off")}\n"+
                 $"{stage.tiles} tiles, {stage.triangles/1000}k triangles · Tab hides this",hudStyle);
         }

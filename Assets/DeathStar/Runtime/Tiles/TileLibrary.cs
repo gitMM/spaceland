@@ -7,6 +7,7 @@ namespace DeathStar
     public sealed class TileLibrary : ScriptableObject
     {
         public Material[] materials=new Material[TileMesh.SlotCount];   // indexed by TileSlot
+        public Material clearGlass;   // windows with a built room behind them (StationInteriors)
         public Material sky;
         public Cubemap reflection;
         public VolumeProfile post;

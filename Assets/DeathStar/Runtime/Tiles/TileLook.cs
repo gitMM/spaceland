@@ -66,6 +66,10 @@ namespace DeathStar
                     break;
             }
         }
+        public static void ConfigureClearGlass(Material m)
+        {
+            m.SetVector("_GlassTint",new Vector4(0.6f,0.66f,0.7f,1));m.SetFloat("_Opacity",0.1f);m.SetFloat("_Reflection",1f);
+        }
         static void Surface(Material m,Color baseColor,float metallic,float smoothness,Color emission)
         {
             m.SetVector("_BaseColor",(Vector4)baseColor);m.SetFloat("_Metallic",metallic);m.SetFloat("_Smoothness",smoothness);
