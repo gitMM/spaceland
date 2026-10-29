@@ -16,6 +16,21 @@ public sealed class PressureStationTests
         Assert.True(result.CheckpointMatches && result.ContinuationTraceMatches);
         Assert.True(result.RecoveryTick >= PressureStation.PressureEnd);
         Assert.True(result.Participation.Horizon - result.RecoveryTick >= StationBaseline.Day);
+        // Response times: staggered guards leave no interval without a free team, every
+        // incident resolves, and each missed target names its cause.
+        var responses = result.ResponseTimes!;
+        Assert.Equal(0, responses.GuardTeamGapSamples);
+        Assert.All(responses.Unresolved, u => Assert.Equal(0, u.Count));
+        Assert.All(responses.MissCauses.Keys, cause => Assert.DoesNotContain("Unknown", cause, StringComparison.Ordinal));
+        // Overnight control: an authorization outside the misconduct cohort's shift is
+        // dispatched to awake night guards and acknowledged within its declared limit;
+        // only the finite detention capacity may delay its order.
+        var custody = result.ResponseTimes!.Stages.Where(st => st.Category == "Custody").ToDictionary(st => st.Stage);
+        Assert.Equal(0, custody["Acknowledgment"].Missed);
+        Assert.Contains(responses.Shifts, sh => sh.Category == "Custody" && sh.Shift != "shift-0" && sh.Unresolved == 0);
+        Assert.All(responses.MissCauses.Where(m => m.Key.StartsWith("Custody/Ordering:", StringComparison.Ordinal)), m => Assert.Equal("Custody/Ordering:AwaitingKnownDetentionCapacity", m.Key));
+        Assert.Equal(0, result.RoutineWindows!.RetentionViolations);
+        Assert.True(result.RoutineWindows.MaximumSwitchesPerMeal <= 1);
     }
 
     [Fact]
