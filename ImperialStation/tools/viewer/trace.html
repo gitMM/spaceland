@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+<title>Imperial Station · Trace viewer</title><link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<header><div><span class="eyebrow">IMPERIAL STATION / DEVELOPER TOOLS</span><h1>Trace explorer</h1></div><span class="badge">Truth · knowledge · belief</span></header>
+<main>
+<aside class="inputs">
+  <h2>Load a run</h2><p>Open the snapshot and event trace from the same run. Files stay on this computer.</p>
+  <label class="file">1. Snapshot JSON<input id="snapshot" type="file" accept=".json"></label>
+  <label class="file">2. Trace JSONL<input id="trace" type="file" accept=".jsonl,.json"></label>
+  <p id="status" role="status">Waiting for a snapshot.</p>
+  <label>Deck / Y layer<select id="layer" aria-label="Y layer"></select></label>
+  <label>Information layer<select id="information" aria-label="Information layer"><option value="truth">Physical truth</option><option value="authority">Authority belief</option><option value="actor">Selected actor knowledge</option></select></label>
+  <h2>Actors</h2><div id="actors"><p class="muted">No run loaded.</p></div>
+  <div class="legend"><span class="dot"></span> Actor <span class="tile-key"></span> Completed tile</div>
+  <p class="muted">Grid axes: X →, Z ↓. Vertical travel interpolates between Y layers. The view never advances simulation.</p>
+</aside>
+<section class="stage">
+  <div class="toolbar"><strong id="time">Tick 0</strong><span id="summary">No run loaded</span></div>
+  <canvas id="grid" aria-label="Top-down station grid" tabindex="0"></canvas>
+  <div class="timeline"><button id="back" aria-label="Previous tick">−</button><input id="scrub" type="range" min="0" max="1" value="0" aria-label="Simulation tick"><button id="forward" aria-label="Next tick">+</button><input id="tick" type="number" min="0" value="0" aria-label="Exact simulation tick"></div>
+  <p class="caption">Click a tile or actor to inspect its event history.</p>
+</section>
+<aside class="details"><h2 id="fact-title">Information</h2><div id="facts"></div><h2 id="selection">Event history</h2><p id="entity" class="muted">Showing all events through the selected tick.</p><div id="events"></div></aside>
+</main>
+<script src="viewer.js"></script>
+</body></html>

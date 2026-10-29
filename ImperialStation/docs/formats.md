@@ -59,6 +59,46 @@ population/tiles, simulated duration, physical metrics, labeled wall-clock/alloc
 memory diagnostics and artifact paths. Performance values are not deterministic;
 digests, statuses and gameplay metrics are the batch-isolation comparisons.
 
+## Station timeline
+
+`timeline` writes `timeline.json.gz`, a gzip JSON viewer projection (schema 1,
+`kind: "station_timeline"`) for `tools/viewer/index.html`. It is not a save format and
+no gameplay system reads it. The exporter creates the world, advances it in `--every`
+chunks, folds each chunk's trace into per-citizen tracks and samples inspection views.
+Advancing in chunks does not change the run: `finalDigest` equals the ordinary run's
+digest. Output is deterministic for a build, scenario, seed and interval.
+
+The header has scenario, source, seed, content/build/final digests, `tickMs`,
+`dayTicks`, `dutyTicks`, `cohorts`, `startTick`, `horizon` and `every`. `strings` is
+an intern table; index 0 is always the empty string and means "none". `rooms` are the
+final tiles (id, definition, family, position, traversal). `places` are need services,
+terminals, machines, workstations and detention facilities with kind, id, position,
+capacity, assigned actor and detention facility. `needs` lists rule thresholds in
+displayed units. `custody` has one entry per detention stay: subject, leader, escort
+start/status/members, intake and release ticks (-1 when absent).
+
+Each citizen has id, name, role, account, initial position, `rosters`
+`[publicationTick, version, cohort, shiftStart, dutyTicks, dayTicks]`, initial
+`knowledge` `[key, value, source, observedTick, sourceActorId]`, and three tracks:
+
+- `moves`: `[departure, arrival, sx, sz, tx, tz, sy, ty]`, one row per edge.
+- `acts`: `[requested, began, end, kind, outcome, requestEventId, causeId, origin, attemptId,
+  failure, queue, terminalId, needServiceId, partnerId]`. `began` is -1 if a queued
+  action never started and `end` is -1 if unfinished at the horizon; outcome is 0 open,
+  1 completed, 2 failed, 3 cancelled; queue is 0, 1 (need service) or 2 (terminal).
+- `learned`: `[tick, key, value, source, eventId, messageId]` for knowledge value
+  changes only; value -1 is an eviction. Initial knowledge plus these rows reproduces
+  `InspectKnowledge` at any tick; repeated observations of an unchanged value are omitted.
+
+`events` keeps every other trace event as `[id, tick, type, actorId, detail, tileId,
+causeId, messageId, terminalId, attemptId, taskId, itemId, quantity]`. Observations,
+movement, and action request/start/complete/cancel events are represented by the
+tracks instead; action failures are kept in both. `frames` holds the samples at
+`frames.ticks`: per citizen `needs` (flattened, one value per rule), need `mode`,
+routine `activity`, `inventory` and sampled `custody` strings; per place `busy`,
+`queue` and `up` (2 working, 1 disconnected, 0 down or disabled); and per tile `dirt`.
+Every array row omits trailing zeros.
+
 ## Information and planning initialization
 
 `initialState.information` is optional. It declares finite operation durations, terminal

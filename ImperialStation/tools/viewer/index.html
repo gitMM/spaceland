@@ -2,30 +2,66 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
-<title>Imperial Station · Trace viewer</title><link rel="stylesheet" href="viewer.css">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'">
+<title>Station Timeline</title><link rel="stylesheet" href="station.css">
 </head>
 <body>
-<header><div><span class="eyebrow">IMPERIAL STATION / DEVELOPER TOOLS</span><h1>Trace explorer</h1></div><span class="badge">Truth · knowledge · belief</span></header>
-<main>
-<aside class="inputs">
-  <h2>Load a run</h2><p>Open the snapshot and event trace from the same run. Files stay on this computer.</p>
-  <label class="file">1. Snapshot JSON<input id="snapshot" type="file" accept=".json"></label>
-  <label class="file">2. Trace JSONL<input id="trace" type="file" accept=".jsonl,.json"></label>
-  <p id="status" role="status">Waiting for a snapshot.</p>
-  <label>Deck / Y layer<select id="layer" aria-label="Y layer"></select></label>
-  <label>Information layer<select id="information" aria-label="Information layer"><option value="truth">Physical truth</option><option value="authority">Authority belief</option><option value="actor">Selected actor knowledge</option></select></label>
-  <h2>Actors</h2><div id="actors"><p class="muted">No run loaded.</p></div>
-  <div class="legend"><span class="dot"></span> Actor <span class="tile-key"></span> Completed tile</div>
-  <p class="muted">Grid axes: X →, Z ↓. Vertical travel interpolates between Y layers. The view never advances simulation.</p>
-</aside>
-<section class="stage">
-  <div class="toolbar"><strong id="time">Tick 0</strong><span id="summary">No run loaded</span></div>
-  <canvas id="grid" aria-label="Top-down station grid" tabindex="0"></canvas>
-  <div class="timeline"><button id="back" aria-label="Previous tick">−</button><input id="scrub" type="range" min="0" max="1" value="0" aria-label="Simulation tick"><button id="forward" aria-label="Next tick">+</button><input id="tick" type="number" min="0" value="0" aria-label="Exact simulation tick"></div>
-  <p class="caption">Click a tile or actor to inspect its event history.</p>
-</section>
-<aside class="details"><h2 id="fact-title">Information</h2><div id="facts"></div><h2 id="selection">Event history</h2><p id="entity" class="muted">Showing all events through the selected tick.</p><div id="events"></div></aside>
+<header class="top">
+  <div class="brand"><span class="eyebrow">IMPERIAL STATION</span><h1>Station timeline</h1></div>
+  <p id="run" class="run">No run loaded</p>
+  <div class="top-actions">
+    <label class="load">Open timeline<input id="file" type="file" accept=".gz,.json"></label>
+    <a class="link" href="trace.html">Trace explorer</a>
+  </div>
+</header>
+<main class="layout">
+  <aside class="people" aria-label="Citizens">
+    <input id="search" type="search" placeholder="Filter by name, role, activity" aria-label="Filter citizens">
+    <div id="people" class="people-list"><p class="muted">No run loaded.</p></div>
+  </aside>
+  <section class="stage" aria-label="Station map and time">
+    <div class="map-bar">
+      <div class="clock"><strong id="clock">—</strong><span id="tickLabel"></span></div>
+      <div class="map-tools">
+        <label class="toggle">Deck <select id="deck" aria-label="Deck"></select></label>
+        <label class="toggle"><input type="checkbox" id="showTrail" checked> Path</label>
+        <label class="toggle"><input type="checkbox" id="showDirt" checked> Dirt</label>
+        <label class="toggle"><input type="checkbox" id="showIds"> IDs</label>
+        <button id="fit" type="button" title="Reset zoom (double-click map)">Fit</button>
+      </div>
+    </div>
+    <div class="map-wrap" id="mapWrap">
+      <canvas id="map" aria-label="Top-down slice of the selected deck" tabindex="0"></canvas>
+      <div id="tip" class="tip" hidden></div>
+      <div id="empty" class="empty">
+        <h2>Load a station timeline</h2>
+        <p>Drop a <code>timeline.json.gz</code> here or use <em>Open timeline</em>. Export one from <code>ImperialStation/</code>:</p>
+        <pre>dotnet run --project src/Station.Runner -c Release -- timeline recovery --count 32 --out artifacts/timeline-recovery-32</pre>
+        <p id="status" class="status" role="status"></p>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="time-panel">
+      <div class="strip-wrap"><canvas id="strip" aria-label="Event activity over the whole run; click to jump"></canvas><div id="stripTip" class="tip" hidden></div></div>
+      <div class="controls">
+        <button id="toStart" type="button" title="Start (Home)" aria-label="Jump to start">⏮</button>
+        <button id="prevEvent" type="button" title="Previous event of the selected citizen ([)" aria-label="Previous event">⏴</button>
+        <button id="play" type="button" class="play" title="Play / pause (Space)" aria-label="Play">▶</button>
+        <button id="nextEvent" type="button" title="Next event of the selected citizen (])" aria-label="Next event">⏵</button>
+        <select id="speed" aria-label="Playback speed">
+          <option value="1">1× real time</option>
+          <option value="10">10×</option>
+          <option value="60" selected>60× · a station day per minute</option>
+          <option value="300">300×</option>
+          <option value="1200">1200× · a shift per second</option>
+        </select>
+        <input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Simulation tick">
+        <input id="tickInput" type="number" min="0" step="1" value="0" aria-label="Exact tick">
+      </div>
+    </div>
+  </section>
+  <aside class="dossier" id="dossier" aria-live="off"></aside>
 </main>
-<script src="viewer.js"></script>
-</body></html>
+<script src="station.js"></script>
+</body>
+</html>

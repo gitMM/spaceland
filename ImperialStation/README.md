@@ -167,16 +167,32 @@ clause. `sweep` remains unimplemented.
 
 ## Viewer
 
-Open `tools/viewer/index.html` in a browser, then select the matching `snapshot.json`
-and `trace.jsonl`. It has no server, build step, external scripts or network requests.
-Use the Y-layer selector and tick scrubber; click an actor or tile for event history.
-Information layers distinguish physical truth, selected-actor knowledge and authority
-belief. Message/session events and planning causes are available in the trace.
-Interpolation is presentation-only. A compact/no-trace run cannot reconstruct movement
-history; replay with `--trace detailed` first.
+The station timeline viewer replays a whole run: a top-down deck slice with every
+citizen at the service they are using, a time slider, and a dossier for the selected
+citizen (path, current action and intent with its trigger, needs, activity history,
+events and knowledge at that tick). Export a timeline first; it runs the ordinary
+simulation and samples it, and its `finalDigest` matches an ordinary run of the same scenario and seed:
 
-The viewer was syntax-checked, but browser visual QA was blocked by the execution
-environment's local-URL policy. No visual verification is claimed.
+```powershell
+dotnet run --project src/Station.Runner -c Release --no-build -- timeline recovery --count 32 --out artifacts/timeline-recovery-32
+dotnet run --project src/Station.Runner -c Release --no-build -- timeline scenarios/roster_routines.json --every 100 --out artifacts/timeline-roster
+```
+
+`timeline` accepts a scenario file or the `recovery`, `institutional` and `daily`
+generators (`--count`, `--seed`, `--variant`); `--every` sets the sample
+interval (default 300 ticks). The five-day, 32-citizen recovery run exports in about
+2 seconds to 0.7 MB. Open `tools/viewer/index.html` and drop in `timeline.json.gz`, or serve
+this folder (`python -m http.server 8765 --bind 127.0.0.1`) and open
+`http://127.0.0.1:8765/tools/viewer/?timeline=../../artifacts/timeline-recovery-32/timeline.json.gz`.
+Space plays, arrows step (Shift for a station minute), `[`/`]` jump between the
+selected citizen's events, the wheel zooms and dragging pans. The format is in
+[docs/formats.md](docs/formats.md#station-timeline). Population-scale timelines are
+not yet streamed; use 32–128 citizens.
+
+The earlier trace explorer remains at `tools/viewer/trace.html`: select a run's
+`snapshot.json` and `trace.jsonl` to compare physical truth, selected-actor knowledge
+and authority belief per tile. A compact/no-trace run cannot reconstruct movement
+history; replay with `--trace detailed` first.
 
 ## Structure
 

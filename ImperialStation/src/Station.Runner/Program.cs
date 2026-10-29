@@ -17,12 +17,12 @@ public static class Program
     private static int Run(string[] args)
     {
         if (args.Length == 0 || args[0] is "--help" or "help")
-        { Console.Error.WriteLine("Station.Runner validate|run|batch SCENARIO | replay BUNDLE | inspect CHECKPOINT | benchmark daily|population|recovery|institutional --count N --seed N --out DIR | generate-construction TEMPLATE --variant NAME --seed N --out DIR\nOptions: --seed N --count N --parallel N --out DIR --trace none|detailed|focused --chain EVENT --actor ID --view actor|knowledge|mailbox|sessions|beliefs|agents|repairs|machines|wear|qa|verifications|audits|cases|reprimands|case-filings|disclosures|detention-requests|detention-local|detention-authorizations|escorts|guard-assignments|guard-local|guard-teams|escort-groups|detention-facilities|detention-stays|needs|need-services|need-activities|need-agents|daily-goals|conversations|recovery-agents|recovery-cases|recovery-mailbox|berths|berth-allocations|revocations|guard-revocations|guard-outcomes|guard-receipts|equipment|dirt|facility|facility-local|claims|resources|stacks|sensors|perception|routines|rosters|jobs|attempts|orders|checkins|work-history|construction|construction-surveys|growth|record-history|query|expectations|acknowledgments|incidents|admission|patrols|patrol-local|authority|all\nSee docs/acceptance-current.md for implemented scope and open release gates."); return 0; }
+        { Console.Error.WriteLine("Station.Runner validate|run|batch SCENARIO | replay BUNDLE | inspect CHECKPOINT | benchmark daily|population|recovery|institutional --count N --seed N --out DIR | generate-construction TEMPLATE --variant NAME --seed N --out DIR | timeline SCENARIO|recovery|institutional|daily --count N --seed N --every TICKS --out DIR\nOptions: --seed N --count N --parallel N --out DIR --trace none|detailed|focused --chain EVENT --actor ID --view actor|knowledge|mailbox|sessions|beliefs|agents|repairs|machines|wear|qa|verifications|audits|cases|reprimands|case-filings|disclosures|detention-requests|detention-local|detention-authorizations|escorts|guard-assignments|guard-local|guard-teams|escort-groups|detention-facilities|detention-stays|needs|need-services|need-activities|need-agents|daily-goals|conversations|recovery-agents|recovery-cases|recovery-mailbox|berths|berth-allocations|revocations|guard-revocations|guard-outcomes|guard-receipts|equipment|dirt|facility|facility-local|claims|resources|stacks|sensors|perception|routines|rosters|jobs|attempts|orders|checkins|work-history|construction|construction-surveys|growth|record-history|query|expectations|acknowledgments|incidents|admission|patrols|patrol-local|authority|all\nSee docs/acceptance-current.md for implemented scope and open release gates."); return 0; }
         if (args.Length < 2) throw new ArgumentException("An input file is required.");
         string operation = args[0], input = args[1]; var opts = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 2; i < args.Length; i += 2)
         {
-            if (i + 1 >= args.Length || !new[] { "--seed", "--count", "--parallel", "--out", "--trace", "--actor", "--view", "--chain", "--variant" }.Contains(args[i]) || !opts.TryAdd(args[i], args[i + 1])) throw new ArgumentException($"Invalid or duplicate option {args[i]}.");
+            if (i + 1 >= args.Length || !new[] { "--seed", "--count", "--parallel", "--out", "--trace", "--actor", "--view", "--chain", "--variant", "--every" }.Contains(args[i]) || !opts.TryAdd(args[i], args[i + 1])) throw new ArgumentException($"Invalid or duplicate option {args[i]}.");
         }
         string? Option(string name) => opts.GetValueOrDefault(name);
         string traceLevel = Option("--trace") ?? (operation == "batch" ? "none" : "detailed");
@@ -73,6 +73,19 @@ public static class Program
             object data=view switch {"actor"=>world.InspectActor(Actor()),"knowledge"=>world.InspectKnowledge(Actor()),"mailbox"=>world.InspectMailbox(world.ActorView(Actor()).Account),"sessions"=>world.InspectSessions(),"beliefs"=>world.InspectBeliefs(),"agents"=>world.InspectAgents(),"repairs"=>world.InspectRepairAgents(),"construction"=>world.InspectConstructionProjects(),"construction-surveys"=>world.InspectConstructionSurveys(),"growth"=>world.InspectGrowth() ?? (object)"Disabled","machines"=>world.InspectMachines(),"claims"=>world.InspectResourceClaims(),"resources"=>new {items=world.InspectItems(),transactions=world.InspectResourceTransactions()},"jobs"=>world.InspectJobs(),"attempts"=>world.InspectWorkAttempts(),"orders"=>world.InspectLocalOrders(Actor()),"checkins"=>world.InspectCheckIns(),"work-history"=>world.InspectWorkHistory(),"all"=>Runs.ViewSnapshot(world,world.LastProcessedTick),_=>throw new ArgumentException("Unknown inspection view.")};
             Console.WriteLine(JsonData.Write(data));
             return 0;
+        }
+        if (operation == "timeline")
+        {
+            int Count(int fallback) => Option("--count") is string c ? int.Parse(c, CultureInfo.InvariantCulture) : fallback;
+            ulong generatorSeed = Option("--seed") is string g ? ulong.Parse(g, CultureInfo.InvariantCulture) : 42;
+            var source = input switch
+            {
+                "recovery" => RecoveryStation.Create(Count(32), generatorSeed),
+                "institutional" => InstitutionalStation.Create(Count(32), generatorSeed, Option("--variant") ?? "normal"),
+                "daily" => StationBaseline.Create(Count(12), 2, generatorSeed),
+                _ => LoadedScenario.Load(input)
+            };
+            return Timeline.Run(source, Option);
         }
         if (operation == "replay")
         {
