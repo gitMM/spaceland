@@ -2,11 +2,14 @@
 
 Implemented 2026-10-29 for the [next step](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)
 requested after the 32-person log review. Layout and population stay fixed; expansion
-and physical emergency alarms remain deferred. Snapshot schema is **46**.
+and physical emergency alarms remain deferred. Snapshot schema is **47**.
 
 Status: all six items are implemented with targeted controls and pass the 32-person
-pressure gate, including exact state and continuation-event replay. The 2,048-person
-result is recorded in [pressure-station.md](pressure-station.md#current-evidence).
+pressure gate, including exact state and continuation-event replay. A follow-up adds
+[repair priority](#follow-up--repair-priority-and-spill-measurement) and measures
+spills by their own units. The population check now uses **256 citizens** instead of
+2,048 (user decision, 2026-10-29: 2,048 was overkill); its result is recorded in
+[pressure-station.md](pressure-station.md#current-evidence).
 
 ## Item 6 — response-time measurement
 
@@ -165,31 +168,62 @@ delivered, the old team could still form before reading the withdrawal. The
 facility's intake receipt then settles the authorization, and the newer team's search
 ends without custody. No duplicate custody is possible, but the work is wasted.
 
+## Follow-up — repair priority and spill measurement
+
+**Repair priority.** `FacilityConfig.RepairPreemptsCleanup` (enabled at the pressure
+station; default off). With no uncommitted qualified responder on duty, a reported
+repair is ordered to the nearest responder whose only known commitment is cleanup
+work (`DispatchCandidate.CleanupOnly`; repair, verification, construction, patrol and
+escort commitments still exclude). The trace records `RepairPreemptedCleanup`. On the
+worker side, a citizen holding an accepted, unblocked repair order does it before its
+retained cleanup goal; the repair's completion, block or removal wakes the cleanup,
+which resumes from the tile's observed state.
+
+**Evidence hold.** Pre-emption first sent the misconduct subjects to repair the
+machines they had sabotaged before the supervisor's quality verification, which then
+found no discrepancy: no reprimands, no custody. A fault first observed within one
+configured hour of a claimed repair whose verification is still open is evidence about
+that claim, so the authority holds the repair (`AwaitingQualityVerification`) until
+the verification result arrives. A later fault is a new fault and is dispatched at
+once. (Holding on every open verification instead delayed a wave-2 repair for 30,000
+ticks behind the single supervisor's queue.)
+
+**Spill measurement.** A spill now resolves when its tile is back to its dirt level
+just before the spill (its own units removed), not when the whole tile is clean. The
+tile's older backlog remains covered by the recovery gate.
+
+The population baseline's pinned digest changed only through the schema bump; every
+counted result of the 128-citizen baseline is identical.
+
 ## 32-person evidence (this build)
 
 All pressure gates pass, with exact state and continuation-event replay from tick 12,000
-(digest `be1aa167…`). The backlog clears at tick 222,000 (previously 258,000). Four
-reprimands, two releases; both released subjects resume work. Maximum individual failed
+(digest `68251211…`). The backlog clears at tick 198,000 (previously 222,000 in this
+step, 258,000 before it). Four reprimands, two releases; both released subjects resume
+work. Missed ordinary windows: 10. Critical interruptions: 1. Maximum individual failed
 actions: 26.
 
-| Category | Total median | p95 | max | Previous max | Misses (cause) |
-| --- | --- | --- | --- | --- | --- |
-| Custody | 823 | 10,001 | 10,001 | 28,719 | 1 (AwaitingKnownDetentionCapacity) |
-| MachineFault | 31,535 | 33,266 | 33,266 | 62,952 | 4 (no uncommitted cleaner; order read off duty) |
-| MissingReport | 1,398 | 2,610 | 2,610 | 25,843 | 1 stage (responder off duty) |
-| CardLoss | 14 | 6,761 | 6,761 | 6,498 | 0 |
-| Spill | 40,962 | 138,537 | 138,537 | 159,203 | 6 (initial 400-unit tile backlog; responders asleep or off duty) |
+| Category | Total median | p95 | max | Before follow-up (max) | Original max | Misses (cause) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Custody | 820 | 10,000 | 10,000 | 10,001 | 28,719 | 1 (AwaitingKnownDetentionCapacity) |
+| MachineFault | 31,505 | 31,635 | 31,635 | 33,266 | 62,952 | 4 (order read only after the terminal outage and shift end) |
+| MissingReport | 1,793 | 2,551 | 2,551 | 2,610 | 25,843 | 1 stage (responder off duty) |
+| CardLoss | 12 | 6,761 | 6,761 | 6,761 | 6,498 | 0 |
+| Spill | 20,181 | 115,085 | 115,085 | 138,537 | 159,203 | 1 total, 6 with a stage miss (reporting during the outage; responder asleep or off duty) |
 
-Remaining causes, not fixed in this step:
-- **Machine faults** at tick 6,000 wait for a qualified cleaner. All cleaners are
-  committed to their initial 400-unit cleaning jobs until about tick 35,000. A
-  priority policy letting repairs pre-empt cleanup commitments would close this.
-- **Spills** land on tiles still carrying the initial backlog, so a spill resolves only
-  when the whole tile is clean.
+Machine-fault ordering is now immediate (maximum wait 30,126 → 0 ticks). What remains:
+- **Machine-fault acknowledgment.** Each fault wave's order is posted about 500 ticks
+  before both public terminals fail for the rest of the shift (the declared outage), so
+  the responder reads it only after duty ends and acknowledges it at the next shift.
+  Ordinary work orders have no acknowledgment-deadline reassignment (escorts do, item
+  2); adding one would move these orders to the next shift's responder.
+- **Spills** still miss stage limits when the responder's shift ends mid-cleanup or
+  the report waits for a terminal.
 
 Commands from `ImperialStation/`:
 
 ```powershell
 dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32-response
+dotnet run --project src/Station.Runner -c Release --no-build -- benchmark pressure --count 256 --out artifacts/pressure-256
 dotnet test ImperialStation.sln --no-restore -c Release -m:1 --filter "FullyQualifiedName~TerminalOutageTests|FullyQualifiedName~CafeteriaEstimateTests|FullyQualifiedName~EscortAcknowledgmentTests"
 ```

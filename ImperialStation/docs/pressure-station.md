@@ -24,7 +24,8 @@ waves of machine faults, card losses, spills and terminal outages create ordinar
 recovery work. Only initial misconduct and environmental disturbances are scripted;
 all responses must use the existing autonomous simulation.
 
-Acceptance: 32 citizens first, then the same generator at 2,048. Require overlapping
+Acceptance: 32 citizens first, then the same generator at 256 (reduced from 2,048 on
+2026-10-29 by user decision; earlier 2,048 trials below remain history). Require overlapping
 work and institutions, local credential recovery, completed repairs, authorized
 detention/release and resumed work, continued daily meals/sleep and roster activity,
 conserved finite resources, no duplicate assignments/effects or retry storms, drained
@@ -85,15 +86,16 @@ At least one released subject must resume a real available task.
 
 ## Current evidence
 
-- **Staffing and response build (schema 46, 2026-10-29, cloud run).** The 32-person
+- **Staffing and response build (schema 47, 2026-10-29, cloud run).** The 32-person
   gate passes with exact state and every continuation event after restoring tick
-  12,000. The backlog clears at tick 222,000; four reprimands, two releases, both
-  released subjects resume work. There are 12 missed ordinary windows (previously 189),
+  12,000. The backlog clears at tick 198,000; four reprimands, two releases, both
+  released subjects resume work. There are 10 missed ordinary windows (previously 189),
   all classified with zero retention violations, and 1 critical need interruption
   (previously 168). Guard team-gap samples: 0 of 325. Maximum custody response:
-  10,001 ticks, caused only by the single detention slot. Full response tables are in
-  [staffing-response-progress.md](staffing-response-progress.md).
-- The 2,048-citizen run of this build is in progress; its result will be recorded here.
+  10,000 ticks, caused only by the single detention slot. Repairs may pre-empt cleanup
+  (machine-fault ordering wait 30,126 → 0) and spills are measured by their own units.
+  Full response tables are in [staffing-response-progress.md](staffing-response-progress.md).
+- The 256-citizen run of this build is in progress; its result will be recorded here. The 2,048-citizen run was stopped at the user's request (overkill for this step).
 - The complete suite passes all **858 tests**, zero failures or skips
   (`artifacts/staffing-tests/staffing-response.trx` in the cloud run).
 
@@ -298,7 +300,7 @@ Commands from `ImperialStation/`:
 
 ```powershell
 dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32
-dotnet run --project src/Station.Runner -c Release --no-build -- benchmark pressure --count 2048 --out artifacts/pressure-2048
+dotnet run --project src/Station.Runner -c Release --no-build -- benchmark pressure --count 256 --out artifacts/pressure-256
 ```
 
 `pressure-result.json` is the gate result; the inherited `result.json` only reports

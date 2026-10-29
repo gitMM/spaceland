@@ -378,4 +378,8 @@ the result, so no snapshot schema change is needed.
 | Remember terminal outages as private local observations | Travel previously reset retries; alternatives and growing rechecks need memory that only a later local observation clears. |
 | Use only fresh, learned cafeteria estimates with hysteresis | Choice must not read remote queues or stock, and an unknown alternative must not cause repeated switching. |
 | Confirm an ordered repair when the operational belief predates the order | A stale belief let a worker report completion of a machine that had faulted again. |
+| Let a reported repair pre-empt a cleanup-only commitment (policy flag, pressure station on) | Every cleaner was committed to the initial cleanup backlog, so machine faults waited up to 30,126 ticks for an order. |
+| Hold a repair while its verification is open, only for a fault first observed within an hour of the claim | Pre-emption otherwise repaired sabotaged machines before verification and erased the misconduct evidence; an unbounded hold delayed unrelated later faults behind the supervisor's queue. |
+| Resolve a spill when its tile returns to its pre-spill dirt level | Waiting for the whole tile to be clean measured the older backlog, not the spill. |
+| Use 256 citizens for the population pressure check | User decision: 2,048 was overkill for this step (about 3 hours per run in the cloud container). |
 

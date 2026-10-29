@@ -4,7 +4,7 @@ First-release scope now uses a **fixed layout and population**. Expansion and
 construction acceptance are deferred; existing beds, allocation and occupancy stay
 in scope. The active milestone is [a fixed station under sustained pressure](docs/pressure-station.md).
 Run it with `dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32`;
-use `--count 2048` for the population workload. Its acceptance result is
+use `--count 256` for the population workload. Its acceptance result is
 `pressure-result.json`, including exact state and event continuation checks.
 
 Independent headless station simulation, based on build specification **1.2.2** (fixed-station scope amendment).
@@ -31,7 +31,7 @@ This folder is a standalone .NET solution: it has no dependency on spaceland,
 DeathStar assets, Unity, an editor process, rendering, or network services at runtime.
 It can be copied out of this repository and built on its own.
 
-Current status (2026-10-29): **858 tests passed; first release still incomplete**. The [staffing, daily timing and response-time step](docs/staffing-response-progress.md) is implemented and passes the 32-citizen pressure gate; its 2,048-citizen run is recorded in the pressure report. The combined nine-day pressure gate and exact checkpoint replay pass at 32 and 512 citizens. The latest completed 2,048-citizen trial released every qualifying subject but cleared its last report too late for the required full observation day; the unchanged gate is being rerun after fixing retention of locally completed cleanup. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
+Current status (2026-10-29): **858 tests passed; first release still incomplete**. The [staffing, daily timing and response-time step](docs/staffing-response-progress.md) is implemented and passes the 32-citizen pressure gate, with repairs pre-empting cleanup and spills measured by their own units; the population check now uses 256 citizens and is recorded in the pressure report. The combined nine-day pressure gate and exact checkpoint replay pass at 32 and 512 citizens. The latest completed 2,048-citizen trial released every qualifying subject but cleared its last report too late for the required full observation day; the unchanged gate is being rerun after fixing retention of locally completed cleanup. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
 
 **Implemented:** the H1 foundation plus parts of H2, H3 and H4: bounded GOAP search, knowledge,
 local sensing, physical terminal sessions, delayed messages, authority beliefs and

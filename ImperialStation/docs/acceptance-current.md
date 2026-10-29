@@ -27,7 +27,7 @@ The latest complete suite passes **858 tests**, zero failures or skips
 (staffing and response build; earlier: 843 in `artifacts/pressure-tests/pressure-all-completion.trx`). Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,
-reply handling, and checkpoint fixes. Snapshot schema is 46. Explicit evidence-based
+reply handling, and checkpoint fixes. Snapshot schema is 47. Explicit evidence-based
 review outcomes are acceptable per the user's clarification; unfinished audits,
 unread decisions, and open escorts remain failures.
 The roster-search population trial reached 59 of 63 required releases; its remaining
@@ -54,7 +54,10 @@ wake time, with sleep preparation from the citizen's own rates; missed windows
 189 → 6, critical interruptions 168 → 1. (4) Cafeteria choice from fresh learned queue
 and stock estimates with hysteresis. (5) Remembered terminal outages shared by
 reporting, check-ins, audits and recovery. (6) Response-time stages, declared limits,
-causes and an overnight control. The 2,048-citizen result is recorded in
+causes and an overnight control. Follow-up: repairs may pre-empt cleanup commitments
+(with an evidence hold for open verifications) and spills resolve at their pre-spill
+dirt level. The population check uses 256 citizens (user decision; 2,048 was
+overkill). Its result is recorded in
 [pressure-station.md](pressure-station.md#current-evidence). The original request follows.
 
 1. **Stagger guard shifts.** The pressure generator currently places every guard
@@ -109,7 +112,7 @@ cafeteria choices (5 and 4). Exercise acknowledgment/reassignment from item 2 in
 those controls; physical emergency alarms remain a deferred scope addition.
 
 Verify changes first with targeted controls and the 32-person station, then the
-same declared workload at 2,048 people. Preserve the full clear-day recovery gate,
+same declared workload at 2,048 people (reduced to 256 by the user on 2026-10-29). Preserve the full clear-day recovery gate,
 daily participation, finite resources, knowledge boundaries, bounded retries,
 unique assignments and exact state/event continuation after save/load. Keep
 evidence-based review outcomes valid without forcing unsupported reprimands.
