@@ -51,7 +51,7 @@ namespace DeathStar
                 m.Cylinder(Smooth,new Vector3(x,0.75f,0.45f),new Vector3(x,1.25f,0.45f),0.09f,8,false,true,0.01f);
                 m.Cylinder(Smooth,new Vector3(x,0.85f,0.45f),new Vector3(x,0.9f,0.45f),0.16f,8,true,true);
             }
-            foreach(float x in new[]{-0.72f,0.72f})m.Box(Warning,new Vector3(x,0.62f,0.92f),new Vector3(0.1f,0.1f,0.06f));
+            foreach(float x in new[]{-0.72f,0.72f})m.Box(Warning.Mounted(Vector3.forward),new Vector3(x,0.62f,0.92f),new Vector3(0.1f,0.1f,0.06f));
             m.Pop();
         }
         // On a crown: a core with a glowing band, and a tall ribbed radiator wing out along each ridge.
@@ -249,7 +249,7 @@ namespace DeathStar
         {
             m.PushMatrix(GableFrame(s,outward));
             m.Box(Armor,new Vector3(0,0.9f,0.12f),new Vector3(3.2f,0.18f,0.22f),0.02f);
-            for(int k=0;k<7;k++)m.Box(RunningLight,new Vector3(-1.35f+k*0.45f,0.9f,0.25f),new Vector3(0.14f,0.1f,0.05f));
+            for(int k=0;k<7;k++)m.Box(RunningLight.Mounted(Vector3.forward),new Vector3(-1.35f+k*0.45f,0.9f,0.25f),new Vector3(0.14f,0.1f,0.05f));
             m.Pop();
         }
         // On a crown: a mooring mast with a docking ring at the top and a pod docked nose-in.

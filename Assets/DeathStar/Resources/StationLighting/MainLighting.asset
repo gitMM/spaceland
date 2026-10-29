@@ -36,6 +36,8 @@ MonoBehaviour:
   screenGiSlices: 8
   screenGiSliceSteps: 24
   screenGiSurfaceThickness: 0.261
+  screenGiTemporal: 1
+  screenGiDenoise: 1
   screenSpaceAmbientOcclusion: 1
   ssaoStrength: 1
   ssaoDirectStrength: 1
@@ -69,6 +71,12 @@ MonoBehaviour:
   kitDensity: 0.35
   kitInnerRadius: 14
   kitOuterRadius: 20
+  localLights: 1
+  localLightStrength: 0.8
+  localLightRange: 1.57
+  localLightDistance: 45
+  localLightBudget: 512
+  localLampScreenGi: 0
   emission: 1
   reflections: 1
   exposure: 0.2

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Tile lab: render the settlement tile exemplars headless and write pictures and a report to DeathStarRuns/Tiles/.
 #   tools/tile-lab.sh report
+#   tools/tile-lab.sh locallights # stable local lamps, camera motion, off-screen sources and emission/GI separation
 #   tools/tile-lab.sh emissiongi # caged lamps lighting nearby surfaces through screen GI, without bloom or direct light
+#   tools/tile-lab.sh screengi # temporal convergence, denoising, disocclusion and independent AO/GI sampling
 #   tools/tile-lab.sh voxelgi   # red habitat, off-screen 20 m transport, second bounce, occlusion and cache/timing checks
 #   tools/tile-lab.sh voxelbench # paired reference/optimized cone throughput on actual station surfaces
 #   tools/tile-lab.sh closeup part=<contact|surface|detail|kit|relief|fold|orbit|nan|reliefview|wear|bevel|precision>   # close-up detail checks -> DeathStarRuns/Tiles/closeup/

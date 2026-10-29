@@ -101,7 +101,7 @@ namespace DeathStar
             public float Rand(int k)=>TileBuilder.Rand(seed^(uint)((n.x+2)*7+(n.y+2)*31+(n.z+2)*131),k);
             public bool Cont(Vector3Int step)=>s.Continues(cell,p,n,step);
             public void Box(in Finish f,float u0,float v0,float u1,float v1,float o0,float o1,float chamfer=0.04f)=>
-                m.Box(f,new Vector3((u0+u1)*0.5f,(v0+v1)*0.5f,-(o0+o1)*0.5f),new Vector3(u1-u0,v1-v0,o1-o0),chamfer);
+                m.Box(f.slot==TileSlot.Light?f.Mounted(Vector3.back):f,new Vector3((u0+u1)*0.5f,(v0+v1)*0.5f,-(o0+o1)*0.5f),new Vector3(u1-u0,v1-v0,o1-o0),chamfer);
             public static Vector3 P(float u,float v,float o)=>new Vector3(u,v,-o);
             // A pane of glass on any plane in this frame, facing outward, its height along up.
             public void Pane(Vector3 center,Vector3 outward,Vector3 up,float w,float h)

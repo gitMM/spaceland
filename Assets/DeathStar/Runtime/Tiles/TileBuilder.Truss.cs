@@ -118,7 +118,8 @@ namespace DeathStar
             m.PushMatrix(Basis(o,D(0),D(1),D(2)));m.Box(Cast,Vector3.zero,Vector3.one*size,0.1f*size);m.Pop();
             if(sides==3&&Rand(Hash(k),5)<0.25f)
             {
-                m.PushMatrix(Basis(at+into*0.08f,D(0),D(1),D(2)));m.Box(RunningLight,Vector3.zero,Vector3.one*0.16f,0.02f);m.Pop();
+                var frame=Basis(at+into*0.08f,D(0),D(1),D(2));
+                m.PushMatrix(frame);m.Box(RunningLight.Mounted(frame.transpose.MultiplyVector(-into)),Vector3.zero,Vector3.one*0.16f,0.02f);m.Pop();
             }
         }
         // An orthonormal frame from three lattice directions, led by the pair nearest a right angle (a folded cell has
@@ -261,7 +262,7 @@ namespace DeathStar
 
         static readonly Vector2 GirderFootL=new Vector2(-1.3f,0.4f),GirderFootR=new Vector2(1.3f,0.4f),GirderApex=new Vector2(0,2.8f);
         static Vector2[] Square(Vector2 c,float w){float h=w*0.5f;return new[]{c+new Vector2(-h,-h),c+new Vector2(h,-h),c+new Vector2(h,h),c+new Vector2(-h,h)};}
-        static readonly Vector2[] Walkway={new Vector2(-1.05f,0.34f),new Vector2(1.05f,0.34f),new Vector2(1.05f,0.44f),new Vector2(-1.05f,0.44f)};
+        static readonly Vector2[] TrussWalkway={new Vector2(-1.05f,0.34f),new Vector2(1.05f,0.34f),new Vector2(1.05f,0.44f),new Vector2(-1.05f,0.44f)};
         // A point on a run between two sections, in Loft's frames, so members meet its chords.
         static Vector3 OnRun(in Section s0,in Section s1,float t,Vector2 q)
         {
@@ -276,7 +277,7 @@ namespace DeathStar
         {
             foreach(var chord in new[]{GirderFootL,GirderFootR})Loft(m,Steel,s0,s1,Square(chord,0.4f),0,1,!join0,!join1);
             Loft(m,Steel,s0,s1,Square(GirderApex,0.44f),0,1,!join0,!join1);
-            Loft(m,Band,s0,s1,Walkway,0,1,!join0,!join1);
+            Loft(m,Band,s0,s1,TrussWalkway,0,1,!join0,!join1);
             float length=Mathf.Max(0.5f,Vector3.Distance(s0.crest,s1.crest));
             int bays=Mathf.Max(1,Mathf.RoundToInt(length/2.8f));
             var along=s1.crest-s0.crest;var a0=s0;var a1=s1;
@@ -298,7 +299,7 @@ namespace DeathStar
                 }
                 m.PushMatrix(FrameAt(s0,s1,tm));
                 m.Box(Cast,new Vector3(0,0.02f,0),new Vector3(3.3f,0.36f,0.5f),0.04f);
-                m.Box(RunningLight,new Vector3(0,3.1f,0),new Vector3(0.16f,0.12f,0.16f),0.02f);
+                m.Box(RunningLight.Mounted(Vector3.up),new Vector3(0,3.1f,0),new Vector3(0.16f,0.12f,0.16f),0.02f);
                 m.Pop();
             }
         }
@@ -337,7 +338,7 @@ namespace DeathStar
             }
             m.PushMatrix(Frame(P(new Vector2(0,1.05f),L+0.3f),s.across,s.up,z));
             m.Box(Hazard,Vector3.zero,new Vector3(1.3f,1.2f,0.7f),0.08f);
-            m.Box(RunningLight,new Vector3(0,0.66f,0.15f),new Vector3(0.2f,0.12f,0.2f),0.02f);
+            m.Box(RunningLight.Mounted(Vector3.up),new Vector3(0,0.66f,0.15f),new Vector3(0.2f,0.12f,0.2f),0.02f);
             m.Pop();
         }
         static readonly Vector2[] KeelBeam={new Vector2(-0.32f,-0.1f),new Vector2(0.32f,-0.1f),new Vector2(0.2f,0.3f),new Vector2(-0.2f,0.3f)};

@@ -314,6 +314,7 @@ half4 Frag(Varyings i, out float depth : TILE_DEPTH) : SV_Target
                 s.normalTS = half3(0, 0, 1);
                 s.alpha = 1;
 #if defined(STATION_GI_SOURCE)
+                if(_LocalLightEmitter>.5 && _StationLocalLightActive>.5) s.emission *= _StationLocalLampScreenGi;
                 return StationGiSource(input,s,1,1);
 #else
                 return StationFragmentPBR(input,s);

@@ -99,6 +99,7 @@ namespace DeathStar
                     tile.renderers.Add(renderer);return renderer;
                 }
                 var r=Add("Near",near);
+                r.gameObject.AddComponent<StationLocalLightSource>();
                 if(far!=null)
                 {
                     var m=mid!=null?Add("Mid",mid):null;var f=Add("Far",far);

@@ -17,6 +17,16 @@ namespace DeathStar
         // A part's vertices share its anchor and frame (compared by Equals, as the dictionaries compare keys).
         (Vector4,Vector4) lastMetricKey,lastRigidKey;Matrix4x4 lastMetric,lastRigid;
         public CurvedTileMesh(BlockConstruction model){this.model=model;}
+        // The station's core in curved space: the sphere guide's centre, which the map leaves where it is.
+        public Vector3 Core=>model.Guide.center*TileBuilder.Cell;
+        // Out from the core at p: square to the shells the guide maps the lattice's layers onto (ellipsoids of its
+        // extents round the core; on a sphere, straight out from it). Zero right at the core.
+        public Vector3 Out(Vector3 p)
+        {
+            var h=Vector3.Max(model.Guide.extents,Vector3.one*0.5f)*TileBuilder.Cell;var o=p-Core;
+            if(o.sqrMagnitude<0.25f)return Vector3.zero;
+            return new Vector3(o.x/(h.x*h.x),o.y/(h.y*h.y),o.z/(h.z*h.z)).normalized;
+        }
 
         public Vector3 Map(Vector3 station)
         {Sample(station,out var p,out _,out _,out _);return p;}
@@ -177,11 +187,15 @@ namespace DeathStar
             var frames=new List<Vector4>();mesh.GetUVs(4,frames);
             var anchors=new List<Vector4>();mesh.GetUVs(5,anchors);
             var origin=TileStructure.Center(cell);
+            StationLocalLights.MountingNormals.TryGetValue(mesh,out var mounts);
+            Dictionary<int,Vector3> nearMounts=null;
+            if(bentNear)StationLocalLights.MountingNormals.TryGetValue(bentNear,out nearMounts);
             Vector3[] nv=null,nn=null;Vector4[] nt=null;
             if(bentNear!=null&&fromNear!=null){nv=bentNear.vertices;nn=bentNear.normals;nt=bentNear.tangents;}
             for(int i=0;i<vertices.Length;i++)
             {
-                if(nv!=null&&i<fromNear.Length&&fromNear[i]>=0){int k=fromNear[i];vertices[i]=nv[k];normals[i]=nn[k];tangents[i]=nt[k];continue;}
+                if(nv!=null&&i<fromNear.Length&&fromNear[i]>=0){int k=fromNear[i];vertices[i]=nv[k];normals[i]=nn[k];tangents[i]=nt[k];if(mounts!=null&&nearMounts!=null&&nearMounts.TryGetValue(k,out var copiedMount))mounts[i]=copiedMount;continue;}
+                Vector3 mount=default;bool mounted=mounts!=null&&mounts.TryGetValue(i,out mount);
                 var p=origin+vertices[i];var f=frames.Count==vertices.Length?frames[i]:Vector4.zero;
                 var anchor=anchors.Count==vertices.Length?anchors[i]:Vector4.zero;
                 if(anchor.w>2.5f){vertices[i]=p;continue;}   // kit part, already in curved space (TileMesh.BeginWorld)
@@ -194,6 +208,7 @@ namespace DeathStar
                     Tube(spine,ua,va,out var at,out var tu,out var tv);var tt=Vector3.Cross(tu,tv);
                     Vector3 R(Vector3 d)=>tt*d[axis]+tu*d[ua]+tv*d[va];
                     vertices[i]=at+tu*off[ua]+tv*off[va];normals[i]=R(normals[i]).normalized;
+                    if(mounted)mounts[i]=R(mount).normalized;
                     var tg=tangents[i];var rt=R(tg);tangents[i]=new Vector4(rt.x,rt.y,rt.z,tg.w);
                     continue;
                 }
@@ -211,6 +226,7 @@ namespace DeathStar
                         placed+=up*(Vector3.Dot(surface-placed,up)*(1-Mathf.Max(0,h)/Foot));
                     }
                     vertices[i]=placed;normals[i]=rigid.MultiplyVector(normals[i]).normalized;
+                    if(mounted)mounts[i]=rigid.MultiplyVector(mount).normalized;
                     var rt=tangents[i];var rw=rigid.MultiplyVector(rt);tangents[i]=new Vector4(rw.x,rw.y,rw.z,rt.w);
                     continue;
                 }
@@ -218,12 +234,14 @@ namespace DeathStar
                 // Transform normals with the cofactor (inverse transpose); preserve authored hard edges and glass UVs.
                 Transform(p,f,out var bent,out var dx,out var dy,out var dz);
                 var n=normals[i];normals[i]=(Vector3.Cross(dy,dz)*n.x+Vector3.Cross(dz,dx)*n.y+Vector3.Cross(dx,dy)*n.z).normalized;
+                if(mounted)mounts[i]=(Vector3.Cross(dy,dz)*mount.x+Vector3.Cross(dz,dx)*mount.y+Vector3.Cross(dx,dy)*mount.z).normalized;
                 var t=tangents[i];var wt=(dx*t.x+dy*t.y+dz*t.z).normalized;
                 tangents[i]=new Vector4(wt.x,wt.y,wt.z,t.w);
                 vertices[i]=bent;
             }
             mesh.vertices=vertices;mesh.normals=normals;mesh.tangents=tangents;mesh.RecalculateBounds();
             mesh.SetUVs(4,new List<Vector4>());mesh.SetUVs(5,new List<Vector4>());
+            StationLocalLights.Invalidate(mesh);
         }
     }
 }

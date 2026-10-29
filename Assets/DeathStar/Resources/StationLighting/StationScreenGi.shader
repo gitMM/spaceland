@@ -77,6 +77,12 @@ Shader "Hidden/DeathStar/Screen GI"
             if(!Surface(input.texcoord,p,n,eye))return 1;
             return 1-saturate(Gather(input.texcoord,p,n,true).a);
         }
+        float FilterCombinedAo(Varyings input):SV_Target {
+            float3 p,n;float eye;
+            if(!Surface(input.texcoord,p,n,eye))return 1;
+            return 1-saturate(Gather(input.texcoord,p,n,false).a);
+        }
+        #include "StationGiDenoise.hlsl"
         float TraceAo(Varyings input):SV_Target { return TraceSsilvb(input).a; }
         float4 CompositeCombined(Varyings input):SV_Target {
             uint2 pixel=(uint2)input.positionCS.xy;
@@ -214,6 +220,45 @@ Shader "Hidden/DeathStar/Screen GI"
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment ContactBlur
+            ENDHLSL
+        }
+        Pass {
+            Name "Combined trace AO filter"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment FilterCombinedAo
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            ENDHLSL
+        }
+        Pass {
+            Name "GI geometric guides"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment GiGeometry
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            ENDHLSL
+        }
+        Pass {
+            Name "GI temporal accumulation"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment GiTemporal
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            ENDHLSL
+        }
+        Pass {
+            Name "GI edge-aware spatial filter"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment GiSpatial
+            ENDHLSL
+        }
+        Pass {
+            Name "GI geometric upsample"
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment GiUpsample
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
             ENDHLSL
         }
     }

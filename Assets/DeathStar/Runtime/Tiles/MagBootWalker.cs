@@ -3,7 +3,8 @@ using UnityEngine.InputSystem;
 
 namespace DeathStar
 {
-    // First person in magnetic boots, for the station's interiors, where there is no up. The boots hold the walker to
+    // First person in magnetic boots, for the station's hull outside, where there is no up (inside, StationWalker walks
+    // upright in the station's gravity; the interiors were walked in these boots before they had a fixed up). The boots hold the walker to
     // whatever is under its feet and its up follows that floor: it walks up onto a wall it walks into, over convex edges
     // (into a hatch or socket's lining, round a tube's corners), and with the boots released (Space) it pushes off and
     // drifts straight where it looks, curled up, through a hatch or across a room, until it touches a surface, which

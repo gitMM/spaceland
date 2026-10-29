@@ -8,17 +8,19 @@ using UnityEngine.Rendering.Universal;
 namespace DeathStar
 {
     // Shared SSILVB GI and AO. Source lighting never includes this pass's
-    // output. No temporal history means no feedback or ghost trails on moving props.
-    public sealed class StationScreenGiFeature : ScriptableRendererFeature
+    // output. Temporal history is reconstruction only, never a bounce source.
+    public sealed partial class StationScreenGiFeature : ScriptableRendererFeature
     {
         Material material;
         GiPass pass;
         CompositePass compositePass;
         ContactPass contactPass;
+        StationLocalLightPass localLightPass;
+        DenoisePass denoisePass;
         bool customAoActive;
         StationVoxelGi voxels;
         // Keep these indices in the same order as StationScreenGi.shader.
-        const int FilterGiAo=0, CompositeGi=1, ShowAo=2, FilterAo=3, Trace=4, TraceAo=5, Contact=6, ContactBlur=7;
+        const int FilterGiAo=0, CompositeGi=1, ShowAo=2, FilterAo=3, Trace=4, TraceAo=5, Contact=6, ContactBlur=7, FilterCombinedAo=8;
         static readonly int AoTextureId=Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
         static readonly int SourceId=Shader.PropertyToID("_GiSource");
         static readonly int ReceiverId=Shader.PropertyToID("_GiReceiver");
@@ -41,6 +43,7 @@ namespace DeathStar
         static readonly int ContactRawId=Shader.PropertyToID("_ContactRaw");
         public override void Create()
         {
+            denoisePass?.Dispose();denoisePass=new DenoisePass();
             voxels?.Dispose();voxels=new StationVoxelGi();
             ResetAo();
             CoreUtils.Destroy(material);
@@ -49,10 +52,12 @@ namespace DeathStar
             pass=new GiPass();
             compositePass=new CompositePass();
             contactPass=new ContactPass();
+            localLightPass?.Dispose();localLightPass=new StationLocalLightPass();
             RenderPipelineManager.endCameraRendering-=EndCamera;
             RenderPipelineManager.endCameraRendering+=EndCamera;
         }
         void ResetAo() {
+            StationLocalLightPass.Reset();
             if(customAoActive) {
                 Shader.DisableKeyword("_SCREEN_SPACE_OCCLUSION");
                 Shader.DisableKeyword("_STATION_SCREEN_OCCLUSION");
@@ -73,6 +78,9 @@ namespace DeathStar
             bool supported=!data.cameraData.camera.stereoEnabled && data.cameraData.cameraType!=CameraType.Reflection &&
                 data.cameraData.renderType==CameraRenderType.Base && data.cameraData.cameraTargetDescriptor.msaaSamples<=1;
             if(!supported) return;
+            if(settings.localLights && settings.localLightStrength>0 && settings.emission>0 && Shader.GetGlobalFloat("_TileClay")<.5f &&
+                settings.giDebugView!=GiDebugView.ScreenSpaceAoOnly && settings.giDebugView!=GiDebugView.ContactShadowsOnly &&
+                settings.giDebugView!=GiDebugView.VoxelGiOnly) renderer.EnqueuePass(localLightPass);
             if(settings.ContactShadowsActive) {
                 contactPass.Material=material;
                 contactPass.Parameters=new Vector4(Mathf.Max(.05f,settings.contactLengthNear),Mathf.Max(.05f,settings.contactLengthFar),
@@ -88,6 +96,7 @@ namespace DeathStar
                 settings.giDebugView!=GiDebugView.DiffuseSources && voxels.Prepare(data.cameraData.camera,settings,material);
             if(!voxelAvailable)material.SetVector("_StationVoxelParams",Vector4.zero);
             bool giAvailable=settings.screenSpaceGi && settings.screenGiStrength>0 && !aoDebug && settings.giDebugView!=GiDebugView.VoxelGiOnly;
+            if(!giAvailable)denoisePass.Skip(data.cameraData.camera);
             if(settings.giDebugView==GiDebugView.Normal && !giAvailable && !voxelAvailable &&
                 !(settings.screenSpaceAmbientOcclusion && settings.ssaoStrength>0 && settings.screenGiAoIntensity>0)) return;
             pass.Material=material;
@@ -98,6 +107,12 @@ namespace DeathStar
                 Mathf.Clamp(settings.screenGiSliceSteps,4,32),Mathf.Clamp(settings.screenGiSurfaceThickness,.01f,3),0);
             pass.AoParameters=new Vector4(Mathf.Clamp(settings.screenGiAoRadius,.05f,5),Mathf.Clamp(settings.screenGiAoIntensity,0,3),0,0);
             pass.DirectAo=settings.ssaoDirectStrength;
+            pass.Reconstruct=giAvailable;
+            if(giAvailable) {
+                denoisePass.Material=material;
+                denoisePass.Prepare(data.cameraData.camera,settings);
+                pass.SliceParameters.w=denoisePass.SampleIndex;
+            }
 
             // AO writes its own texture and never reads camera color. Only the
             // cascade replacement and the separate composite need an intermediate.
@@ -109,11 +124,14 @@ namespace DeathStar
             compositePass.AoOnly=aoDebug;compositePass.ContactOnly=contactDebug;
             compositePass.GiOnly=settings.giDebugView==GiDebugView.DiffuseSources?2:((settings.giDebugView==GiDebugView.ScreenSpaceGiOnly||settings.giDebugView==GiDebugView.VoxelGiOnly)?1:0);
             renderer.EnqueuePass(pass);
+            if(giAvailable)renderer.EnqueuePass(denoisePass);
             // Ordinary AO is consumed during opaque shading; it needs no color copy.
             if(giAvailable || voxelAvailable || aoDebug || compositePass.GiOnly>0) renderer.EnqueuePass(compositePass);
         }
 
         protected override void Dispose(bool disposing) {
+            localLightPass?.Dispose();localLightPass=null;
+            denoisePass?.Dispose();denoisePass=null;
             voxels?.Dispose();voxels=null;
             ResetAo();RenderPipelineManager.endCameraRendering-=EndCamera;
             CoreUtils.Destroy(material);
@@ -170,8 +188,9 @@ namespace DeathStar
         }
 
         sealed class CombinedFrame : ContextItem {
-            public TextureHandle Filtered,Receiver,Ao;
-            public override void Reset() {Filtered=Receiver=Ao=TextureHandle.nullHandle;}
+            public TextureHandle Filtered,Receiver,Ao,Raw;
+            public Vector4 Size;
+            public override void Reset() {Filtered=Receiver=Ao=Raw=TextureHandle.nullHandle;Size=Vector4.zero;}
         }
         sealed class CompositePass : ScriptableRenderPass {
             public Material Material;
@@ -214,6 +233,7 @@ namespace DeathStar
             public GiDebugView DebugView;
             public Vector4 AoParameters;
             public float DirectAo;
+            public bool Reconstruct;
             static readonly ShaderTagId SourceTag=new ShaderTagId("StationGiSource");
 
             sealed class SourceData {public RendererListHandle List;}
@@ -229,6 +249,7 @@ namespace DeathStar
                 public TextureHandle Delta,Depth,Normals;
                 public Vector4 Size;
                 public bool HasGi;
+                public bool CombinedAo;
                 public float DirectAo;
             }
             public GiPass() {
@@ -263,6 +284,7 @@ namespace DeathStar
                     using(var builder=graph.AddRasterRenderPass<SourceData>("Station combined diffuse sources",out var data)) {
                         data.List=list;
                         builder.UseRendererList(list);
+                        if(frameData.Contains<StationLocalLightFrame>())builder.UseTexture(frameData.Get<StationLocalLightFrame>().irradiance);
                         // The source shader reads direct-light shadows, never scene depth,
                         // AO or SDF GI. Do not also bind the prepass depth as a sampled
                         // global while it is attached for the Equal depth test.
@@ -304,26 +326,28 @@ namespace DeathStar
                     var fullDesc=camera.cameraTargetDescriptor;
                     fullDesc.msaaSamples=1;fullDesc.depthBufferBits=0;fullDesc.depthStencilFormat=GraphicsFormat.None;
                     fullDesc.graphicsFormat=GraphicsFormat.R16G16B16A16_SFloat;
-                    var filtered=hasGi?UniversalRenderer.CreateRenderGraphTexture(graph,fullDesc,"Station filtered screen GI",false,FilterMode.Point):graph.defaultResources.blackTexture;
+                    var filtered=hasGi&&!Reconstruct?UniversalRenderer.CreateRenderGraphTexture(graph,fullDesc,"Station filtered screen GI",false,FilterMode.Point):graph.defaultResources.blackTexture;
                     fullDesc.graphicsFormat=GraphicsFormat.R8_UNorm;
                     var ao=UniversalRenderer.CreateRenderGraphTexture(graph,fullDesc,"Station combined screen AO",false,FilterMode.Bilinear);
                     using(var builder=graph.AddRasterRenderPass<CompositeData>("Station combined GI AO filter",out var data)) {
                         data.Material=Material;data.Delta=delta;data.Depth=resources.cameraDepthTexture;
-                        data.Normals=resources.cameraNormalsTexture;data.Size=size;data.DirectAo=DirectAo;data.HasGi=hasGi;
+                        data.Normals=resources.cameraNormalsTexture;data.Size=size;data.DirectAo=DirectAo;data.HasGi=hasGi&&!Reconstruct;
                         builder.UseTexture(delta);builder.UseTexture(data.Depth);builder.UseTexture(data.Normals);
-                        if(hasGi)builder.SetRenderAttachment(filtered,0,AccessFlags.Write);
-                        builder.SetRenderAttachment(ao,hasGi?1:0,AccessFlags.Write);
+                        if(data.HasGi)builder.SetRenderAttachment(filtered,0,AccessFlags.Write);
+                        builder.SetRenderAttachment(ao,data.HasGi?1:0,AccessFlags.Write);
+                        data.CombinedAo=Reconstruct;
                         builder.AllowGlobalStateModification(true);builder.SetGlobalTextureAfterPass(ao,AoTextureId);
                         builder.SetRenderFunc((CompositeData d,RasterGraphContext ctx)=> {
                             d.Material.SetTexture(DeltaId,d.Delta);d.Material.SetTexture(DepthId,d.Depth);
                             d.Material.SetTexture(NormalsId,d.Normals);d.Material.SetVector(SizeId,d.Size);
-                            Blitter.BlitTexture(ctx.cmd,d.Delta,new Vector4(1,1,0,0),d.Material,d.HasGi?FilterGiAo:FilterAo);
+                            Blitter.BlitTexture(ctx.cmd,d.Delta,new Vector4(1,1,0,0),d.Material,d.HasGi?FilterGiAo:(d.CombinedAo?FilterCombinedAo:FilterAo));
                             ctx.cmd.SetGlobalVector(AmbientOcclusionId,new Vector4(1,0,0,Mathf.Clamp01(d.DirectAo)));
                             ctx.cmd.EnableShaderKeyword("_SCREEN_SPACE_OCCLUSION");
                             ctx.cmd.EnableShaderKeyword("_STATION_SCREEN_OCCLUSION");
                         });
                     }
                     var combined=frameData.Create<CombinedFrame>();combined.Filtered=DebugView==GiDebugView.DiffuseSources?source:filtered;combined.Receiver=receiver;combined.Ao=ao;
+                    if(Reconstruct && DebugView!=GiDebugView.DiffuseSources){combined.Raw=delta;combined.Size=size;}
                     return;
                 }
             }

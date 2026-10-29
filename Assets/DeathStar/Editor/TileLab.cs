@@ -24,7 +24,7 @@ namespace DeathStar.EditorTools
     {
         const int W=1600,H=900;
         static string Dir=>Path.GetFullPath(Path.Combine(Application.dataPath,"../DeathStarRuns/Tiles"));
-        static readonly string[] Shaders={"DeathStar/Tile Surface","DeathStar/Tile Glass","DeathStar/Tile Clear Glass","DeathStar/Space Sky"};
+        static readonly string[] Shaders={"Hidden/DeathStar/Local Lights","DeathStar/Tile Surface","DeathStar/Tile Glass","DeathStar/Tile Clear Glass","DeathStar/Space Sky"};
 
         static readonly (string name,Func<TileGallery.View> view,string what)[] Views=
         {
@@ -77,6 +77,8 @@ namespace DeathStar.EditorTools
             if(mode=="walk")return WalkCheck(rig);
             if(mode=="voxelgi")return VoxelGiCheck(rig);
             if(mode=="emissiongi")return EmissionGiCheck(rig);
+            if(mode=="locallights")return LocalLightCheck(rig);
+            if(mode=="screengi")return ScreenGiCheck(rig);
             if(mode=="voxelbench")return VoxelPerformance(rig);
             int only=Array.FindIndex(Examples,e=>e.name.ToLowerInvariant()==mode);
             if(only>=0)

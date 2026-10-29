@@ -17,7 +17,7 @@ namespace DeathStar
         static readonly Finish Dark=new Finish(TileSlot.Dark,TilePattern.Plain,Color.white,0f);
         static readonly Finish Metal=new Finish(TileSlot.Metal,TilePattern.Plain,new Color(0.8f,0.8f,0.8f),0f);
         static readonly Finish Trim=new Finish(TileSlot.Trim,TilePattern.Plain,Color.white,0f);
-        static readonly Finish Lamp=new Finish(TileSlot.Light,TilePattern.Plain,new Color(1f,0.78f,0.5f),0f);
+        static readonly Finish Lamp=new Finish(TileSlot.Light,TilePattern.Plain,new Color(1f,0.78f,0.5f),0f).Mounted(Vector3.up);
         static readonly Finish Warn=new Finish(TileSlot.Accent,TilePattern.Hazard,new Color(0.75f,0.55f,0.1f),0f);
 
         // Where pipes and cables plug in (KitRoutes): a point and the way out along the plate, in the prop's frame, and

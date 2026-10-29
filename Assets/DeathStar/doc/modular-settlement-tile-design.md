@@ -4,7 +4,7 @@ Design proposal — 27 October 2026
 
 Build a modular space station from visually distinct cubes. Each cube has a recognizable purpose, and the player should be able to identify its type from its exterior while building. A Habitat cube is the home of one person. The station can grow into an outpost or a larger structure; its look draws on the Death Star and Star Destroyers without having to be either.
 
-**The defining visual rule is that every tile family has a clear exterior signature. Habitat cubes carry rows of eye-level windows on each deck. Other families get equally strong identifying features.** Function guides the exterior, but this design focuses on the visible shell, openings, equipment, silhouette, and relationships between neighboring cubes.
+**The defining visual rule is that every tile family has a clear exterior signature. Habitat cubes carry two rows of windows on each face across their axis. Other families get equally strong identifying features.** Function guides the exterior, but this design focuses on the visible shell, openings, equipment, silhouette, and relationships between neighboring cubes.
 
 ## A station in space
 
@@ -33,16 +33,18 @@ Use a nominal cube approximately **5 metres on each side**. This is a proposed w
 | Reference person | 1.8 m tall, or 36% of cube height |
 | Human doorway | Approximately 1 m wide × 2.1 m high |
 | Visible corridor opening | Approximately 1.5–2 m wide × 2.4 m high |
-| Deck | Two decks of 2.5 m per cube, along the tile's own axis |
-| Window row | Eye level on each deck: sill about 0.9 m and head about 1.85 m above the deck, panes on a 1.25 m pitch |
-| Habitat window row | Taller panes: sill about 0.6 m and head about 2.1 m above the deck |
+| Floor | One room per cube, its floor the face towards the station's core; about 4.2 m clear to the ceiling |
+| Sliding door | 1.3 m wide × 2.2 m high, at floor level between rooms side by side |
+| Lift | A round opening 1.8 m across in floor and ceiling between rooms stacked out from the core |
+| Window row | Two per face across the tile's axis, on a 2.5 m pitch along it: sill about 0.9 m and head about 1.85 m above the start of each band, panes on a 1.25 m pitch |
+| Habitat window row | Taller panes: sill about 0.6 m and head about 2.1 m above the start of each band |
 | Airlock hatch | Round, approximately 1.2–1.4 m across |
 | Landing pad | About 4.4 m across on one cube; about 9 m across on a 2 × 2 block |
 | Pod (scale craft) | About 6 m long and 2.6 m wide; docks on a single pad |
 | Shuttle (scale craft) | About 11 m long with a 10 m span; docks on a 2 × 2 pad or at a hangar mouth |
 | Structure 20 cubes across | Approximately 100 m at nominal spacing |
 
-Doors, window rows, handrails where needed, access hatches, and equipment panels establish the human scale. A single door should look appropriately sized for a person beside the cube. Repeated windows are expected: they follow the decks, so they read as floors of rooms rather than as an arbitrary grid.
+Doors, window rows, handrails where needed, access hatches, and equipment panels establish the human scale. A single door should look appropriately sized for a person beside the cube. Repeated windows are expected: they run in 2.5 m bands along each tile's axis, so they read as rows of lit rooms rather than as an arbitrary grid.
 
 At a view where a cube is 100 pixels high, a 1.8 m reference person would be roughly 36 pixels high at the same depth. This is a scale where homes and individual installations can be understood directly.
 
@@ -53,7 +55,7 @@ Craft establish scale for ships the way a person does for rooms. The review stag
 
 Each has a hatch ring under its belly that sits over the pad's airlock. They check that a single pad suits a small pod, a 2 × 2 pad a shuttle, and a hangar mouth admits one.
 
-On the curved Foundry grid a cell's faces measure 2.3–5 m and its depth 2.8–5.6 m, depending on direction. Parts people and craft use keep their size in metres everywhere: doors, hatches, window rows and decks, corridor and conduit cross-sections, collars, portholes, railings and pads. Turrets, dishes, tanks, fin banks, globes and masts come in small, medium and large sizes; a cell gets the largest that fits. Walls, piers, edge bands, plinths, relief, armour carving, fillets and buttresses stretch to fill the rest. Repeated parts change in number, not in size.
+On the curved Foundry grid a cell's faces measure 2.3–5 m and its depth 2.8–5.6 m, depending on direction. Parts people and craft use keep their size in metres everywhere: doors, hatches, window rows, lifts and stairs, corridor and conduit cross-sections, collars, portholes, railings and pads. Turrets, dishes, tanks, fin banks, globes and masts come in small, medium and large sizes; a cell gets the largest that fits. Walls, piers, edge bands, plinths, relief, armour carving, fillets and buttresses stretch to fill the rest. Repeated parts change in number, not in size.
 
 The earlier kilometre-sized district concept is superseded. Districts now emerge from groups of small cubes.
 
@@ -61,18 +63,22 @@ The earlier kilometre-sized district concept is superseded. Districts now emerge
 
 Outside there is no up. Every exposed face of a tile follows the same rules; no face is a roof, a floor, or a front because of where it points. A tile can be placed in any of the 24 orientations of a cube, set by two of its own axes: its axis and its side. Its forms follow those axes and the face they sit on, never a world direction.
 
-- The tile's axis is its interior up (see Decks and windows). It orients forms that need a direction, such as window rows, fin banks, and vaults.
+- The tile's axis orients forms that need a direction, such as window rows, fin banks, and vaults. It is not the interior's up: inside, up is out from the station's core (see Interiors and windows).
 - A family's main form (a turret, a tower, a bay, a pad) goes on its main face: the face along its axis if that face is exposed, otherwise the first exposed face around it.
 - Forms without a direction, such as the relief and Power's fin banks, go on every exposed face.
 - Turrets, towers, and pads can point any way, including away from the rest of the structure.
 
 Review the station with a camera that tumbles freely, and check every family in several orientations.
 
-## Decks and windows
+## Interiors and windows
 
-People will later walk inside these tiles, and every occupied tile should let them see out. Windows are therefore planned at the exterior level now, as part of each family's shape, rather than added as decoration.
+People walk inside these tiles, and every occupied tile should let them see out. Windows are therefore planned at the exterior level, as part of each family's shape, rather than added as decoration.
 
-A tile's own axis is its interior up. Outside there is no up, but inside each tile has floors: a cube holds two 2.5 m decks along its axis. Each deck gets a window row at eye height, with the sill about 0.9 m and the head about 1.85 m above the deck. Habitat uses taller panes, from about 0.6 m to 2.1 m, because homes look out more than workspaces do. Every family uses the same decks, so rows on neighbouring tiles of one family that share an axis meet.
+Inside, up is out from the station's core, whatever way a tile is turned: there is gravity indoors, and people walk upright in it. A cube holds one open room, about 4.2 m clear, whose floor is the face towards the core and whose ceiling carries its lights. On the curved grid the floors lie on the sphere's shells, so they are level; the walls follow the lattice and lean by up to about 26° near the cube's diagonals. The cells round the core itself form a zero-g hub: no floor, round hatches to every neighbour, and people float.
+
+Neighbouring rooms whose floors face the same way open into each other: side by side through a sliding door at floor level, and stacked out from the core through a lift, a round opening in floor and ceiling where suction carries people up or down and sets them down at a floor. Rooms whose floors face different ways stay closed. A corridor's tube carries a walkway where it runs along a floor, reached from a home's floor by a stair at its socket, and is a lift shaft where it runs out from the core.
+
+A tile's axis orients its window rows, not its floor. Each face across the axis carries two rows on a 2.5 m pitch along it, with the sill about 0.9 m and the head about 1.85 m above the start of each 2.5 m band. Habitat uses taller panes, from about 0.6 m to 2.1 m, because homes look out more than workspaces do. Every family uses the same bands, so rows on neighbouring tiles of one family that share an axis meet. The rows are real openings inside, wherever they fall: a home whose axis points out from the core has two bands of windows in its walls, and one turned across the core has upright rows in two walls and, where those faces are open, a skylight and a floor window.
 
 | Rule | Treatment |
 | --- | --- |
@@ -86,7 +92,7 @@ Windows belong where people are:
 
 | Family | Windows |
 | --- | --- |
-| Habitat | Both deck rows, with taller panes, on every exposed face across its axis |
+| Habitat | Both rows, with taller panes, on every exposed face across its axis |
 | Command | A sloped bridge window on its tower and an upper row on its other faces |
 | Corridor | Round portholes along both sides |
 | Landing Pad | An upper row on its sides for the pad's control room |
@@ -194,7 +200,7 @@ Each type should remain distinguishable in grayscale. Color adds character and h
 
 | Tile type | Function | Primary exterior identifier | Overall appearance |
 | --- | --- | --- | --- |
-| **Habitat** | One person's home | **Deck window rows** | A quiet armoured shell with two rows of eye-level windows under angled visors on each face across its axis; rows join along neighbouring homes. |
+| **Habitat** | One person's home | **Two window rows** | A quiet armoured shell with two rows of windows under angled visors on each face across its axis; rows join along neighbouring homes. |
 | **Industrial** | Fabrication, maintenance, and repair | **Exposed machinery** | Asymmetrical equipment clusters, ribbed housings, thick pipes, brackets, and a substantial service entrance. |
 | **Power and Thermal** | Energy generation, storage, distribution, and heat management | **Repeated finned equipment banks** | Heavy regular modules, deep cooling ribs, and thick conduits connecting visibly related components. |
 | **Life Support** | Air, water, and waste processing | **Grouped tanks and ducts** | Upright tanks and domed tank tops on a single tile, ringed vaults along a row, and a sphere tank on a 2 × 2 block. |
@@ -212,11 +218,11 @@ Defense is a clearer picker label than Military because the other facilities can
 
 ### Habitat
 
-Rows of windows are the defining feature: two rows on every exposed face across the tile's axis, one at eye height on each deck, following the rules under Decks and windows. Habitat panes are taller than the standard row, about 1.5 m from sill to head, so homes read as lit rooms even from the overview. Deep mullions, an angled visor over each row, and a ledge under it make the rows read as lit floors of rooms from the normal building view, even where the panes themselves are small at that distance.
+Rows of windows are the defining feature: two rows on every exposed face across the tile's axis, one in each 2.5 m band along it, following the rules under Interiors and windows. Habitat panes are taller than the standard row, about 1.5 m from sill to head, so homes read as lit rooms even from the overview. Deep mullions, an angled visor over each row, and a ledge under it make the rows read as lit rooms from the normal building view, even where the panes themselves are small at that distance.
 
 Give glass a clear material contrast with the surrounding shell: dark or subtly tinted panes, a readable reflection response, and soft illumination from the room behind. Keep mullions and visors thick enough to survive at a distance. The exterior can communicate habitation without furnishing or exposing the space behind the glass.
 
-Keep the rest of the shell quiet, with limited exterior equipment. Habitat should be among the quieter tiles. There is no front door onto open ground: people enter from a neighbouring Corridor or through an airlock hatch. Neighbouring homes that share an axis join their rows into continuous bands; stacked homes add a row every 2.5 m, so a block of homes reads as a wall of lit windows.
+Keep the rest of the shell quiet, with limited exterior equipment. Habitat should be among the quieter tiles. There is no front door onto open ground: people enter from a neighbouring Corridor, from neighbouring homes through sliding doors and lifts, or through an airlock hatch. Neighbouring homes that share an axis join their rows into continuous bands; stacked homes add a row every 2.5 m, so a block of homes reads as a wall of lit windows.
 
 Variants can change the visor shape, the mullion depth, or the ledge while retaining both window rows. A Habitat variant should not lose its windows and become indistinguishable from Hull.
 
@@ -345,7 +351,7 @@ Individual tiles remain legible through their family forms, not their cube outli
 
 | Combination | Exterior relationship |
 | --- | --- |
-| Habitat + Habitat | Window rows and visors join into continuous lit bands, creating a residential row; stacked homes add a band every deck. |
+| Habitat + Habitat | Window rows and visors join into continuous lit bands, creating a residential row; stacked homes add two bands per cube. |
 | Habitat + Corridor | The corridor's collar plugs into an octagonal socket on the home's face. |
 | Industrial + Industrial | Machinery strips, gantries, and service recesses continue into a larger workshop facade. |
 | Industrial + Storage | A broad loading frontage meets machinery and service equipment. |
@@ -514,8 +520,8 @@ Medical, garden, detention, computing, and other specialized facilities can be i
 
 Build one clear exemplar of each core family before producing many variants. Review the tiles together at the normal construction camera distance.
 
-- Can Habitat be identified immediately by its rows of deck windows?
-- Do window rows sit at eye height on each deck and line up across neighbouring tiles?
+- Can Habitat be identified immediately by its rows of windows?
+- Do window rows sit in their 2.5 m bands and line up across neighbouring tiles?
 - Do landing pads read as places for craft to dock, and conduits as pipe runs between tiles?
 - Does each family stay identifiable in any of its orientations, with no face reading as a roof or a front because of where it points?
 - Does a wide area of relief show no tile seams, with both quiet and dense districts?
@@ -545,4 +551,4 @@ Use grazing light early to check physical relief. Reserve geometry for silhouett
 
 Reference photographs of modular, 3D-printed Death Star trench models informed the arcs, round ports, sloped buttresses, and long tubes.
 
-The 5 m cubes, one-person homes, the no-up rule, the station-wide relief, deck window rows, landing pads, conduits, and distinct exterior signatures are the settlement design proposed here. The two decks per cube and the window rows prepare for walkable interiors. Interior floor plans, furnishings, resource simulation, and staffing remain outside this exterior design scope.
+The 5 m cubes, one-person homes, the no-up rule, the station-wide relief, window rows, landing pads, conduits, and distinct exterior signatures are the settlement design proposed here. Interiors follow the rules under Interiors and windows: one room per cube with its floor towards the core, sliding doors, lifts and a zero-g hub. Furnishings, resource simulation, and staffing remain outside this exterior design scope.

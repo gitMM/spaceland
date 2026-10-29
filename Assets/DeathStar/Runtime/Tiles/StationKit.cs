@@ -38,10 +38,10 @@ namespace DeathStar
         public int Routes {get;private set;}
 
         public void MarkDirty()=>dirty=true;
-        void OnEnable(){RenderPipelineManager.beginCameraRendering+=BeginCamera;dirty=true;}
+        void OnEnable(){RenderPipelineManager.beginCameraRendering+=BeginCamera;StationLocalLights.Collect+=GatherLocalLights;dirty=true;}
         void OnDisable()
         {
-            RenderPipelineManager.beginCameraRendering-=BeginCamera;
+            RenderPipelineManager.beginCameraRendering-=BeginCamera;StationLocalLights.Collect-=GatherLocalLights;
             Shader.SetGlobalVector(CentreId,Vector4.zero);
             foreach(var m in materials??new Material[0])if(m)Release(m);materials=null;
             foreach(var m in routeMaterials??new Material[0])if(m)Release(m);routeMaterials=null;
@@ -117,6 +117,21 @@ namespace DeathStar
                 prop=small;scale=Mathf.Min(1.2f,0.75f*room/Foot(prop));
             }
             return prop;
+        }
+
+        void GatherLocalLights(Camera camera,List<StationLocalLights.LightData> lights)
+        {
+            if(!StationLightingSettings.Current.kitProps||materials==null||!StationLocalLights.VisibleTo(camera,gameObject))return;
+            var lampMaterial=materials[(int)TileSlot.Light];if(!lampMaterial)return;
+            Color emission=lampMaterial.GetVector("_Emission");
+            for(int i=0;i<placements.Count;i++) {
+                float grow=grows[i];if(grow<=0)continue;
+                var p=placements[i];if(p.prop!=5&&p.prop!=9)continue;
+                var rotation=Quaternion.LookRotation(Vector3.Cross(p.along,p.normal),p.normal);
+                var matrix=Matrix4x4.TRS(p.position,rotation,new Vector3(p.scale,p.scale*grow,p.scale));
+                var plane=new Vector4(p.normal.x,p.normal.y,p.normal.z,-Vector3.Dot(p.position,p.normal));
+                StationLocalLights.Append(lights,KitProps.Get(p.prop,0),(int)TileSlot.Light,matrix,emission,grow,plane);
+            }
         }
 
         void BeginCamera(ScriptableRenderContext context,Camera camera)

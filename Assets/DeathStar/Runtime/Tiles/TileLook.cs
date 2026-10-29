@@ -51,7 +51,7 @@ namespace DeathStar
                 case TileSlot.Dark:Surface(m,new Color(0.055f,0.057f,0.06f),0.1f,0.35f,Color.black);break;
                 case TileSlot.Metal:Surface(m,new Color(0.6f,0.6f,0.62f),0.9f,0.55f,Color.black);break;
                 case TileSlot.Recess:Surface(m,new Color(0.006f,0.006f,0.007f),0f,0.15f,Color.black);break;
-                case TileSlot.Light:Surface(m,new Color(0.01f,0.01f,0.01f),0f,0.5f,new Color(5f,5f,5f));break;
+                case TileSlot.Light:Surface(m,new Color(0.01f,0.01f,0.01f),0f,0.5f,new Color(5f,5f,5f));m.SetFloat("_LocalLightEmitter",1);break;
                 case TileSlot.Accent:Surface(m,new Color(1f,1f,1f),0f,0.32f,Color.black);break;
                 case TileSlot.Relief:
                     // the far level's relief shells (TileMesh.Shells.cs): the paint, traced; they cast no shadow (the

@@ -3,9 +3,9 @@ using UnityEngine.InputSystem;
 
 namespace DeathStar
 {
-    // Walk the interiors (Death Star / Open Interior Walk, then Play): in magnetic boots (MagBootWalker), through the
-    // flat review station's homes and the corridor bridging its trench (1), or the Foundry example's homes and junction
-    // on the curved grid (2). The rooms near the walker are built as it goes (StationInteriors, with colliders, and
+    // Walk the interiors (Death Star / Open Interior Walk, then Play): upright in the station's gravity (StationWalker),
+    // through the flat review station's homes, their doors and lifts and the corridor bridging its trench (1), or the
+    // Foundry example's stacks of homes round its zero-g hub and the corridors into them on the curved grid (2). The rooms near the walker are built as it goes (StationInteriors, with colliders, and
     // people standing about for scale); one more person stands on the floor ahead at the start.
     [DisallowMultipleComponent]
     public sealed class InteriorWalk : MonoBehaviour
@@ -17,7 +17,7 @@ namespace DeathStar
         TileGallery.Stage stage;
         FoundrySettlement foundry;GameObject foundryRoot;
         StationInteriors interiors;
-        MagBootWalker walker;
+        StationWalker walker;
         GameObject person;Mesh personMesh;
         GUIStyle style;
         TileLook.Saved saved;
@@ -28,7 +28,7 @@ namespace DeathStar
             saved=TileLook.ApplyEnvironment(library);
             Shader.SetGlobalFloat("_TileClay",0);Shader.SetGlobalFloat("_TileOverlay",0);
             viewer.nearClipPlane=0.05f;viewer.farClipPlane=400;viewer.fieldOfView=75;
-            walker=new GameObject("Walker").AddComponent<MagBootWalker>();walker.eye=viewer;
+            walker=new GameObject("Walker").AddComponent<StationWalker>();walker.eye=viewer;
             personMesh=TileBuilder.Figure(0).ToMesh("Person");
             person=new GameObject("Person ahead");person.AddComponent<MeshFilter>().sharedMesh=personMesh;
             var r=person.AddComponent<MeshRenderer>();r.sharedMaterials=library.materials;r.renderingLayerMask=1u|StationInteriors.InteriorLayer;
@@ -54,7 +54,7 @@ namespace DeathStar
                 foundry=new FoundrySettlement(foundryRoot.transform,library.materials,library.clearGlass);
                 foundry.Rebuild(SettlementExamples.Foundry());interiors=foundry.Interiors;
             }
-            interiors.colliders=true;interiors.ringCentre=walker.transform;
+            interiors.colliders=true;interiors.ringCentre=walker.transform;walker.interiors=interiors;
             Respawn();
         }
         void Unload()
@@ -100,9 +100,9 @@ namespace DeathStar
             GUI.Label(new Rect(22*s,18*s,380*s,120*s),
                 $"<b>Interior walk — {(place==0?"flat station":"Foundry example (curved)")}</b>\n"+
                 "Click: capture mouse · Esc: release · WASD walk · Shift run\n"+
-                "Walk into a wall to step onto it · Space: push off where you look\n"+
+                "Space at a lift: up or down to the next floor, as you look · hub: float\n"+
                 "R respawn · 1 flat station · 2 curved Foundry · Tab hides this\n"+
-                $"{(walker.Floating?"drifting":"boots on")} · {where} · {interiors?.Count??0} rooms built",style);
+                $"{walker.State} · {where} · {interiors?.Count??0} rooms built",style);
         }
     }
 }

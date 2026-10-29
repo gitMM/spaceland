@@ -143,6 +143,7 @@ namespace DeathStar
         static void Loft(TileMesh m,in Finish f,in Section s0,in Section s1,Vector2[] profile,float t0,float t1,bool cap0,bool cap1,bool sides=true)
         {
             var a0=s0;var a1=s1;
+            var finish=f.slot==TileSlot.Light?f.Mounted(Vector3.Lerp(s0.up,s1.up,(t0+t1)*.5f)):f;
             Vector3 P(float t,Vector2 q)
             {
                 var up=Vector3.Lerp(a0.up,a1.up,t).normalized;var ac=Vector3.Lerp(a0.across,a1.across,t);ac=(ac-up*Vector3.Dot(ac,up)).normalized;
@@ -155,7 +156,7 @@ namespace DeathStar
                 Vector2 q0=profile[i],q1=profile[(i+1)%n];
                 Vector3 a=P(t0,q0),b=P(t0,q1),c=P(t1,q1),d=P(t1,q0);
                 var normal=Vector3.Cross(b-a,d-a).normalized;if(Vector3.Dot(normal,(a+b+c+d)*0.25f-middle)<0)normal=-normal;
-                m.Quad(f,a,b,c,d,normal,(d-a).normalized);
+                m.Quad(finish,a,b,c,d,normal,(d-a).normalized);
             }
             var along=(P(t1,centroid)-P(t0,centroid)).normalized;
             foreach(var (t,cap,dir) in new[]{(t0,cap0,-along),(t1,cap1,along)})
@@ -163,7 +164,7 @@ namespace DeathStar
                 if(!cap)continue;
                 var p0=P(t,profile[0]);
                 m.BeginPolygon();
-                for(int i=1;i<n-1;i++)m.Triangle(f,p0,P(t,profile[i]),P(t,profile[i+1]),dir);
+                for(int i=1;i<n-1;i++)m.Triangle(finish,p0,P(t,profile[i]),P(t,profile[i+1]),dir);
                 m.EndPolygon();
             }
         }

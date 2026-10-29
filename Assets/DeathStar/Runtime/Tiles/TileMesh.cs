@@ -18,11 +18,14 @@ namespace DeathStar
         public readonly TilePattern pattern;
         public readonly Color tint;
         public readonly float wear;
-        public Finish(TileSlot slot,TilePattern pattern,Color tint,float wear=1f){this.slot=slot;this.pattern=pattern;this.tint=tint;this.wear=wear;}
+        public readonly Vector3 lampDirection;
+        public Finish(TileSlot slot,TilePattern pattern,Color tint,float wear=1f,Vector3 lampDirection=default){this.slot=slot;this.pattern=pattern;this.tint=tint;this.wear=wear;this.lampDirection=lampDirection;}
         public Finish(TileSlot slot,TilePattern pattern=TilePattern.Plain):this(slot,pattern,Color.white){}
-        public Finish Shade(float k)=>new Finish(slot,pattern,new Color(tint.r*k,tint.g*k,tint.b*k),wear);
-        public Finish With(TilePattern p)=>new Finish(slot,p,tint,wear);
-        public Finish Worn(float w)=>new Finish(slot,pattern,tint,w);
+        public Finish Shade(float k)=>new Finish(slot,pattern,new Color(tint.r*k,tint.g*k,tint.b*k),wear,lampDirection);
+        public Finish With(TilePattern p)=>new Finish(slot,p,tint,wear,lampDirection);
+        public Finish Worn(float w)=>new Finish(slot,pattern,tint,w,lampDirection);
+        // Emitting side, in the primitive's local frame. The rear of its lens is its mounting plane.
+        public Finish Mounted(Vector3 direction)=>new Finish(slot,pattern,tint,wear,direction.normalized);
     }
 
     // Builds a tile's mesh from flat-shaded primitives. Each primitive is placed through a transform stack; face
@@ -34,6 +37,7 @@ namespace DeathStar
         readonly List<Vector4> tangents=new List<Vector4>();
         readonly List<Vector2> codes=new List<Vector2>(),local=new List<Vector2>(),extent=new List<Vector2>();
         readonly List<Color> colors=new List<Color>();
+        readonly Dictionary<int,Vector3> lampDirections=new Dictionary<int,Vector3>();
         readonly List<Vector4> overlays=new List<Vector4>();
         readonly List<Vector4> surfaceFrames=new List<Vector4>();
         // Curved Foundry meshes retain their source face; w is its signed station-space plane.
@@ -138,6 +142,8 @@ namespace DeathStar
             surfaceFrames.Add(surfaceFrame);
             metricAnchors.Add(metricAnchor);
             faces.Add(face);
+            if(f.slot==TileSlot.Light&&f.lampDirection.sqrMagnitude>.5f)
+                lampDirections[positions.Count-1]=matrix.inverse.transpose.MultiplyVector(f.lampDirection).normalized;
             return positions.Count-1;
         }
         void Emit(TileSlot slot,int a,int b,int c,int d,bool flip)
@@ -333,7 +339,7 @@ namespace DeathStar
             else p.Add(new Vector2(r,0));
             if(capB){if(c>0){p.Add(new Vector2(r,len-c));p.Add(new Vector2(r-c,len));}else p.Add(new Vector2(r,len));p.Add(new Vector2(0,len));}
             else p.Add(new Vector2(r,len));
-            Lathe(f,a,b-a,p,segments,false);
+            Lathe(f.slot==TileSlot.Light&&f.lampDirection==Vector3.zero?f.Mounted(b-a):f,a,b-a,p,segments,false);
         }
 
         // Vessel standing on bottom along axis: flat base, straight body, elliptical dome on top.
@@ -439,6 +445,7 @@ namespace DeathStar
                 while(d<details.Count&&v>=details[d].v1)d++;
                 if(d<details.Count&&v>=details[d].v0){into[v]=-1;continue;}
                 into[v]=far.positions.Count;map.Add(v);
+                if(lampDirections.TryGetValue(v,out var lampDirection))far.lampDirections[into[v]]=lampDirection;
                 far.positions.Add(positions[v]);far.normals.Add(normals[v]);far.tangents.Add(tangents[v]);far.codes.Add(codes[v]);
                 far.local.Add(local[v]);far.extent.Add(extent[v]);far.colors.Add(colors[v]);far.overlays.Add(overlays[v]);
                 far.surfaceFrames.Add(surfaceFrames[v]);far.metricAnchors.Add(metricAnchors[v]);far.faces.Add(faces[v]);
@@ -483,6 +490,7 @@ namespace DeathStar
                 mid.surfaceFrames.AddRange(surfaceFrames);mid.metricAnchors.AddRange(metricAnchors);mid.faces.AddRange(faces);
                 for(int i=0;i<SlotCount;i++)mid.indices[i].AddRange(indices[i]);
                 mid.faceCount=faceCount;
+                foreach(var lamp in lampDirections)mid.lampDirections.Add(lamp.Key,lamp.Value);
                 for(int k=0;k<carved.Length;k++)
                 {
                     var j=carved[k];mid.surfaceFrame=j.frame;mid.metricAnchor=j.anchor;midJob[k]=mid.positions.Count;
@@ -532,6 +540,7 @@ namespace DeathStar
             to.colors.AddRange(colors.GetRange(v0,n));to.overlays.AddRange(overlays.GetRange(v0,n));
             to.surfaceFrames.AddRange(surfaceFrames.GetRange(v0,n));to.metricAnchors.AddRange(metricAnchors.GetRange(v0,n));
             to.faces.AddRange(faces.GetRange(v0,n));
+            foreach(var lamp in lampDirections)if(lamp.Key>=v0)to.lampDirections.Add(lamp.Key+offset,lamp.Value);
             for(int i=0;i<SlotCount;i++)for(int k=i0[i];k<indices[i].Count;k++)to.indices[i].Add(indices[i][k]+offset);
             Truncate(v0,i0);
         }
@@ -542,6 +551,7 @@ namespace DeathStar
             local.RemoveRange(v0,n);extent.RemoveRange(v0,n);colors.RemoveRange(v0,n);overlays.RemoveRange(v0,n);
             surfaceFrames.RemoveRange(v0,n);
             metricAnchors.RemoveRange(v0,n);faces.RemoveRange(v0,n);
+            foreach(int key in new List<int>(lampDirections.Keys))if(key>=v0)lampDirections.Remove(key);
             for(int i=0;i<SlotCount;i++)indices[i].RemoveRange(i0[i],indices[i].Count-i0[i]);
         }
         // A vertex already in mesh space.
@@ -557,6 +567,7 @@ namespace DeathStar
             mesh.subMeshCount=SlotCount;
             for(int i=0;i<SlotCount;i++)mesh.SetTriangles(indices[i],i,false);
             mesh.RecalculateBounds();
+            if(lampDirections.Count>0)StationLocalLights.MountingNormals.Add(mesh,new Dictionary<int,Vector3>(lampDirections));
             return mesh;
         }
     }

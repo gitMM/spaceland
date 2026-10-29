@@ -12,6 +12,18 @@
 // One presentation contract for station surfaces and light sources.
 // Uncontrolled study scenes retain URP defaults; no material keywords are needed.
 float _StationLightingControlled;
+TEXTURE2D_X(_StationLocalLightTexture);
+float _StationLocalLightActive, _StationLocalLampScreenGi;
+half3 StationLocalIrradiance(float2 uv)
+{
+    #if defined(_SURFACE_TYPE_TRANSPARENT)
+        return 0;
+    #else
+        if(_StationLocalLightActive<.5)return 0;
+        uint2 pixel=(uint2)clamp(uv*_ScaledScreenParams.xy,0,_ScaledScreenParams.xy-1);
+        return LOAD_TEXTURE2D_X(_StationLocalLightTexture,pixel).rgb;
+    #endif
+}
 float4 _StationDirectLighting; // main, additional, received shadows, filter width
 float4 _StationScreenOcclusion; // Station SSILVB AO amount, direct-light AO amount
 float4 StationDirectSettings()
@@ -490,6 +502,7 @@ half4 StationFragmentPBR(InputData inputData, SurfaceData surfaceData
     lightingData.emissionColor += cloth.color * transmitted * aoFactor.directAmbientOcclusion;
     #endif
 
+    lightingData.additionalLightsColor += brdfData.diffuse * StationLocalIrradiance(inputData.normalizedScreenSpaceUV);
     half4 color = CalculateFinalColor(lightingData, surfaceData.alpha);
 #if REAL_IS_HALF
     // Clamp any half.inf+ to HALF_MAX

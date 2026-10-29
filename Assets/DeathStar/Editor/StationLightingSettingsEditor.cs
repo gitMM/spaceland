@@ -7,7 +7,7 @@ namespace DeathStar.EditorTools
     public sealed class StationLightingSettingsEditor:Editor
     {
         static readonly string[] TopFields={"m_Script","screenSpaceGi","screenGiStrength","screenGiRadius",
-            "screenGiSlices","screenGiSliceSteps","screenGiSurfaceThickness","screenGiAoRadius",
+            "screenGiSlices","screenGiSliceSteps","screenGiSurfaceThickness","screenGiAoRadius","screenGiTemporal","screenGiDenoise",
             "giDebugView","defaultTileTint","habitatTintEnabled","habitatTint","voxelGi","voxelGiStrength","voxelGiDistance","voxelGiResolution","voxelGiSecondBounce"};
         public override void OnInspectorGUI() {
             serializedObject.Update();
@@ -28,6 +28,8 @@ namespace DeathStar.EditorTools
             EditorGUILayout.IntSlider(serializedObject.FindProperty("screenGiSlices"),2,12,new GUIContent("Sampling Directions"));
             EditorGUILayout.IntSlider(serializedObject.FindProperty("screenGiSliceSteps"),4,32,new GUIContent("Samples Per Side"));
             Slider("screenGiSurfaceThickness","Surface Thickness (m)",.01f,3);
+            Field("screenGiTemporal","Temporal accumulation");
+            Field("screenGiDenoise","Edge-aware denoising");
             Field("giDebugView","Lighting Debug View");
             EditorGUILayout.HelpBox("With voxel bounce enabled, keep screen-space bounce near 1 m for fine contacts. Longer screen-space distances move the handoff to voxels farther away. AO distance remains independent.",MessageType.Info);
             EditorGUILayout.Space();

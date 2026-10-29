@@ -13,6 +13,7 @@ Shader "DeathStar/Tile Surface"
         _Smoothness("Smoothness", Range(0, 1)) = 0.3
         [HDR] _Emission("Emission", Color) = (0, 0, 0, 0)
         _PatternStrength("Pattern strength", Range(0, 2)) = 1
+        [HideInInspector] _LocalLightEmitter("Local lamp emitter", Float) = 0
         // StationKit's own copies: 1 instanced props, 2 pipes and cables (TileKitFade).
         [HideInInspector] _TileKitMode("Kit mode", Float) = 0
         // TileSlot.Relief: the far level's relief shells, traced (TileGreeble.hlsl). Their material turns the shadow
@@ -36,6 +37,7 @@ Shader "DeathStar/Tile Surface"
             half _Smoothness;
             half4 _Emission;
             half _PatternStrength;
+            half _LocalLightEmitter;
             half _TileKitMode;
             half _TileChunk;
         CBUFFER_END

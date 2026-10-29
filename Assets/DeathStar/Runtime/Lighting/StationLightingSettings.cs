@@ -60,12 +60,16 @@ namespace DeathStar
         [InspectorName("Assumed Surface Thickness (m)"),Range(.01f,3)]
         [Tooltip("Depth represented behind a visible surface. Controls occlusion and light leaks, not bounce distance. Keep thin armour thin; increasing this can over-darken gaps.")]
         public float screenGiSurfaceThickness=.12f;
+        [Tooltip("Reproject and accumulate screen bounce across frames. Rejects history on camera cuts, geometry/depth changes and lighting setting changes.")]
+        public bool screenGiTemporal=true;
+        [Tooltip("Filter bounce illumination at several scales before applying surface colour. AO retains its own contact filter.")]
+        public bool screenGiDenoise=true;
         [Header("Occlusion")]
         public bool screenSpaceAmbientOcclusion=true;
         [InspectorName("Occlusion Strength"),Range(0,1)] public float ssaoStrength=1;
         [InspectorName("Direct Light Occlusion"),Range(0,1)] public float ssaoDirectStrength=.1f;
         [InspectorName("AO Distance (m)"),Range(.05f,5)]
-        [Tooltip("Independent occlusion reach. Keep around 0.5–1 m for contacts while testing larger bounce distances. AO and bounce share the sampling budget.")]
+        [Tooltip("Independent occlusion reach and sampling. Changing AO distance does not spread out the bounce samples.")]
         public float screenGiAoRadius=.3f;
         [InspectorName("AO Intensity"),Range(0,3)] public float screenGiAoIntensity=.6f;
         [Header("Contact shadows")]
@@ -115,6 +119,15 @@ namespace DeathStar
         [InspectorName("Kit Density"),Range(0,1)] public float kitDensity=.35f;
         [InspectorName("Kit Inner Radius (m)"),Range(2,40)] public float kitInnerRadius=14;
         [InspectorName("Kit Outer Radius (m)"),Range(3,50)] public float kitOuterRadius=20;
+        [Header("Local lamp lighting")]
+        [Tooltip("Smooth diffuse light pools from the small emissive lamps. No shadow maps or temporal sampling.")]
+        public bool localLights=true;
+        [Range(0,4)] public float localLightStrength=.8f;
+        [Range(.25f,3)] public float localLightRange=1;
+        [Range(5,100)] public float localLightDistance=45;
+        [Range(16,2048)] public int localLightBudget=512;
+        [Tooltip("Emission from small lamp materials sent to screen-space GI while local lamps are active. Visible bulbs and voxel emission are unchanged.")]
+        [Range(0,1)] public float localLampScreenGi=0;
         [Header("Materials and image")]
         [Min(0)] public float emission=1;
         [Min(0)] public float reflections=1;
@@ -151,6 +164,7 @@ namespace DeathStar
             Shader.SetGlobalVector("_StationScreenOcclusion",new Vector4(screenSpaceAmbientOcclusion?ssaoStrength:0,ssaoDirectStrength,0,0));
             Shader.SetGlobalFloat("_StationAmbient",ambientLight?1:0);
             Shader.SetGlobalFloat("_StationEmission",emission);
+            Shader.SetGlobalFloat("_StationLocalLampScreenGi",localLampScreenGi);
             Shader.SetGlobalVector("_TileStyle",new Vector4(closeUpSurface?1:0,edgeWear,edgeHighlight,creaseDarkness));
             Shader.SetGlobalVector("_TileStyle2",new Vector4(edgeWearWidth,bevelWidth,1-bevelRoundness,0));
             Shader.SetGlobalVector("_TileRelief",new Vector4(reliefTrace?1:0,reliefLowerNear,Mathf.Max(reliefLowerFar,reliefLowerNear+1),reliefDebug?1:0));

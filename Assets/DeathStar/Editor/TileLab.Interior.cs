@@ -10,13 +10,14 @@ using Object=UnityEngine.Object;
 
 namespace DeathStar.EditorTools
 {
-    // Greybox interiors (tools/tile-lab.sh interior). Flat: the homes in the trench's far wall and the corridor bridging
-    // the trench into them, built round a spot inside (StationInteriors) and shot from inside at eye height standing on
-    // different walls (magnetic boots, no up), and from outside with and without them. Curved: the Foundry example's two
-    // rows of homes and the junction that enters them, bent onto the sphere grid, shot the same way, and the Station
-    // example's homes and corridors on sheared cells checked. Checks: every interior builds, its build time, that nothing
-    // inside covers a window pane or porthole, and that rays from inside a room meet its walls, its glass or the rooms
-    // and tubes it opens into. Writes DeathStarRuns/Tiles/interior/.
+    // Greybox interiors (tools/tile-lab.sh interior). Flat: the homes in the trench's far wall, the homes stacked on
+    // them and the corridor bridging the trench into them, built round a spot inside (StationInteriors) and shot from
+    // inside at eye height standing on their floors (up is out from the core), and from outside with and without them.
+    // Curved: the Foundry example's stacks of homes round its zero-g hub and the corridors that enter them, bent onto the
+    // sphere grid, shot the same way, and the Station example's homes and corridors on sheared cells checked. Checks:
+    // every interior builds, its build time, that nothing inside covers a window pane or porthole, that rays from inside
+    // a room meet its walls, its glass or the doors, lifts, hatches and tubes it opens through, and that there are doors
+    // and lifts. Writes DeathStarRuns/Tiles/interior/.
     public static partial class TileLab
     {
         static string InteriorDir=>Path.Combine(Dir,"interior");
@@ -24,19 +25,19 @@ namespace DeathStar.EditorTools
 
         static readonly (string name,TileGallery.View view,string what)[] InteriorViews=
         {
-            ("room",TileGallery.Room,"in a home, standing on its deck: two window rows and the hatch to the next home"),
-            ("overhead",new TileGallery.View(new Vector3(31.8f,7.4f-Eye,21.9f),new Vector3(27.6f,5.9f,18.2f),Vector3.down,75),
-                "the same home walked onto its overhead: the window rows turn over"),
-            ("wall",new TileGallery.View(new Vector3(32f,5f,22.4f-Eye),new Vector3(20f,5f,20.5f),new Vector3(0,0,-1),75),
-                "standing on the back wall: hatches line up through the row of homes"),
-            ("hatch-up",new TileGallery.View(new Vector3(26.4f,2.6f+Eye,21.4f),new Vector3(25f,9.5f,19.6f),Vector3.up,75),
-                "from the deck of the home the corridor enters, up through the hatch into the home above"),
-            ("socket",new TileGallery.View(new Vector3(26.4f,2.6f+Eye,21.6f),new Vector3(25f,5f,17.5f),Vector3.up,75),
-                "the corridor's tube opening through the home's socket"),
-            ("corridor",new TileGallery.View(new Vector3(25f,3.8f+Eye,8.2f),new Vector3(25f,5.2f,20f),Vector3.up,75),
-                "down the corridor tube into the home: portholes either side, lamps in the corners"),
-            ("corridor-back",new TileGallery.View(new Vector3(25f,3.8f+Eye,16.3f),new Vector3(25f,5.2f,6f),Vector3.up,75),
-                "back along the tube to the sealed bulkhead against the hull"),
+            ("room",TileGallery.Room,"in a home, standing on its floor: two window rows and the sliding door to the next home"),
+            ("door",new TileGallery.View(new Vector3(23.2f,2.6f+Eye,20.8f),new Vector3(32f,3.7f,19.8f),Vector3.up,75),
+                "the sliding door (shut) to the next home along the row"),
+            ("lift",new TileGallery.View(new Vector3(26.4f,2.6f+Eye,21.4f),new Vector3(25f,9.5f,19.6f),Vector3.up,75),
+                "from the floor of the home the corridor enters, up the lift into the home above"),
+            ("lift-top",new TileGallery.View(new Vector3(27.2f,7.6f+Eye,22.0f),new Vector3(25f,7.6f,20f),Vector3.up,75),
+                "in the home above, down into the lift's opening in its floor"),
+            ("socket",new TileGallery.View(new Vector3(26.4f,2.6f+Eye,21.6f),new Vector3(25f,4.4f,17.5f),Vector3.up,75),
+                "the stair up to the corridor's walkway through the home's socket"),
+            ("corridor",new TileGallery.View(new Vector3(25f,4.1f+Eye,8.2f),new Vector3(25f,4.8f,20f),Vector3.up,75),
+                "along the corridor's walkway into the home: portholes either side, lamps in the upper corners"),
+            ("corridor-back",new TileGallery.View(new Vector3(25f,4.1f+Eye,16.3f),new Vector3(25f,4.9f,6f),Vector3.up,75),
+                "back along the walkway to the sealed bulkhead against the hull"),
             ("outside",new TileGallery.View(new Vector3(37f,6.2f,8.5f),new Vector3(28f,5.6f,17.5f),Vector3.up,50),
                 "outside, interiors built: the windows show the real rooms"),
             ("tube",new TileGallery.View(new Vector3(30.5f,6.8f,9.5f),new Vector3(25f,5f,11f),Vector3.up,50),
@@ -52,8 +53,9 @@ namespace DeathStar.EditorTools
             var stage=rig.Stage;var interiors=stage.interiors;
             if(interiors==null)return "ERROR the gallery stage has no interiors";
             md.AppendLine("# Greybox interiors");md.AppendLine();
-            md.AppendLine($"Rooms are one open cube with no up (magnetic boots): inner walls {TileBuilder.Shell} m in from an exposed face, "+
-                $"{TileBuilder.Partition} m from a shared one; hatches {2*TileBuilder.HatchRadius:0.0} m across, the corridor tube {2*TileBuilder.TubeInner:0.0} m across its flats.");
+            md.AppendLine($"Rooms are one open cube whose floor faces the core: inner walls {TileBuilder.Shell} m in from an exposed face, "+
+                $"{TileBuilder.Partition} m from a shared one; sliding doors {TileBuilder.DoorWidth} x {TileBuilder.DoorHeight} m, lifts and hub hatches {2*TileBuilder.HatchRadius:0.0} m across, "+
+                $"the corridor tube {2*TileBuilder.TubeInner:0.0} m across its flats with a walkway {TileBuilder.WalkwayDepth} m below its spine.");
             md.AppendLine();
 
             // Flat stage.
@@ -61,9 +63,10 @@ namespace DeathStar.EditorTools
             var centre=new Vector3(28f,5f,16f);
             interiors.ShowAround(centre,11f);
             checks.Add((interiors.Count>=8,$"gallery: rooms round the spot inside are built ({interiors.Count} in {interiors.BuildMs:0} ms)"));
-            RoomChecks("gallery",interiors,stage.structure,c=>TileStructure.Center(c),(c,d)=>(TileStructure.Center(c)+(Vector3)d*TileBuilder.Half,(Vector3)d),400,checks,notes);
+            RoomChecks("gallery",interiors,stage.structure,c=>TileStructure.Center(c),400,checks,notes);
+            WayCounts("gallery",interiors,stage.structure,checks,true,false);
 
-            // People for scale: one on a home's deck, one on its overhead, one in the corridor.
+            // People for scale: one on a home's floor, one in the home above, one on the corridor's walkway.
             var figures=new GameObject("Interior figures");SceneManager.MoveGameObjectToScene(figures,rig.PreviewScene);
             var meshes=new List<Mesh>();
             void Person(int seed,Vector3 feet,Vector3 up,Vector3 facing)
@@ -88,8 +91,8 @@ namespace DeathStar.EditorTools
             try
             {
                 Person(0,new Vector3(29.4f,2.6f,19.4f),Vector3.up,new Vector3(1,0,0.6f));
-                Person(1,new Vector3(29.0f,7.4f,21.2f),Vector3.down,new Vector3(1,0,-0.4f));
-                Person(1,new Vector3(25.3f,3.8f,13.2f),Vector3.up,new Vector3(0,0,-1));
+                Person(1,new Vector3(26.4f,7.6f,18.8f),Vector3.up,new Vector3(1,0,0.4f));
+                Person(1,new Vector3(25.3f,4.1f,13.2f),Vector3.up,new Vector3(0,0,-1));
                 foreach(var (name,view,what) in InteriorViews)Shot(name,view,what,name=="room");
                 interiors.Clear();
                 var fake=InteriorViews.First(v=>v.name=="outside");
@@ -141,9 +144,9 @@ namespace DeathStar.EditorTools
 
         // The checks on built interiors. Panes: from each pane of a room's tile straight in, nothing of the interior
         // covers the opening behind it. Closure: a ray from a room's centre meets its own interior or tile within 20 m,
-        // or leaves through one of its openings (a disc a little wider than the hatch or tube, at the face's centre:
-        // faceOf gives its centre and outward normal); one that does neither has leaked out between walls.
-        static void RoomChecks(string where,StationInteriors interiors,TileStructure s,Func<Vector3Int,Vector3> centreOf,Func<Vector3Int,Vector3Int,(Vector3 c,Vector3 n)> faceOf,
+        // or leaves through one of its openings (StationInteriors.Portal: the door, or the square round a lift, hatch or
+        // tube, a little wider); one that does neither has leaked out between walls.
+        static void RoomChecks(string where,StationInteriors interiors,TileStructure s,Func<Vector3Int,Vector3> centreOf,
             int raysPerRoom,List<(bool ok,string text)> checks,List<string> notes)
         {
             var mine=new Dictionary<Vector3Int,List<Vector3>>();var tileTris=new Dictionary<Vector3Int,List<Vector3>>();int noted=0;
@@ -178,13 +181,9 @@ namespace DeathStar.EditorTools
             {
                 rooms++;
                 var own=new List<Vector3>(mine[cell]);own.AddRange(TileOf(cell));
-                var portals=new List<(Vector3 c,Vector3 n,float r)>();
+                var portals=new List<(Vector3 c,Vector3 a,Vector3 u,Vector2 half)>();
                 foreach(var d in TileStructure.Directions)
-                    if(interiors.Opens(cell,cell+d))
-                    {
-                        bool tube=s.cells[cell].family==TileFamily.Corridor||s.cells[cell+d].family==TileFamily.Corridor;
-                        var (c,n)=faceOf(cell,d);portals.Add((c,n,(tube?TileBuilder.TubeInner:TileBuilder.HatchRadius)*1.1f));
-                    }
+                    if(interiors.Portal(cell,d,out var c,out var a,out var u,out var half))portals.Add((c,a,u,half*1.1f+Vector2.one*0.05f));
                 var o=centreOf(cell);
                 for(int k=0;k<raysPerRoom;k++)
                 {
@@ -197,10 +196,13 @@ namespace DeathStar.EditorTools
                     {intrusions++;intruded.Add(cell);if(noted++<8)notes.Add($"{where}: outside shows inside {cell} towards {dir:F2}");}
                     if(FirstHit(own,o,dir,20)<float.MaxValue)continue;
                     bool through=false;
-                    foreach(var (c,n,r) in portals)
+                    foreach(var (c,a,u,half) in portals)
                     {
-                        float dn=Vector3.Dot(dir,n);if(dn<1e-4f)continue;
-                        float t=Vector3.Dot(c-o,n)/dn;if(t>0&&(o+dir*t-c).magnitude<=r)through=true;
+                        var n=Vector3.Cross(a,u);float dn=Vector3.Dot(dir,n);if(Mathf.Abs(dn)<1e-4f)continue;
+                        float t=Vector3.Dot(c-o,n)/dn;if(t<=0)continue;var q=o+dir*t-c;
+                        // in the opening's own (on sheared cells, skewed) axes
+                        float au=Vector3.Dot(a,u),qa=Vector3.Dot(q,a),qu=Vector3.Dot(q,u),skew=Mathf.Max(1e-4f,1-au*au);
+                        if(Mathf.Abs((qa-qu*au)/skew)<=half.x&&Mathf.Abs((qu-qa*au)/skew)<=half.y)through=true;
                     }
                     if(through)continue;
                     leaks++;leakCells.Add(cell);
@@ -231,72 +233,95 @@ namespace DeathStar.EditorTools
                     var q=TileStructure.Center(c)+n*TileBuilder.Half;int a=n.x!=0?0:n.y!=0?1:2;var u=Vector3.zero;u[(a+1)%3]=0.02f;var v=Vector3.zero;v[(a+2)%3]=0.02f;
                     return Vector3.Cross(warp.Map(q+u)-warp.Map(q-u),warp.Map(q+v)-warp.Map(q-v)).normalized*n[a];
                 }
-                (Vector3,Vector3) FaceOf(Vector3Int c,Vector3Int d)=>(W(c,(Vector3)d*TileBuilder.Half),Normal(c,d));
                 var interiors=view.Interiors;
                 if(!pictures)
                 {
                     interiors.ShowAround(Vector3.zero,100000);
-                    RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),FaceOf,150,checks,notes);
+                    RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),150,checks,notes);
+                    WayCounts(name,interiors,s,checks,false,false);
                     int open=0,closed=0;
                     foreach(var pair in s.cells)foreach(var d in TileStructure.Directions)
                         if(builder.Interior(pair.Key)&&builder.Interior(pair.Key+d)){if(builder.Opens(pair.Key,pair.Key+d))open++;else closed++;}
-                    md.AppendLine($"{name}: {interiors.Count} interiors; between neighbouring interiors {open/2} openings, {closed/2} closed (a room too small for the opening, or not linked).");
+                    md.AppendLine($"{name}: {interiors.Count} interiors; between neighbouring interiors {open/2} openings, {closed/2} closed (a room too small for the opening, floors facing different ways, or not linked).");
                     md.AppendLine();
                     return;
                 }
-                // A home with a wall of windows (across its axis, onto open space) and a hatch to another home; a corridor
-                // that opens into a home.
-                Vector3Int next=default,home=default,window=default,tube=default,entered=default;bool found=false,joined=false;
+                // A home with a sliding door to another home (and a wall onto space if one has it), a corridor that enters a
+                // home through its socket, a lift with two stops and a hub room.
+                bool found=interiors.Spawn(Vector3.zero,out _,out _,out _,out var next,out var doorDir);
+                Vector3Int tube=default,entered=default;bool joined=false;
                 foreach(var pair in s.cells)
-                {
-                    var c=pair.Key;var q=pair.Value;
-                    if(!found&&q.family==TileFamily.Habitat&&builder.Interior(c))
-                    {
-                        Vector3Int w=default,h=default;bool hasW=false,hasH=false;
+                    if(!joined&&pair.Value.family==TileFamily.Corridor)
                         foreach(var d in TileStructure.Directions)
-                        {
-                            if(!hasW&&d!=q.axis&&d!=-q.axis&&!s.TryGet(c+d,out _)){w=d;hasW=true;}
-                            if(!hasH&&builder.Opens(c,c+d)&&s.cells[c+d].family==TileFamily.Habitat){h=c+d;hasH=true;}
-                        }
-                        if(hasW&&hasH){next=c;window=w;home=h;found=true;}
-                    }
-                    if(!joined&&q.family==TileFamily.Corridor)
-                        foreach(var d in TileStructure.Directions)
-                            if(!joined&&s.TryGet(c+d,out var o)&&o.family==TileFamily.Habitat&&builder.Opens(c,c+d)){tube=c;entered=c+d;joined=true;}
-                }
-                checks.Add((found&&joined,$"{name}: a home with windows and a hatch, and a corridor opening into a home, exist ({next}, {tube} into {entered})"));
+                            if(!joined&&s.TryGet(pair.Key+d,out var o)&&o.family==TileFamily.Habitat&&interiors.Way(pair.Key,pair.Key+d)==TileBuilder.Way.Tube&&!interiors.Hub(pair.Key+d))
+                            {tube=pair.Key;entered=pair.Key+d;joined=true;}
+                checks.Add((found&&joined,$"{name}: a home with a sliding door to the next, and a corridor entering a home through a socket, exist ({next} to {next+doorDir}, {tube} into {entered})"));
                 if(!found||!joined)return;
+                WayCounts(name,interiors,s,checks,true,true);
+                var home=next+doorDir;
                 interiors.ShowAround(W(next,Vector3.zero),12);
-                RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),FaceOf,300,checks,notes);
-                interiors.ShowAround(W(entered,Vector3.zero),12);
+                RoomChecks(name,interiors,s,c=>W(c,Vector3.zero),300,checks,notes);
+                interiors.ShowAround(W(entered,Vector3.zero),14);
 
-                float Inset(Vector3Int c,Vector3 n)=>s.Solid(c+Vector3Int.RoundToInt(n))?TileBuilder.Partition:TileBuilder.Shell;
-                Vector3 Floor(Vector3Int c,Vector3 n)=>W(c,n*TileBuilder.Half)-Normal(c,n)*Inset(c,n);
-                // Standing on the wall floor of cell c at eye height, backed off from the wall towards, looking at the
-                // centre of the face look.
-                TileGallery.View Stand(Vector3Int c,Vector3 floor,Vector3 towards,Vector3 look,float fov=75)
+                Vector3 Up(Vector3Int c)=>-Normal(c,(Vector3)interiors.Down(c));
+                // Standing on cell c's floor at eye height, backed off 1.1 m from the wall towards, looking at target.
+                TileGallery.View Stand(Vector3Int c,Vector3 towards,Vector3 target,float fov=75)
                 {
-                    var up=-Normal(c,floor);var eye=Floor(c,floor)+up*Eye-Normal(c,towards)*1.1f;
-                    return new TileGallery.View(eye,W(c,look*TileBuilder.Half)+up*0.2f,up,fov);
+                    var up=Up(c);var eye=interiors.Floor(c)+up*Eye-Vector3.ProjectOnPlane(Normal(c,towards),up).normalized*1.1f;
+                    return new TileGallery.View(eye,target,up,fov);
                 }
-                // A floor for cell c across the direction d.
-                Vector3 Across(Vector3Int c,Vector3Int d){var q=s.cells[c];return d!=q.axis&&d!=-q.axis?-(Vector3)q.axis:-(Vector3)q.side;}
-                Vector3 deck=-(Vector3)s.cells[next].axis,sideways=(Vector3)(home-next);
-                person(0,Floor(next,deck)+Normal(next,window)*1.2f,-Normal(next,deck),-(Vector3)window);
-                person(1,Floor(next,-deck)+Normal(next,window)*1.2f-Normal(next,sideways)*0.8f,Normal(next,deck),(Vector3)window);
-                shot("room",Stand(next,deck,window,(Vector3)window+sideways*0.6f),"curved: in a home on its deck, its window rows and the hatch to the next home",true);
-                shot("overhead",Stand(next,-deck,window,(Vector3)window+sideways*0.6f),"curved: the same home walked onto its overhead",false);
-                shot("hatch",Stand(next,deck,sideways,sideways),"curved: through the hatch into the next home",false);
-                var into=(Vector3)(entered-tube);var tp=s.cells[tube];var tubeUp=Vector3.Dot(into,tp.axis)==0?(Vector3)tp.axis:(Vector3)tp.side;
-                shot("tube",new TileGallery.View(W(tube,-into*0.8f),W(entered,into),(W(tube,tubeUp)-W(tube,Vector3.zero)).normalized,75),
-                    "curved: along the corridor's tube into the home it enters",false);
+                var down=interiors.Down(next);var window=doorDir;
+                foreach(var d in TileStructure.Directions)if(d!=down&&d!=-down&&!s.TryGet(next+d,out _)){window=d;break;}
+                var upNext=Up(next);
+                interiors.DoorAt(next,doorDir,out var doorMid,out _,out _,out _);
+                person(0,interiors.Floor(next)+Vector3.ProjectOnPlane(Normal(next,window),upNext).normalized*1.2f,upNext,-(Vector3)window);
+                person(1,interiors.Floor(home)-Vector3.ProjectOnPlane(Normal(home,doorDir),Up(home)).normalized*0.8f,Up(home),(Vector3)doorDir);
+                shot("room",Stand(next,window,W(next,((Vector3)window+(Vector3)doorDir*0.6f)*TileBuilder.Half)),"curved: in a home on its floor, its windows (or door) and the sliding door to the next home",true);
+                shot("door",Stand(next,doorDir,doorMid),"curved: the sliding door to the next home, its wall leaning with the lattice",false);
+                var lift=interiors.Lifts.FirstOrDefault(l=>l.stops.Count>=2&&interiors.CellAt(l.stops[0]+interiors.Up(l.stops[0])*0.9f,out var lc)&&interiors.Get(lc)!=null);
+                if(lift!=null)
+                {
+                    var s0=lift.stops[0];var u0=interiors.Up(s0);var side=Vector3.Cross(u0,Mathf.Abs(u0.y)<0.9f?Vector3.up:Vector3.right).normalized;
+                    shot("lift",new TileGallery.View(s0+u0*Eye+side*1.3f,lift.stops[1]+interiors.Up(lift.stops[1])*1.2f,u0,75),"curved: up a lift from its lowest floor",false);
+                }
+                else notes.Add($"{name}: no lift with two stops among the built rooms to shoot");
+                var into=(Vector3)(entered-tube);var tubeUp=Up(tube);
+                shot("tube",new TileGallery.View(W(tube,-into*0.8f)+tubeUp*(Eye-TileBuilder.WalkwayDepth),W(entered,into*0.6f),tubeUp,75),
+                    "curved: along the corridor's walkway into the home it enters",false);
                 var back=(Vector3)(tube-entered);
-                shot("socket",Stand(entered,Across(entered,tube-entered),back,back),"curved: the tube opening into the home",false);
-                var outward=Normal(next,window);var upNext=-Normal(next,deck);
+                shot("socket",Stand(entered,back,W(entered,back*TileBuilder.Half)-Up(entered)*0.6f),"curved: the stair up through the socket to the corridor's walkway",false);
+                var hub=s.cells.Keys.Where(c=>interiors.Get(c)!=null&&interiors.Hub(c)).Take(1).ToList();
+                if(hub.Count>0)
+                {
+                    var hc=hub[0];var hd=TileStructure.Directions.FirstOrDefault(d=>interiors.Opens(hc,hc+d));
+                    var look=interiors.FaceCentre(hc,hd);var o=W(hc,Vector3.zero)-(look-W(hc,Vector3.zero))*0.6f;
+                    var hu=Vector3.Cross(look-o,Vector3.right).sqrMagnitude>0.01f?Vector3.Cross(Vector3.Cross(look-o,Vector3.up),look-o).normalized:Vector3.forward;
+                    shot("hub",new TileGallery.View(o,look,hu,75),"curved: in the zero-g hub round the core, towards a hatch",false);
+                }
+                var outward=Normal(next,window);
                 shot("outside",new TileGallery.View(W(next,(Vector3)window*TileBuilder.Half)+outward*8f+upNext*2.5f+(W(home,Vector3.zero)-W(next,Vector3.zero))*0.5f,
                     W(next,(Vector3)window*TileBuilder.Half),upNext,50),"curved: outside the home's windows, interiors built",false);
             }
             finally{view.Dispose();Object.DestroyImmediate(root);}
+        }
+
+        // The ways between interiors across a whole station: there must be sliding doors, lifts if wanted (and the lift
+        // columns found for them) and a hub if wanted.
+        static void WayCounts(string where,StationInteriors interiors,TileStructure s,List<(bool ok,string text)> checks,bool lifts,bool hub)
+        {
+            int doors=0,lift=0,hatches=0,tubes=0;
+            foreach(var pair in s.cells)foreach(var d in TileStructure.Directions)
+            {
+                if(d.x+d.y+d.z<0)continue;
+                switch(interiors.Way(pair.Key,pair.Key+d))
+                {
+                    case TileBuilder.Way.Door:doors++;break;case TileBuilder.Way.Lift:lift++;break;
+                    case TileBuilder.Way.Hatch:hatches++;break;case TileBuilder.Way.Tube:tubes++;break;
+                }
+            }
+            int hubs=s.cells.Keys.Count(c=>TileBuilder.HasInterior(s.cells[c].family)&&!s.special.ContainsKey(c)&&interiors.Hub(c));
+            checks.Add((doors>0&&(!lifts||lift>0&&interiors.Lifts.Count>0)&&(!hub||hubs>0),
+                $"{where}: homes open side by side through sliding doors and stacked through lifts ({doors} doors, {lift} lift openings in {interiors.Lifts.Count} lifts, {tubes} tube joints, {hatches} hub hatches round {hubs} hub rooms)"));
         }
 
         // Appends the world-space triangles of a mesh (one submesh, or all for -1) as vertex triples.

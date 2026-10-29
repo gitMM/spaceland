@@ -40,6 +40,10 @@ namespace DeathStar.EditorTools
                 s.giDebugView=GiDebugView.VoxelGiOnly;var voxel=Shot("trench-voxel-only",TileGallery.Trench);Object.DestroyImmediate(voxel);
                 s.giDebugView=GiDebugView.ScreenSpaceGiOnly;var screen=Shot("trench-screen-gi-only",TileGallery.Trench);
                 Check(Mean(screen)>.0001f,"Existing screen-space GI still produces nonzero bounce.");
+                // Compare the same temporal sample/history state, not successive jitter phases.
+                StationScreenGiFeature.ResetHistory();Object.DestroyImmediate(screen);
+                screen=rig.Shoot(TileGallery.Trench,960,540);
+                StationScreenGiFeature.ResetHistory();
                 s.voxelGi=false;var screenAgain=rig.Shoot(TileGallery.Trench,960,540);
                 Check(screen.GetPixels32().SequenceEqual(screenAgain.GetPixels32()),"Isolated screen-space GI is pixel-identical with the voxel setting on/off (no feedback).");
                 Object.DestroyImmediate(screen);Object.DestroyImmediate(screenAgain);s.voxelGi=true;

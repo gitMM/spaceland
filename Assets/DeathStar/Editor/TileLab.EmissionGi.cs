@@ -40,6 +40,7 @@ namespace DeathStar.EditorTools
             }
             try
             {
+                settings.localLights=false;
                 settings.sunIntensity=0;settings.planetIntensity=0;settings.ambientLight=false;
                 settings.voxelGi=false;settings.screenSpaceGi=true;settings.screenGiStrength=1;
                 settings.screenGiRadius=1;settings.emission=1;

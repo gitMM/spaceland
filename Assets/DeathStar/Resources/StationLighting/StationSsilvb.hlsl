@@ -6,7 +6,7 @@
 // We partition projected solid angle, rather than unweighted angle, into 32
 // sectors. Popcount then integrates cosine-weighted visibility without a loop
 // over bits, or the normal-dependent bias of uniform-angle popcount AO.
-float4 _GiSliceParameters; // slices, samples per side, surface thickness, unused
+float4 _GiSliceParameters; // slices, samples per side, surface thickness, GI temporal sample index
 
 #include "StationSsilvbMath.hlsl"
 bool SsilPosition(float2 uv,out float3 position)
@@ -39,7 +39,7 @@ float3 SsilGeometricNormal(float2 uv,float3 p,float3 fallback)
     normal*=rsqrt(lengthSq);
     return dot(normal,fallback)<0?-normal:normal;
 }
-float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
+float4 TraceSsilvbIntegral(float2 uv,float3 p,float3 n,float eye,bool giEnabled)
 {
     float3 geometricNormal=SsilGeometricNormal(uv,p,n);
     float3 view=GetWorldSpaceNormalizeViewDir(p);
@@ -47,16 +47,16 @@ float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
     #if !UNITY_REVERSED_Z
         centerDepth=lerp(UNITY_NEAR_CLIP_VALUE,1,centerDepth);
     #endif
-    bool giEnabled=_GiParameters.x>0;
-    // Keep the AO sampling pattern identical in normal rendering, AO debug,
-    // and with GI disabled. Only the radiance fetches depend on giEnabled.
-    float radius=max(_GiParameters.y,_GiAoParameters.x);
+    // Each integral spends its entire budget inside its own radius. AO remains
+    // deterministic; only GI rotates across frames for temporal accumulation.
+    float radius=giEnabled?_GiParameters.y:_GiAoParameters.x;
     // Radius projected to UV, including orthographic cameras and aspect ratio.
     float2 uvRadius=.5*float2(abs(UNITY_MATRIX_P._m00),abs(UNITY_MATRIX_P._m11))*radius;
     uvRadius/=lerp(max(eye,.001),1,unity_OrthoParams.w);
     int slices=(int)_GiSliceParameters.x, steps=(int)_GiSliceParameters.y;
     float2 pixel=floor(uv*_GiSize.xy);
     float noise=frac(52.9829189*frac(dot(pixel,float2(.06711056,.00583715))));
+    if(giEnabled)noise=frac(noise+_GiSliceParameters.w*.61803398875);
     float3 lighting=0;float occlusion=0,normalization=0;
     [loop] for(int slice=0;slice<slices;slice++) {
         float angle=PI*(slice+noise)/slices;
@@ -103,7 +103,7 @@ float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
                                         (SsilPrimitive(hi,cosN,sinN)-integralMin)/integralRange);
                 float edge=min(min(sampleUv.x,sampleUv.y),min(1-sampleUv.x,1-sampleUv.y));
                 float confidence=smoothstep(0,.025,edge);
-                if(distance<_GiAoParameters.x) {
+                if(!giEnabled) {
                     uint freshAo=mask & ~aoVisibility;
                     aoVisibility|=mask;
                     sliceAo+=countbits(freshAo)*confidence*(1-smoothstep(_GiAoParameters.x*.75,_GiAoParameters.x,distance));
@@ -126,6 +126,13 @@ float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
     }
     float weight=rcp(max(normalization,1e-5)*32);
     return float4(max(0,lighting*(PI*_GiParameters.x*weight)),saturate(occlusion*weight*_GiAoParameters.y));
+}
+float4 TraceSsilvb(float2 uv,float3 p,float3 n,float eye)
+{
+    float4 ao=TraceSsilvbIntegral(uv,p,n,eye,false);
+    float3 gi=0;
+    if(_GiParameters.x>0)gi=TraceSsilvbIntegral(uv,p,n,eye,true).rgb;
+    return float4(gi,ao.a);
 }
 float4 TraceSsilvb(Varyings input):SV_Target
 {
