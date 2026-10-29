@@ -209,6 +209,7 @@ namespace Station.Core
             long cause = Emit("ActionRequested", actor, id, intent.Item, target: intent.Target, detail: intent.Kind.ToString(),causeId:parentCause, attemptId:intent.AttemptId, origin: origin);
             var escort = ActiveEscort(actor.Id); if (escort != null && !((IsNeedAction(intent.Kind) || intent.Kind == ActionKind.Cancel) && CustodyNeedAllowed(actor, intent.Kind, intent.ServiceId)) && !GuardIntakeCommunication(escort, actor.Id, intent.Kind) && !(intent.Kind == ActionKind.Cancel && EscortPayload(escort).SubjectActorId != actor.Id.Value) && !(intent.Kind == ActionKind.RegisterIntake && escort.Status == EscortStatus.AwaitingIntake && EscortPayload(escort).Leader == actor.Id.Value)) { Fail(actor, id, FailureReason.CustodyRestricted); return; }
             if (intent.Kind == ActionKind.Cancel) { CancelAction(actor, id); return; }
+            if (origin == ActionOrigin.Autonomous && intent.Kind == ActionKind.Move && custodyHandoffs.Count > 0 && HeldForCustodyHandoff(actor)) { Fail(actor, id, FailureReason.ActorBusy); return; }
             if (intent.Kind is ActionKind.SuspendWork or ActionKind.ResumeWork) { ChangeWorkSuspension(actor, id, intent.AttemptId, intent.Kind == ActionKind.ResumeWork); return; }
             if (Information != null && intent.Kind == ActionKind.Logout) { Logout(actor, id); return; }
             bool transit = actor.Action?.Kind == ActionKind.Move;

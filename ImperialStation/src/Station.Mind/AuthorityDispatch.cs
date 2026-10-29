@@ -15,15 +15,17 @@ namespace Station.Mind
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).Distinct().Take(policy.GuardCount).ToArray();
             return team.Length == policy.GuardCount ? team : Array.Empty<long>();
         }
-        // Uses only the published roster: a guard about to go off duty would read the
-        // order at their post-duty visit and leave the team to a later shift.
+        // Uses only the published roster: a responder about to go off duty would read
+        // the order at their post-duty visit and act only in a later shift. Ordinary
+        // responders need one configured hour of known duty left; escort teams use
+        // their policy's declared minimum.
         public static bool RemainsOnDuty(RosterPayload roster, long tick, long minimum) => roster.OnDuty(tick) && roster.NextBoundary(tick) - tick >= Math.Max(1, minimum);
         public static long CleanupReplacement(IAuthorityView view, Id<TileTag> tile, long excludedActor, IEnumerable<DispatchCandidate> candidates)
         {
             var job = view.Publication.Work?.Cleanable.SingleOrDefault(c => c.Tile == tile);
             if (job == null) return 0;
             return candidates.Where(c => c.Person.ActorId != excludedActor && !c.Committed && c.KnownOrigin.HasValue &&
-                    c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
+                    c.Person.Roster != null && RemainsOnDuty(c.Person.Roster, view.Tick, c.Person.Roster.DayTicks / 24) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
                 .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, job.Position, view.NominalTravelTicks)))
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
         }
@@ -40,7 +42,7 @@ namespace Station.Mind
             var job = view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == machineId);
             if (job == null) return 0;
             return candidates.Where(c => c.Person.ActorId != excludedActor && !c.Committed && c.KnownOrigin.HasValue &&
-                    c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
+                    c.Person.Roster != null && RemainsOnDuty(c.Person.Roster, view.Tick, c.Person.Roster.DayTicks / 24) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
                 .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, job.Position, view.NominalTravelTicks)))
                 .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
         }

@@ -36,6 +36,10 @@ namespace Station.Core
             {
                 var authorization = detentionAuthorizations[dispatch.AuthorizationId];
                 if (authorization.Status != DetentionAuthorizationStatus.Authorized || authorization.Expires <= processingTick) continue;
+                // Capacity is the declared facility size; commitments are the authority's
+                // own dispatches and received receipts, never live occupancy.
+                if (policy.AwaitKnownCapacity && detentionFacilities.TryGetValue(policy.FacilityId, out var facility) && KnownDetentionCommitments(policy.FacilityId, dispatch.AuthorizationId) >= facility.Definition.Capacity)
+                { dispatch.Reason = "AwaitingKnownDetentionCapacity"; continue; }
                 var subject = view.Personnel.Single(p => p.ActorId == authorization.ActorId);
                 var candidates = new List<Coord>(); var origin = Candidate(subject).KnownOrigin;
                 bool searchedSinceVisit = origin.HasValue && latestAuthorityVisit.TryGetValue(subject.AccountId, out var visit) &&
@@ -91,6 +95,8 @@ namespace Station.Core
             foreach (var a in detentionAuthorizations.Values.Where(a => a.Expires > processingTick)) next = Math.Min(next, a.Expires);
             RequestEscortReview(next);
         }
+        private int KnownDetentionCommitments(long facility, long except) => escortDispatches.Values.Count(d => d.AuthorizationId != except && d.Payload?.Dispatch.FacilityId == facility &&
+            d.Status is EscortDispatchStatus.AwaitingReaders or EscortDispatchStatus.TeamForming or EscortDispatchStatus.Blocked or EscortDispatchStatus.NeedsAttention or EscortDispatchStatus.Detained);
         private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
             !(escortDispatches[a.AuthorizationId].Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released) && !GuardReportedFinished(actor, a.AuthorizationId, processingTick));
         private void ReadGuardOrder(Actor actor, MessageSnapshot message)
@@ -149,6 +155,7 @@ namespace Station.Core
             if (!(dispatch.Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released)) { dispatch.Status = EscortDispatchStatus.Expired; dispatch.Reason = "AuthorizationExpired"; }
             if (!escortDispatches.Values.Any(o => o.Status == EscortDispatchStatus.AwaitingGuards))
             { foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.ReviewEscorts).ToArray()) scheduled.Remove(e); nextEscortReview = -1; }
+            else RequestEscortReview(processingTick);
             RequestIncidentReview(processingTick);
         }
         private void ExpireGuardOrder(long id)

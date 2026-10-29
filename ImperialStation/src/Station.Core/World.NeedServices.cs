@@ -16,6 +16,7 @@ namespace Station.Core
         public long StartedTick { get; internal set; } = -1;
         public long EndedTick { get; internal set; } = -1;
         public long MealItemId { get; internal set; }
+        public long PlannedEndTick { get; internal set; } = -1;
         public NeedActivityStatus Status { get; internal set; }
         public string Reason { get; internal set; } = "";
         internal NeedActivitySnapshot Copy() => (NeedActivitySnapshot)MemberwiseClone();
@@ -128,9 +129,20 @@ namespace Station.Core
                 if (meal != null) { action.Item = meal.Id; activity.MealItemId = meal.Id.Value; }
                 activity.Status = NeedActivityStatus.Active; activity.StartedTick = processingTick; service.Occupants.Add(action.Id.Value);
                 ReserveMeal(activity);
-                action.Waiting = false; action.Started = processingTick; action.Completes = checked(processingTick + service.Definition.DurationTicks);
+                action.Waiting = false; action.Started = processingTick; action.Completes = PlannedNeedEnd(actor, action, service);
+                activity.PlannedEndTick = action.Completes;
                 Emit("NeedServiceClaimed", actor, action.Id, action.Item, arrival: action.Completes, detail: service.Definition.Kind.ToString()); ScheduleCompletion(actor, action.Completes);
             }
+        }
+        // A daily sleep ends at the citizen's known wake time (the roster sleep
+        // window's close), so a late start cannot consume the pre-duty hour.
+        // Relief stays pro rata; an urgent-need sleep keeps its declared duration.
+        private long PlannedNeedEnd(Actor actor, ActiveAction action, NeedService service)
+        {
+            long end = checked(processingTick + service.Definition.DurationTicks);
+            if (action.Kind != ActionKind.Sleep) return end;
+            var goal = DailyFor(actor.Id.Value).FirstOrDefault(g => g.ActiveActionId == action.Id.Value && g.Kind == RoutineOpportunityKind.Sleep && g.Status == DailyGoalStatus.Pending);
+            return goal != null && goal.Closes > processingTick ? Math.Min(end, goal.Closes) : end;
         }
         private void CompleteNeedActivity(Actor actor, ActiveAction action)
         {

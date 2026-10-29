@@ -17,7 +17,7 @@ namespace Station.Core
             }
             w.Write(needActivities.Count);
             foreach (var a in needActivities.Values)
-            { w.Write(a.ActionId); w.Write(a.ActorId); w.Write(a.ServiceId); w.Write((int)a.Kind); w.Write(a.RequestedTick); w.Write(a.StartedTick); w.Write(a.EndedTick); w.Write(a.MealItemId); w.Write((int)a.Status); w.Write(a.Reason); }
+            { w.Write(a.ActionId); w.Write(a.ActorId); w.Write(a.ServiceId); w.Write((int)a.Kind); w.Write(a.RequestedTick); w.Write(a.StartedTick); w.Write(a.EndedTick); w.Write(a.MealItemId); w.Write((int)a.Status); w.Write(a.Reason); w.Write(a.PlannedEndTick); }
             w.Write(mealSinks.Count); foreach (var sink in mealSinks) { w.Write(sink.Key); w.Write(sink.Value); }
         }
         private void ReadNeedServices(BinaryReader r)
@@ -36,20 +36,23 @@ namespace Station.Core
             count = Count(r);
             for (int i = 0; i < count; i++)
             {
-                var a = new NeedActivitySnapshot { ActionId = r.ReadInt64(), ActorId = r.ReadInt64(), ServiceId = r.ReadInt64(), Kind = ReadEnum<ActionKind>(r), RequestedTick = r.ReadInt64(), StartedTick = r.ReadInt64(), EndedTick = r.ReadInt64(), MealItemId = r.ReadInt64(), Status = ReadEnum<NeedActivityStatus>(r), Reason = r.ReadString() };
+                var a = new NeedActivitySnapshot { ActionId = r.ReadInt64(), ActorId = r.ReadInt64(), ServiceId = r.ReadInt64(), Kind = ReadEnum<ActionKind>(r), RequestedTick = r.ReadInt64(), StartedTick = r.ReadInt64(), EndedTick = r.ReadInt64(), MealItemId = r.ReadInt64(), Status = ReadEnum<NeedActivityStatus>(r), Reason = r.ReadString(), PlannedEndTick = r.ReadInt64() };
                 if (!actors.TryGetValue(new Id<ActorTag>(a.ActorId), out var actor) || !needServices.TryGetValue(a.ServiceId, out var service) || service.Definition.Action != a.Kind || a.ActionId < 1 || a.ActionId >= nextAction ||
                     a.RequestedTick < 0 || a.RequestedTick > LastProcessedTick || a.StartedTick < -1 || a.StartedTick >= 0 && (a.StartedTick < a.RequestedTick || a.StartedTick > LastProcessedTick) || a.MealItemId < 0 ||
-                    (a.Kind == ActionKind.Eat && a.StartedTick >= 0) != (a.MealItemId > 0)) throw new ArgumentException("Invalid need activity identity or timeline.");
+                    (a.Kind == ActionKind.Eat && a.StartedTick >= 0) != (a.MealItemId > 0) ||
+                    // Only a daily sleep may end early, at its known roster wake time.
+                    (a.StartedTick < 0 ? a.PlannedEndTick != -1 : a.PlannedEndTick <= a.StartedTick || a.PlannedEndTick > checked(a.StartedTick + service.Definition.DurationTicks) ||
+                        a.Kind != ActionKind.Sleep && a.PlannedEndTick != checked(a.StartedTick + service.Definition.DurationTicks))) throw new ArgumentException("Invalid need activity identity or timeline.");
                 bool pending = a.Status is NeedActivityStatus.Queued or NeedActivityStatus.Active;
                 if (pending ? a.EndedTick != -1 || a.Reason.Length != 0 : a.EndedTick < a.RequestedTick || a.EndedTick > LastProcessedTick || a.StartedTick > a.EndedTick) throw new ArgumentException("Invalid need activity termination.");
-                if (a.Status == NeedActivityStatus.Completed && (a.StartedTick < 0 || a.EndedTick != checked(a.StartedTick + service.Definition.DurationTicks) || a.Reason.Length != 0) ||
+                if (a.Status == NeedActivityStatus.Completed && (a.StartedTick < 0 || a.EndedTick != a.PlannedEndTick || a.Reason.Length != 0) ||
                     a.Status == NeedActivityStatus.Cancelled && a.Reason != "Cancelled" || a.Status == NeedActivityStatus.Rejected && (a.StartedTick != -1 || !Enum.TryParse<FailureReason>(a.Reason, out var failure) || failure == FailureReason.None || !Enum.IsDefined(typeof(FailureReason), failure))) throw new ArgumentException("Invalid need completion or cancellation.");
                 if ((a.Status == NeedActivityStatus.Active) != service.Occupants.Contains(a.ActionId) || (a.Status == NeedActivityStatus.Queued) != service.Queue.Contains(a.ActionId)) throw new ArgumentException("Need activity disagrees with capacity claims.");
                 if (pending)
                 {
                     var action = actor.Action;
                     if (action == null || action.Id.Value != a.ActionId || action.Kind != a.Kind || action.ServiceId != a.ServiceId || action.Target != service.Definition.Position || actor.Position != action.Target || action.Waiting != (a.Status == NeedActivityStatus.Queued) ||
-                        a.Status == NeedActivityStatus.Queued && (a.StartedTick != -1 || action.Started != a.RequestedTick) || a.Status == NeedActivityStatus.Active && (action.Started != a.StartedTick || action.Completes != checked(a.StartedTick + service.Definition.DurationTicks) || NeedServiceAccess(actor, action, service) != FailureReason.None)) throw new ArgumentException("Need claim lacks its physical action.");
+                        a.Status == NeedActivityStatus.Queued && (a.StartedTick != -1 || action.Started != a.RequestedTick) || a.Status == NeedActivityStatus.Active && (action.Started != a.StartedTick || action.Completes != a.PlannedEndTick || NeedServiceAccess(actor, action, service) != FailureReason.None)) throw new ArgumentException("Need claim lacks its physical action.");
                     var completions = scheduled.Where(e => e.Kind == ScheduledKind.ActionCompletion && e.ActionId == a.ActionId).ToArray();
                     if (completions.Length != (a.Status == NeedActivityStatus.Active ? 1 : 0) || completions.Any(e => e.Tick != action.Completes || e.Intent.Actor != actor.Id || e.Phase != EventPhase.PhysicalCompletion)) throw new ArgumentException("Invalid finite need completion timer.");
                     if (a.Status == NeedActivityStatus.Active && a.Kind == ActionKind.Eat && action.Item.Value != a.MealItemId) throw new ArgumentException("Meal reservation disagrees with action.");

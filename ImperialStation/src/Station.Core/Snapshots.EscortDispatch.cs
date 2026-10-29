@@ -8,8 +8,8 @@ namespace Station.Core
     public sealed partial class World
     {
         private static void WriteEscortPolicy(BinaryWriter w, EscortDispatchPolicy? p)
-        { w.Write(p != null); if (p == null) return; w.Write(p.FacilityId); WriteCoord(w, p.Destination); WriteCoord(w, p.Rendezvous); w.Write(p.RequiredEquipment); w.Write(p.GuardRole); w.Write(p.GuardCount); w.Write(p.EquipTicks); w.Write(p.MinimumRemainingDutyTicks); w.Write(p.AcknowledgmentTicks); }
-        private static EscortDispatchPolicy? ReadEscortPolicy(BinaryReader r) => r.ReadBoolean() ? new EscortDispatchPolicy(r.ReadInt64(), ReadCoord(r), ReadCoord(r), r.ReadString(), r.ReadString(), r.ReadInt32(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64()) : null;
+        { w.Write(p != null); if (p == null) return; w.Write(p.FacilityId); WriteCoord(w, p.Destination); WriteCoord(w, p.Rendezvous); w.Write(p.RequiredEquipment); w.Write(p.GuardRole); w.Write(p.GuardCount); w.Write(p.EquipTicks); w.Write(p.MinimumRemainingDutyTicks); w.Write(p.AcknowledgmentTicks); w.Write(p.AwaitKnownCapacity); }
+        private static EscortDispatchPolicy? ReadEscortPolicy(BinaryReader r) => r.ReadBoolean() ? new EscortDispatchPolicy(r.ReadInt64(), ReadCoord(r), ReadCoord(r), r.ReadString(), r.ReadString(), r.ReadInt32(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadBoolean()) : null;
         private static void WriteEscortPayload(BinaryWriter w, EscortOrderPayload? p)
         {
             w.Write(p != null); if (p == null) return;

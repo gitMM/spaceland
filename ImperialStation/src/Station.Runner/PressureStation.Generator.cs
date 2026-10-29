@@ -61,7 +61,7 @@ public static partial class PressureStation
         s.QualityAssurance = new() { SamplePermille = 1000, DelayTicks = 50, OrderTicks = s.Horizon };
         s.Personnel = new();
         s.Detention = new() { SentenceTicks = 15000, OrderTicks = s.Horizon,
-            Escort = new() { FacilityId = 1, Destination = At(5), Rendezvous = At(0), RequiredEquipment = "guard_equipment", EquipTicks = 50, MinimumRemainingDutyTicks = StationBaseline.Day / 24 },
+            Escort = new() { FacilityId = 1, Destination = At(5), Rendezvous = At(0), RequiredEquipment = "guard_equipment", EquipTicks = 50, MinimumRemainingDutyTicks = StationBaseline.Day / 24, AwaitKnownCapacity = true },
             Facilities = new() { new() { Id = 1, Position = At(5), Capacity = groups, IntakeTicks = 100, ReleaseTicks = 100 } } };
         catalog.Resources.AddRange(new[] { new ResourceData { Id = "correct", FitClass = "cartridge", Rating = 2 }, new ResourceData { Id = "wrong", FitClass = "cartridge", Rating = 1 }, new ResourceData { Id = "guard_equipment" }, new ResourceData { Id = "blank" } });
         catalog.Recipes.Add(new() { Id = 1, Capability = "CredentialIssuance", Duration = 50, Inputs = new() { new() { Resource = "blank", Quantity = 1 } }, Outputs = new() { new() { Resource = "card", Quantity = 1 } } });

@@ -197,6 +197,7 @@ namespace Station.Core
                     releaseOrderMessages.Add(refresh, stay.AuthorizationId);
                 }
             }
+            if (!intake) RequestEscortReview(processingTick);
             RequestIncidentReview(processingTick); return false;
         }
         private bool ReadPostDetentionOrder(Actor actor, MessageSnapshot message)

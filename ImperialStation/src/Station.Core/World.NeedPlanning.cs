@@ -164,6 +164,11 @@ namespace Station.Core
             if (need == null || (need.Band >= NeedBand.Urgent ? need.Band != NeedBand.Critical && KnownUrgentOrder(actor.Id) : !LowerNeedMayStart(actor, agent.Goal))) { WakeNeed(actor); WakeAfterNeed(actor); return; }
             if (GuardJourneyNeedsRelief(actor.Id))
                 foreach (var local in localGuardOrders.Values.Where(l => l.ActorId == actor.Id.Value && l.Status == GuardOrderStatus.TargetLocated)) local.Reason = "PreparingForEscort";
+            // Sleep inside the known sleep window is that window's sleep, so it is
+            // owned by the daily goal and ends at the known wake time.
+            var window = command.Intent.Kind == ActionKind.Sleep ? DailyFor(actor.Id.Value).FirstOrDefault(g => g.Kind == RoutineOpportunityKind.Sleep && g.Status == DailyGoalStatus.Pending &&
+                g.ActiveActionId == 0 && g.Opens <= NeedNow && NeedNow < g.Closes) : null;
+            if (window != null) { window.ActiveActionId = nextAction; window.ServiceId = command.Intent.ServiceId; window.Reason = ""; Start(command.Intent, command.CauseId); return; }
             agent.ActiveActionId = nextAction;
             Start(command.Intent, command.CauseId);
         }

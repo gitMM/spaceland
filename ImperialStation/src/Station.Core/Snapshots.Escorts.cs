@@ -73,6 +73,7 @@ namespace Station.Core
                 var a = actor.Action!;
                 if (!localGuardOrders.TryGetValue(a.GuardOrderId, out var l) || l.Payload.Leader != actor.Id.Value || l.FormedTick < 0 || a.Completes != checked(a.Started + Information!.InspectTicks) || actor.Position != a.Target ||
                     scheduled.Count(e => e.Kind == ScheduledKind.ActionCompletion && e.ActionId == a.Id.Value && e.Intent.Actor == actor.Id && e.Tick == a.Completes) != 1) throw new ArgumentException("Invalid pending custody action.");
+                custodyHandoffs[l.Payload.SubjectActorId] = a.Id.Value;
             }
         }
     }

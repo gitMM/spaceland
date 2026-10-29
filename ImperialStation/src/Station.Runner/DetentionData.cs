@@ -34,7 +34,8 @@ public sealed class EscortDispatchData
     public long EquipTicks { get; set; } = 50;
     public long MinimumRemainingDutyTicks { get; set; }
     public long AcknowledgmentTicks { get; set; }
-    public EscortDispatchPolicy ToPolicy() => new(FacilityId, Destination.ToCoord(), Rendezvous.ToCoord(), RequiredEquipment, GuardRole, GuardCount, EquipTicks, MinimumRemainingDutyTicks, AcknowledgmentTicks);
+    public bool AwaitKnownCapacity { get; set; }
+    public EscortDispatchPolicy ToPolicy() => new(FacilityId, Destination.ToCoord(), Rendezvous.ToCoord(), RequiredEquipment, GuardRole, GuardCount, EquipTicks, MinimumRemainingDutyTicks, AcknowledgmentTicks, AwaitKnownCapacity);
 }
 public sealed class DetentionRequestData
 {

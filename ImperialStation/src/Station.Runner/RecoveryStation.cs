@@ -20,7 +20,7 @@ public static partial class RecoveryStation
     }
     public static Result Execute(LoadedScenario scenario, string? output = null)
     {
-        var result = new Result(); World? last = null; byte[]? continuation = null;
+        var result = new Result(); World? last = null; byte[]? continuation = null; bool disrupted = false;
         if (output != null) Directory.CreateDirectory(output);
         using var trace = output != null && scenario.Scenario.InitialState.Actors.Count <= 32 ? new StreamWriter(Path.Combine(output, "trace.jsonl")) : null;
         using var institutionalTrace = output != null ? new StreamWriter(Path.Combine(output, "institution-events.jsonl")) : null;
@@ -28,6 +28,9 @@ public static partial class RecoveryStation
         {
             last = w;
             if (tick == BurstEnd) continuation = w.Serialize();
+            // Observe disruption at the 1,000-tick advancement, not only phase samples:
+            // timely repairs may finish between 6,000-tick phase records.
+            if (tick >= BurstStart && w.InspectMachines().Any(m => !m.Operational)) disrupted = true;
             foreach (var e in w.Trace)
             {
                 result.Events[e.Type] = result.Events.GetValueOrDefault(e.Type) + 1;
@@ -62,7 +65,7 @@ public static partial class RecoveryStation
         Require(result.Participation.ScheduledRestsOverdue == 0, "Scheduled rests remain overdue.");
         Require(result.Events.GetValueOrDefault("ActionFailed") < result.Participation.Population * 100L, "Retry storm: more than 100 failed actions per citizen.");
         Require(result.Phases.Any(p => p.Tick < BurstStart && p.Dirt < result.Phases[0].Dirt), "No normal work progress before disruptions.");
-        Require(result.Phases.Any(p => p.Tick >= BurstStart && p.BrokenMachines > 0), "No measured disruption phase.");
+        Require(disrupted, "No measured disruption phase.");
         foreach (var p in result.Participation.Citizens)
             Require(p.Meals.All(n => n > 0) && p.SleepTicks.All(n => n > 0) && p.Toilets > 0 && p.Rests > 0, "Citizen " + p.Actor + " lacks daily meals/sleep/toilet/rest.");
         if (output != null && continuation != null) File.WriteAllBytes(Path.Combine(output, "burst-end.bin"), continuation);

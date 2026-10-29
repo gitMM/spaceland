@@ -39,12 +39,15 @@ public sealed class RecoveryStationTests
     [Theory]
     [InlineData(7UL)]
     [InlineData(91UL)]
-    public void RecoveryGateRejectsASeedThatDoesNotExerciseOverdueReports(ulong seed)
+    public void RecoveryGateRejectsARunThatDoesNotExerciseOverdueReports(ulong seed)
     {
-        // Immediate local cleanup completion lets seed 7 report before its
-        // deadline too. Keep the scenario coverage requirement: a run that
-        // never exercises an overdue report is not a passing recovery proof.
-        var result = RecoveryStation.Execute(RecoveryStation.Create(32, seed));
+        // Timely responses now let seeds 7 and 91 exercise overdue reports. Keep
+        // the coverage requirement with a declared variant whose authority grace
+        // exceeds the horizon: no report can become overdue, so no passing proof.
+        var generated = RecoveryStation.Create(32, seed);
+        var scenario = JsonData.Read<ScenarioData>(generated.ScenarioJson, "recovery");
+        scenario.InitialState.Authority!.GraceTicks = scenario.InitialState.Horizon;
+        var result = RecoveryStation.Execute(new LoadedScenario(JsonData.Write(scenario), generated.CatalogJson, "recovery-without-overdue"));
         Assert.Equal("assertion_failed", result.Status);
         Assert.Equal("No overdue work reports were exercised.", Assert.Single(result.Failures));
         Assert.True(result.CheckpointMatches);

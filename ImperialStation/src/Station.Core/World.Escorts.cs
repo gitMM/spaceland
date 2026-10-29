@@ -92,11 +92,23 @@ namespace Station.Core
             foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
                 actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position)) ReinspectGuardTarget(local);
         }
+        // Derived from in-progress BeginEscort actions; restore rebuilds it. While
+        // co-located guards perform the handoff, the subject's own autonomous
+        // decisions do not walk away from this local interaction.
+        private readonly SortedDictionary<long, long> custodyHandoffs = new SortedDictionary<long, long>();
+        private bool HeldForCustodyHandoff(Actor subject)
+        {
+            if (!custodyHandoffs.TryGetValue(subject.Id.Value, out long handoff)) return false;
+            var leader = actors.Values.FirstOrDefault(a => a.Action?.Id.Value == handoff && a.Action.Kind == ActionKind.BeginEscort && a.Position == subject.Position);
+            if (leader == null) { custodyHandoffs.Remove(subject.Id.Value); return false; }
+            return true;
+        }
         private void StartBeginEscort(Actor actor, ActiveAction action)
         {
             var failure = ValidateBeginEscort(actor, action);
             if (failure != FailureReason.None) { RecheckFailedCustody(actor, action, failure); Fail(actor, action.Id, failure); return; }
             localGuardOrders[action.GuardOrderId].Reason = "LocalHandoffInProgress";
+            custodyHandoffs[localGuardOrders[action.GuardOrderId].Payload.SubjectActorId] = action.Id.Value;
             action.Completes = checked(processingTick + Information!.InspectTicks); actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
             Emit("ActionStarted", actor, action.Id, target: actor.Position, arrival: action.Completes, detail: "BeginEscort"); ScheduleCompletion(actor, action.Completes);
         }

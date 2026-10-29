@@ -59,7 +59,7 @@ public static class ResponseTimes
     public sealed record StageStats(string Category, string Stage, int Count, long Median, long P95, long Maximum, long Limit, int Missed);
     public sealed record Unresolved(string Category, int Count, long MaximumAge, long MedianAge);
     public sealed record ShiftStats(string Category, string Shift, int Count, int NearBoundary, long MedianTotal, long MaximumTotal, int Missed, int Unresolved);
-    public sealed record Coverage(long Tick, int OnDuty, int Available, int Committed, int Breaks);
+    public sealed record Coverage(long Tick, int OnDuty, int Available, int Escorting, int Patrolling, int Breaks);
     public sealed class Report
     {
         public Limits Limits { get; set; } = new();
@@ -68,6 +68,8 @@ public static class ResponseTimes
         public List<ShiftStats> Shifts { get; set; } = new();
         public SortedDictionary<string, int> MissCauses { get; set; } = new(StringComparer.Ordinal);
         public List<Coverage> GuardCoverage { get; set; } = new();
+        // Samples where on-duty guards not already escorting could not form a team.
+        // Patrols and breaks do not excuse a gap; an active escort team does.
         public int GuardTeamGapSamples { get; set; }
         public int Incidents { get; set; }
         public int MissedIncidents { get; set; }
@@ -99,6 +101,8 @@ public static class ResponseTimes
         private readonly Dictionary<long, long> asleepSince = new();
         private readonly List<Coverage> coverage = new();
         private readonly Dictionary<long, long> credentialHolders = new();
+        private readonly Dictionary<long, SortedDictionary<string, int>> dispatchReasons = new();
+        private readonly Dictionary<long, string> replacedBecause = new();
         public Tracker(ScenarioData scenario)
         {
             var s = scenario.InitialState; horizon = s.Horizon;
@@ -188,6 +192,9 @@ public static class ResponseTimes
                     foreach (var c in custody.Values.Where(c => c.Resolved < 0 && c.Arrived < 0 && c.Acknowledged >= 0 && c.Responders.Contains(e.ActorId))) c.Arrived = e.Tick;
                     break;
                 case "Detained" when custody.TryGetValue(Number(e.Detail, "authorization"), out var detained): detained.Resolved = e.Tick; break;
+                case "GuardOutcomeReceived" when custody.ContainsKey(Number(e.Detail, "authorization")):
+                    replacedBecause[Number(e.Detail, "authorization")] = e.Detail[(e.Detail.IndexOf(';') + 2)..];
+                    break;
                 case "MissingWorkReportOpened":
                     {
                         long id = Number(e.Detail, "incident");
@@ -213,16 +220,23 @@ public static class ResponseTimes
         // only to explain gaps; nothing here feeds a simulated decision.
         public void Sample(World w, long tick)
         {
+            foreach (var d in w.InspectEscortDispatches().Where(d => d.Status == EscortDispatchStatus.AwaitingGuards))
+            {
+                if (!dispatchReasons.TryGetValue(d.AuthorizationId, out var reasons)) dispatchReasons[d.AuthorizationId] = reasons = new(StringComparer.Ordinal);
+                reasons[d.Reason] = reasons.GetValueOrDefault(d.Reason) + 1;
+            }
             var guards = roles.Where(r => r.Value == "guard").Select(r => r.Key).ToArray();
             if (guards.Length == 0) return;
             var onDuty = guards.Where(g => OnDuty(g, tick)).ToArray();
             var escorts = w.InspectGuardAssignments(); var dispatches = w.InspectEscortDispatches().ToDictionary(d => d.AuthorizationId);
             var outcomes = w.InspectGuardOutcomes(received: true);
-            bool Committed(long g) => escorts.Any(a => a.ActorId == g && dispatches.TryGetValue(a.AuthorizationId, out var d) && !(d.Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released or EscortDispatchStatus.Expired or EscortDispatchStatus.Cancelled) &&
-                !outcomes.Any(o => o.OrderMessageId == a.OrderMessageId)) || w.InspectPatrolOrders().Any(p => p.ActorId == g && p.ResultMessageId == 0 && p.Payload.Expires > tick);
-            int committed = onDuty.Count(Committed);
-            int breaks = onDuty.Count(g => !Committed(g) && w.InspectActor(new(g)).Action is ActionKind.Eat or ActionKind.Rest or ActionKind.UseToilet or ActionKind.Sleep);
-            coverage.Add(new Coverage(tick, onDuty.Length, onDuty.Length - committed, committed, breaks));
+            var patrols = w.InspectPatrolOrders();
+            bool Escorting(long g) => escorts.Any(a => a.ActorId == g && dispatches.TryGetValue(a.AuthorizationId, out var d) && !(d.Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released or EscortDispatchStatus.Expired or EscortDispatchStatus.Cancelled) &&
+                !outcomes.Any(o => o.OrderMessageId == a.OrderMessageId));
+            bool Patrolling(long g) => !Escorting(g) && patrols.Any(p => p.ActorId == g && p.ResultMessageId == 0 && p.Payload.Expires > tick);
+            int escorting = onDuty.Count(Escorting), patrolling = onDuty.Count(Patrolling);
+            int breaks = onDuty.Count(g => !Escorting(g) && !Patrolling(g) && w.InspectActor(new(g)).Action is ActionKind.Eat or ActionKind.Rest or ActionKind.UseToilet or ActionKind.Sleep);
+            coverage.Add(new Coverage(tick, onDuty.Length, onDuty.Length - escorting - patrolling, escorting, patrolling, breaks));
         }
         public Report Finish(World w, Limits limits, int teamSize)
         {
@@ -314,7 +328,7 @@ public static class ResponseTimes
             foreach (var miss in incidents.SelectMany(i => i.Missed.Select(m => i.Category + "/" + m)))
                 report.MissCauses[miss] = report.MissCauses.GetValueOrDefault(miss) + 1;
             report.Incidents = incidents.Count; report.MissedIncidents = incidents.Count(i => i.Missed.Count > 0);
-            report.GuardCoverage = coverage; report.GuardTeamGapSamples = coverage.Count(c => c.Available < teamSize);
+            report.GuardCoverage = coverage; report.GuardTeamGapSamples = coverage.Count(c => c.Escorting == 0 && c.OnDuty - c.Patrolling < teamSize);
             report.Detail = incidents;
             return report;
         }
@@ -338,10 +352,11 @@ public static class ResponseTimes
             if (stage == "Reporting") return "ReportTransport/TerminalAvailability";
             if (stage == "Ordering")
             {
-                if (i.Category == "Custody") return i.Dispatches > 1 ? "ReplacementTeamNeeded" : "NoOnDutyUncommittedTeam";
+                if (i.Category == "Custody") return dispatchReasons.TryGetValue(i.Key, out var reasons) ? reasons.OrderByDescending(r => r.Value).ThenBy(r => r.Key, StringComparer.Ordinal).First().Key : "AwaitingGuardTeam";
                 return "NoOnDutyUncommittedQualifiedResponder";
             }
             if (i.Responders.Count == 0) return "UnknownResponder";
+            if (i.Category == "Custody" && i.Dispatches > 1) return "ReplacementTeam/" + replacedBecause.GetValueOrDefault(i.Key, "Unknown");
             long span = Math.Max(1, to - from); long offDuty = 0, asleep = 0;
             foreach (long r in i.Responders)
             {

@@ -85,6 +85,16 @@ namespace Station.Core
             Schedule(new ScheduledEvent { Tick = schedule.NextBoundary, Phase = EventPhase.Decision, Kind = ScheduledKind.DailyBoundary, Intent = new ActionIntent(actorId, ActionKind.Inspect, default) });
             WakeDaily(actors[actorId]); WakeNeed(actors[actorId]);
         }
+        private NeedKind? SleepPreparationNeed(Id<ActorTag> actor, long wake)
+        {
+            long span = Math.Max(0, wake - NeedNow);
+            foreach (var value in NeedValues(actor.Value).Where(v => v.Kind is NeedKind.Bladder or NeedKind.Hunger).OrderBy(v => v.Kind == NeedKind.Hunger))
+            {
+                var rule = Needs!.Rules[(int)value.Kind];
+                if (rule.Critical > 0 && checked(value.Q + (long)rule.SleepingRate * span * Config.TickDurationMs) >= rule.Critical * NeedAccumulator.HourMilliseconds) return value.Kind;
+            }
+            return null;
+        }
         private bool MealNeeded(Id<ActorTag> actor) => Needs!.Rules[(int)NeedKind.Hunger].Seek > 0 && NeedValues(actor.Value).Single(n => n.Kind == NeedKind.Hunger).Q >= Needs.Rules[(int)NeedKind.Hunger].Seek * NeedAccumulator.HourMilliseconds;
         private bool DailyGoalEligible(DailyGoalSnapshot goal) => goal.Status == DailyGoalStatus.Pending && goal.DueTick <= NeedNow && goal.RetryAt <= NeedNow &&
             (goal.Kind == RoutineOpportunityKind.ScheduledRest || goal.Closes > NeedNow) && (goal.Need != NeedKind.Hunger || MealNeeded(new Id<ActorTag>(goal.ActorId)));
@@ -111,8 +121,23 @@ namespace Station.Core
             var goal = dailyGoals[selection.Id];
             if (!SpendPlanningRequest()) { RequestDailyDecision(actorId, checked(processingTick + 1)); return; }
             var memory = needAgents[actorId.Value];
-            var plan = NeedPlanning.Plan(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
-            PlannerExpansions += plan.Expansions; bool fallback = false;
+            var avoided = memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId).ToArray();
+            var plan = new PlanResult(PlanOutcome.NoPlan); bool fallback = false;
+            // Relieve a need the citizen's own rates predict would turn critical
+            // before the known wake time, rather than be woken by it mid-sleep.
+            var preparation = goal.Kind == RoutineOpportunityKind.Sleep ? SleepPreparationNeed(actorId, goal.Closes) : null;
+            if (preparation.HasValue)
+            {
+                plan = NeedPlanning.Plan(ActorView(actorId), preparation.Value, avoided, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+                PlannerExpansions += plan.Expansions;
+                if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
+                    Emit("SleepPreparationPlanned", actor, detail: "goal=" + goal.Id + "; need=" + preparation.Value + "; wake=" + goal.Closes);
+            }
+            if (plan.Outcome != PlanOutcome.PlanFound || plan.Steps.Count == 0)
+            {
+                plan = NeedPlanning.Plan(ActorView(actorId), goal.Need, avoided, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+                PlannerExpansions += plan.Expansions;
+            }
             if (plan.Outcome == PlanOutcome.NoPlan && goal.Need == NeedKind.SleepPressure && memory.SleepFallbackRetryAt <= processingTick && plan.Expansions < planner.NodeBudget)
             {
                 int remaining = planner.NodeBudget - plan.Expansions;
@@ -154,7 +179,8 @@ namespace Station.Core
             else if (needActivities.TryGetValue(action, out var activity) && activity.Status == NeedActivityStatus.Completed && goal.Status == DailyGoalStatus.Pending)
             {
                 if (IsSleepFallback(goal.Need, goal.ServiceId)) { goal.Reason = UnmetSleepReason; goal.RetryAt = CompleteSleepFallback(actor, action); }
-                else { goal.CompletedActionId = action; EndDailyGoal(goal, DailyGoalStatus.Completed, "PhysicalActivityCompleted"); }
+                // A preparatory meal or toilet visit leaves the sleep goal pending.
+                else if (RelievesNeed(activity.Kind, goal.Need)) { goal.CompletedActionId = action; EndDailyGoal(goal, DailyGoalStatus.Completed, "PhysicalActivityCompleted"); }
             }
             if (goal.Status == DailyGoalStatus.Pending && goal.Kind != RoutineOpportunityKind.ScheduledRest && goal.Closes <= NeedNow) EndDailyGoal(goal, DailyGoalStatus.MissedWindow, ClosedDailyReason(goal));
             WakeDaily(actor);
