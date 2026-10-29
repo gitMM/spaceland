@@ -163,3 +163,33 @@ summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); paddin
   .controls input[type=range] { flex-basis: 100%; order: 9; }
   .dossier { border-top: 1px solid var(--line); }
 }
+
+.pulse { width: 8px; height: 8px; border-radius: 50%; display: inline-block; box-shadow: -5px 0 0 -2px currentColor; }
+.envelope { width: 12px; height: 9px; display: inline-block; background: var(--inst); clip-path: polygon(0 0, 50% 55%, 100% 0, 100% 100%, 0 100%); }
+.stat b.bad { color: var(--critical); }
+.event.focused { background: #17262b; box-shadow: inset 2px 0 0 var(--accent); }
+.chain-head { display: flex; align-items: center; justify-content: space-between; }
+.chain-head h2 { margin: 0; }
+.chain { margin-top: 8px; }
+.chain-row { display: grid; grid-template-columns: 70px 8px 1fr; gap: 8px; align-items: start; padding: 5px 4px; border-radius: 5px; cursor: pointer; position: relative; }
+.chain-row:hover { background: var(--surface-3); }
+.chain-row .t { font: 11px ui-monospace, monospace; color: var(--text-muted); padding-top: 1px; }
+.chain-row i { width: 8px; height: 8px; border-radius: 2px; margin-top: 4px; }
+.chain-row strong { display: block; font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.chain-row p { margin: 1px 0 0; font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.chain-row.cause::after { content: ""; position: absolute; left: 81px; top: 18px; bottom: -6px; width: 1px; background: var(--line-strong); }
+.chain-row.focus { background: #17262b; box-shadow: inset 2px 0 0 var(--accent); cursor: default; }
+.chain-row.future { opacity: .55; }
+.chain-label { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted); margin: 10px 4px 4px; }
+.link-button { margin-top: 5px; font-size: 11px; padding: 2px 8px; color: var(--accent); background: none; }
+canvas.workload { width: 100%; height: 96px; display: block; cursor: pointer; border-radius: 4px; }
+.badge-key { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; background: var(--surface-3); color: var(--text-primary); border: 1px solid var(--line-strong); }
+.case-wrap { flex: none; height: min(36vh, 320px); display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--surface-1); }
+.case-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 14px; border-bottom: 1px solid var(--line); }
+.case-bar strong { font-size: 13px; margin-right: 10px; }
+.case-bar span { font: 11px ui-monospace, monospace; color: var(--text-muted); }
+.case-tools { display: flex; gap: 6px; }
+.case-canvas { position: relative; flex: 1; min-height: 120px; }
+.case-canvas canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.case-button .name { white-space: normal; }
+.stage.case-open .legend { display: none; }

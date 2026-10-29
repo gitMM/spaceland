@@ -19,13 +19,15 @@
     <input id="search" type="search" placeholder="Filter by name, role, activity" aria-label="Filter citizens">
     <div id="people" class="people-list"><p class="muted">No run loaded.</p></div>
   </aside>
-  <section class="stage" aria-label="Station map and time">
+  <section class="stage" id="stage" aria-label="Station map and time">
     <div class="map-bar">
       <div class="clock"><strong id="clock">—</strong><span id="tickLabel"></span></div>
       <div class="map-tools">
         <label class="toggle">Deck <select id="deck" aria-label="Deck"></select></label>
         <label class="toggle"><input type="checkbox" id="showTrail" checked> Path</label>
         <label class="toggle"><input type="checkbox" id="showDirt" checked> Dirt</label>
+        <label class="toggle"><input type="checkbox" id="showMail" checked> Messages</label>
+        <label class="toggle" title="Draw what the authority believes over the truth"><input type="checkbox" id="showBeliefs"> Beliefs</label>
         <label class="toggle"><input type="checkbox" id="showIds"> IDs</label>
         <button id="fit" type="button" title="Reset zoom (double-click map)">Fit</button>
       </div>
@@ -39,6 +41,10 @@
         <pre>dotnet run --project src/Station.Runner -c Release -- timeline recovery --count 32 --out artifacts/timeline-recovery-32</pre>
         <p id="status" class="status" role="status"></p>
       </div>
+    </div>
+    <div class="case-wrap" id="caseWrap" hidden>
+      <div class="case-bar"><div><strong id="caseTitle"></strong><span id="caseSub"></span></div><div class="case-tools"><button id="caseFit" type="button" title="Fit the case (double-click)">Fit</button><button id="caseClose" type="button" title="Close the case" aria-label="Close the case">×</button></div></div>
+      <div class="case-canvas"><canvas id="caseCanvas" aria-label="Case lanes: one row per participant over time; click an item for its cause chain"></canvas><div id="caseTip" class="tip" hidden></div></div>
     </div>
     <div class="legend" id="legend"></div>
     <div class="time-panel">

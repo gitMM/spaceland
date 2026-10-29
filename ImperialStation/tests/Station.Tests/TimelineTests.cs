@@ -71,8 +71,52 @@ public sealed class TimelineTests
             }
             var events = t.GetProperty("events").EnumerateArray().ToArray();
             Assert.NotEmpty(events);
-            Assert.DoesNotContain(events, e => strings[e[2].GetInt32()] is "ObservationRecorded" or "MovementStarted" or "ActionRequested");
+            Assert.DoesNotContain(events, e => strings[e[2].GetInt32()] == "ActionRequested");
             Assert.Contains(events, e => strings[e[2].GetInt32()] == "PlanSelected");
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void TimelineReconstructsAuthorityBeliefsMessagesAndCauseChains()
+    {
+        // The recovery station's faults and spills reach the authority as reports.
+        var scenario = RecoveryStation.Create(32, 42);
+        string directory = Path.Combine(Path.GetTempPath(), "station-timeline-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var (summary, t) = Export(scenario, 1000, directory);
+            var (_, world) = Runs.Execute(scenario, scenario.Scenario.InitialState.Seed, trace: false);
+            Assert.Equal(world.Digest(), summary.FinalDigest);
+            var strings = t.GetProperty("strings").EnumerateArray().Select(s => s.GetString()!).ToArray();
+            string Text(JsonElement row, int index) { long i = At(row, index); Assert.InRange(i, 0, strings.Length - 1); return strings[i]; }
+            var authority = t.GetProperty("authority");
+            // Initial beliefs plus recorded changes equal the authority's final beliefs.
+            var believed = authority.GetProperty("beliefs").EnumerateArray().ToDictionary(b => Text(b, 0), b => Text(b, 1), StringComparer.Ordinal);
+            var changes = authority.GetProperty("beliefChanges").EnumerateArray().ToArray();
+            Assert.NotEmpty(changes);
+            foreach (var c in changes) believed[Text(c, 1)] = Text(c, 2);
+            var actual = world.InspectBeliefs().ToDictionary(b => b.Key.ToString(), b => Timeline.Format(b.Value), StringComparer.Ordinal);
+            Assert.Equal(actual.OrderBy(p => p.Key, StringComparer.Ordinal), believed.OrderBy(p => p.Key, StringComparer.Ordinal));
+            // Every non-seeded message, with resolvable kind and recipient labels.
+            var messages = t.GetProperty("messages").EnumerateArray().ToArray();
+            Assert.Equal(world.InspectMessages().Count(m => !m.Seeded), messages.Length);
+            Assert.All(messages, m => { Assert.NotEqual("", Text(m, 1)); Assert.NotEqual("", Text(m, 4)); });
+            Assert.All(authority.GetProperty("attempts").EnumerateArray(), a => Assert.NotEqual("", Text(a, 8)));
+            // Every cause points at an exported node: an event, an action request or a knowledge change.
+            var nodes = new HashSet<long>(t.GetProperty("events").EnumerateArray().Select(e => e[0].GetInt64()));
+            var citizens = t.GetProperty("citizens").EnumerateArray().ToArray();
+            foreach (var c in citizens)
+            {
+                foreach (var a in c.GetProperty("acts").EnumerateArray()) nodes.Add(At(a, 5));
+                foreach (var l in c.GetProperty("learned").EnumerateArray()) nodes.Add(At(l, 4));
+            }
+            var causes = t.GetProperty("events").EnumerateArray().Select(e => At(e, 6))
+                .Concat(citizens.SelectMany(c => c.GetProperty("acts").EnumerateArray().Select(a => At(a, 6))))
+                .Concat(citizens.SelectMany(c => c.GetProperty("learned").EnumerateArray().Select(l => At(l, 6))))
+                .Concat(changes.Select(b => At(b, 5))).Where(cause => cause != 0).ToArray();
+            Assert.NotEmpty(causes);
+            Assert.All(causes, cause => Assert.Contains(cause, nodes));
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }

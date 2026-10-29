@@ -170,8 +170,20 @@ clause. `sweep` remains unimplemented.
 The station timeline viewer replays a whole run: a top-down deck slice with every
 citizen at the service they are using, a time slider, and a dossier for the selected
 citizen (path, current action and intent with its trigger, needs, activity history,
-events and knowledge at that tick). Export a timeline first; it runs the ordinary
-simulation and samples it, and its `finalDigest` matches an ordinary run of the same scenario and seed:
+events and knowledge at that tick). The station authority has its own entry and hub on
+the map: what it believes against the truth (wrong beliefs are flagged), its open report
+deadlines, incidents and facility tasks, its decisions and its messages. Reports and
+orders travel as pulses between terminals, the hub and recipients, unread orders show
+on the citizen, and the Beliefs toggle draws the authority's view over the rooms.
+Clicking any event or action opens its cause chain: what led to it and what it led to.
+The Cases list (detentions, missing-report incidents, facility tasks, card recoveries)
+opens a case under the map: one lane per participant with custody bands, causing
+actions, events, labelled milestones and messages between lanes, plus a stage list with
+each wait. Cases are assembled in the viewer from shared attempt, message, authorization
+and case IDs.
+
+Export a timeline first; it runs the ordinary simulation and samples it, and its
+`finalDigest` matches an ordinary run of the same scenario and seed:
 
 ```powershell
 dotnet run --project src/Station.Runner -c Release --no-build -- timeline recovery --count 32 --out artifacts/timeline-recovery-32
@@ -181,7 +193,7 @@ dotnet run --project src/Station.Runner -c Release --no-build -- timeline scenar
 `timeline` accepts a scenario file or the `recovery`, `institutional` and `daily`
 generators (`--count`, `--seed`, `--variant`); `--every` sets the sample
 interval (default 300 ticks). The five-day, 32-citizen recovery run exports in about
-2 seconds to 0.7 MB. Open `tools/viewer/index.html` and drop in `timeline.json.gz`, or serve
+5 seconds to 0.7 MB. Open `tools/viewer/index.html` and drop in `timeline.json.gz`, or serve
 this folder (`python -m http.server 8765 --bind 127.0.0.1`) and open
 `http://127.0.0.1:8765/tools/viewer/?timeline=../../artifacts/timeline-recovery-32/timeline.json.gz`.
 Space plays, arrows step (Shift for a station minute), `[`/`]` jump between the

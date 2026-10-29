@@ -48,9 +48,11 @@ public static class Timeline
         var world = loaded.CreateWorld(seed, trace: true);
         long horizon = loaded.Scenario.InitialState.Horizon;
         var builder = new Builder(world, loaded);
-        for (long tick = 0; ; tick = Math.Min(horizon, tick + every))
+        for (long tick = 0, stepped = -1; ; tick = Math.Min(horizon, tick + every))
         {
-            world.AdvanceTo(tick);
+            // Single ticks between samples record exact machine/terminal status changes.
+            for (stepped++; stepped <= tick; stepped++) { world.AdvanceTo(stepped); builder.Step(stepped); }
+            stepped = tick;
             builder.Consume(world.Trace); world.ClearRecordedTrace();
             builder.Sample(tick);
             progress?.Invoke(tick);
@@ -91,6 +93,7 @@ public static class Timeline
     {
         public string Kind = ""; public long Id; public Coord Position; public int Capacity; public long Assigned; public long Detention; public string Label = "";
         public readonly List<long> Busy = new(), Queued = new(), Up = new();
+        public readonly List<long[]> Changes = new();
     }
 
     private sealed class Builder
@@ -121,6 +124,14 @@ public static class Timeline
         private readonly SortedDictionary<long, List<long>> dirt = new();
         private readonly List<long[]>[] rosters;
         private readonly NeedRule[] rules;
+        // Cause links: folded action/movement events point at their action's request event,
+        // and an unchanged observation is exported only once something cites it as a cause.
+        private readonly Dictionary<long, long> causeAlias = new();
+        private readonly Dictionary<long, (long Tick, long Actor, string Type, string Detail, long Cause)> uncited = new();
+        private readonly List<long[]> beliefs = new(), beliefChanges = new();
+        private readonly Dictionary<long, long> expectationClosed = new();
+        private List<long[]> messageRows = new(), attemptRows = new(), expectationRows = new(), incidentRows = new(), facilityRows = new();
+        private readonly List<long> openExpectations = new(), overdueExpectations = new(), openIncidents = new(), openFacilityTasks = new(), awaitingAcknowledgment = new();
         public long TraceEvents { get; private set; }
         public int KeptEvents => events.Count;
         public int FrameCount => frameTicks.Count;
@@ -145,6 +156,8 @@ public static class Timeline
                     known[(i, key)] = value;
                     initialKnowledge[i].Add(new long[] { S(key), S(value), S(fact.SourceKind.ToString()), fact.ObservedTick, fact.SourceActorId });
                 }
+            foreach (var b in world.InspectBeliefs().OrderBy(b => b.Key))
+                beliefs.Add(new long[] { S(b.Key.ToString()), S(Format(b.Value)), S(b.Source), b.MessageId, b.ObservedTick, b.ReceivedTick });
             foreach (var tile in world.Topology.InspectTiles()) tiles[tile.Position] = tile.Id.Value;
             foreach (var s in world.InspectNeedServices().OrderBy(s => s.Definition.Id))
             {
@@ -176,30 +189,54 @@ public static class Timeline
                 TraceEvents++;
                 int c = citizenIndex.TryGetValue(e.ActorId, out int index) ? index : -1;
                 if (c >= 0) Track(c, e);
+                else if (Tracked.Contains(e.Type)) Cite(e.Id, e.Tick, e.ActorId, e.Type, e.Detail, e.CauseId);
+                if (e.Type == "BeliefChanged" && e.FactKey is FactKey key && e.FactValue is FactValue value)
+                    beliefChanges.Add(new[] { e.Tick, S(key.ToString()), S(Format(value)), e.MessageId, e.Id, Resolve(e.CauseId) });
+                if (e.Type is "ReportExpectationSatisfied" or "ReportExpectationCancelled" && e.AttemptId > 0) expectationClosed[e.AttemptId] = e.Tick;
                 if (Tracked.Contains(e.Type)) continue;
                 long tile = Located.Contains(e.Type) || !e.Target.Equals(default(Coord)) ? TileAt(e.Target) : 0;
-                events.Add(new[] { e.Id, e.Tick, S(e.Type), e.ActorId, S(e.Detail), tile, e.CauseId, e.MessageId, e.TerminalId, e.AttemptId, e.TaskId, e.ItemId, e.Quantity });
+                events.Add(new[] { e.Id, e.Tick, S(e.Type), e.ActorId, S(e.Detail), tile, Resolve(e.CauseId), e.MessageId, e.TerminalId, e.AttemptId, e.TaskId, e.ItemId, e.Quantity });
             }
+        }
+        // A folded event that might later be cited as a cause; exported on first citation.
+        private void Cite(long id, long tick, long actor, string type, string detail, long cause) => uncited[id] = (tick, actor, type, detail, cause);
+        private long Resolve(long id)
+        {
+            if (id <= 0) return 0;
+            if (causeAlias.TryGetValue(id, out long alias)) return alias;
+            if (uncited.TryGetValue(id, out var pending))
+            {
+                uncited.Remove(id);
+                events.Add(new[] { id, pending.Tick, S(pending.Type), pending.Actor, S(pending.Detail), 0, Resolve(pending.Cause) });
+            }
+            return id;
         }
 
         private void Track(int c, TraceEvent e)
         {
             var key = (e.ActorId, e.ActionId);
             open.TryGetValue(key, out var act);
+            // Folded action and movement events stand for their action's request in cause chains.
+            if (e.Type is "ActionStarted" or "ActionCompleted" or "ActionCancelled" or "MovementStarted" or "TileArrived")
+            {
+                if (e.ActionId > 0 && actions.TryGetValue(key, out var owner)) causeAlias[e.Id] = owner.RequestEvent;
+                else Cite(e.Id, e.Tick, e.ActorId, e.Type, e.Detail, e.CauseId);
+            }
             switch (e.Type)
             {
                 case "ObservationRecorded" when e.FactKey is FactKey fact && e.FactValue is FactValue value:
                 {
                     string k = fact.ToString(), v = Format(value);
-                    if (known.TryGetValue((c, k), out var previous) && previous == v) return;
+                    if (known.TryGetValue((c, k), out var previous) && previous == v) { Cite(e.Id, e.Tick, e.ActorId, e.Type, e.Detail, e.CauseId); return; }
                     known[(c, k)] = v;
                     int at = e.Detail.LastIndexOf("; source=", StringComparison.Ordinal);
-                    learned[c].Add(new long[] { e.Tick, S(k), S(v), S(at >= 0 ? e.Detail.Substring(at + 9) : ""), e.Id, e.MessageId });
+                    learned[c].Add(new long[] { e.Tick, S(k), S(v), S(at >= 0 ? e.Detail.Substring(at + 9) : ""), e.Id, e.MessageId, Resolve(e.CauseId) });
                     return;
                 }
+                case "ObservationRecorded": Cite(e.Id, e.Tick, e.ActorId, e.Type, e.Detail, e.CauseId); return;
                 case "KnowledgeEvicted" when e.FactKey is FactKey gone:
                     known.Remove((c, gone.ToString()));
-                    learned[c].Add(new long[] { e.Tick, S(gone.ToString()), -1, 0, e.Id });
+                    learned[c].Add(new long[] { e.Tick, S(gone.ToString()), -1, 0, e.Id, 0, Resolve(e.CauseId) });
                     return;
                 case "MovementStarted":
                     moves[c].Add(new long[] { e.Departure, e.Arrival, e.Source.X, e.Source.Z, e.Target.X, e.Target.Z, e.Source.Y, e.Target.Y });
@@ -210,7 +247,7 @@ public static class Timeline
                     { var m = moves[c][^1]; m[1] = e.Tick; m[4] = e.Target.X; m[5] = e.Target.Z; m[7] = e.Target.Y; }
                     return;
                 case "ActionRequested":
-                    act = new Act { Requested = e.Tick, Kind = S(e.Detail), RequestEvent = e.Id, Cause = e.CauseId, Origin = S(e.Origin.ToString()), Attempt = e.AttemptId, Terminal = e.TerminalId };
+                    act = new Act { Requested = e.Tick, Kind = S(e.Detail), RequestEvent = e.Id, Cause = Resolve(e.CauseId), Origin = S(e.Origin.ToString()), Attempt = e.AttemptId, Terminal = e.TerminalId };
                     open[key] = act; actions[key] = act; acts[c].Add(act);
                     return;
             }
@@ -236,6 +273,20 @@ public static class Timeline
             if (act.Began < 0 && act.Queue == 0) act.Began = act.Requested;
             if (e.TerminalId != 0 && act.Terminal == 0) act.Terminal = e.TerminalId;
             open.Remove(key);
+        }
+
+        public void Step(long tick)
+        {
+            Dictionary<long, MachineSnapshot>? machines = null; Dictionary<long, TerminalSnapshot>? terminals = null; Dictionary<long, DetentionFacilitySnapshot>? facilities = null;
+            foreach (var p in places)
+            {
+                long up;
+                if (p.Kind == "Machine") { machines ??= world.InspectMachines().ToDictionary(m => m.Id); up = machines.TryGetValue(p.Id, out var m) && m.Operational ? 2 : 0; }
+                else if (p.Kind == "Terminal") { terminals ??= world.InspectTerminals().ToDictionary(t => t.Id); up = terminals.TryGetValue(p.Id, out var t) ? !t.Enabled ? 0 : t.Connected ? 2 : 1 : 0; }
+                else if (p.Kind == "Detention") { facilities ??= world.InspectDetentionFacilities().ToDictionary(f => f.Definition.Id); up = facilities.TryGetValue(p.Id, out var f) ? !f.Powered ? 0 : f.Connected ? 2 : 1 : 0; }
+                else continue;
+                if (p.Changes.Count == 0 || p.Changes[^1][1] != up) p.Changes.Add(new[] { tick, up });
+            }
         }
 
         public void Sample(long tick)
@@ -294,6 +345,22 @@ public static class Timeline
                 units.Add(d.Units);
             }
             foreach (var units in dirt.Values) while (units.Count < frameTicks.Count) units.Add(0);
+            var expectations = world.InspectExpectations();
+            openExpectations.Add(expectations.Count(x => x.Status is ExpectationStatus.AwaitingResult or ExpectationStatus.Overdue or ExpectationStatus.Unestimated));
+            overdueExpectations.Add(expectations.Count(x => x.Status == ExpectationStatus.Overdue));
+            openIncidents.Add(world.InspectMissingReports().Count(IncidentOpen));
+            openFacilityTasks.Add(world.InspectFacilityTasks().Count(t => t.Status != FacilityTaskStatus.ReportedComplete));
+            awaitingAcknowledgment.Add(world.InspectAcknowledgmentWatches().Count(w => w.Status is AcknowledgmentStatus.Awaiting or AcknowledgmentStatus.Overdue));
+        }
+        // Open until a work response and a patrol or worker response have arrived (the pressure gate's definition).
+        private static bool IncidentOpen(MissingReportIncident i) =>
+            i.ResponseMessageId == 0 && i.ReplacementResultMessageId == 0 || i.PatrolResultMessageId == 0 && i.WorkerStatusResponse != "ResponseReceived";
+        private static long IncidentClosed(MissingReportIncident i, Func<long, long> delivery)
+        {
+            if (IncidentOpen(i)) return -1;
+            long work = new[] { delivery(i.ResponseMessageId), delivery(i.ReplacementResultMessageId) }.Where(t => t >= 0).DefaultIfEmpty(-1).Min();
+            long patrol = i.PatrolResultMessageId > 0 ? delivery(i.PatrolResultMessageId) : delivery(i.ResponseMessageId);
+            return work < 0 || patrol < 0 ? -1 : Math.Max(work, patrol);
         }
 
         public void Finish()
@@ -304,6 +371,21 @@ public static class Timeline
                 if (citizenIndex.TryGetValue(r.Roster.ActorId, out int c))
                     rosters[c].Add(new[] { r.PublicationTick, r.Roster.Version, r.Roster.Cohort, r.Roster.ShiftStart, r.Roster.DutyTicks, r.Roster.DayTicks });
             foreach (var tile in world.Topology.InspectTiles()) tiles[tile.Position] = tile.Id.Value;
+            // Built here so every string is interned before the table is written.
+            var messages = world.InspectMessages().Where(m => !m.Seeded).OrderBy(m => m.Id).ToArray();
+            var deliveries = messages.ToDictionary(m => m.Id, m => m.DeliveryTick);
+            long Delivery(long id) => id > 0 && deliveries.TryGetValue(id, out long t) ? t : -1;
+            messageRows = messages.Select(m => new[] { m.Id, S(m.Draft.Kind.ToString()), m.PhysicalSender.Value, m.SenderAccount.Value, S(m.Draft.RecipientKind.ToString()),
+                m.Draft.Recipient.Value, m.TerminalId, m.SubmittedTick, m.DeliveryTick, m.FirstReadTick ?? -1, m.Draft.AttemptId, m.Draft.TaskId,
+                S(m.Draft.Subject.SubjectId > 0 ? m.Draft.Subject.ToString() : ""), S(m.Draft.Subject.SubjectId > 0 ? Format(m.Draft.Claim) : ""), m.Draft.RelatedMessageId }).ToList();
+            attemptRows = world.InspectWorkAttempts().OrderBy(a => a.Id).Select(a => new[] { a.Id, a.JobId, a.ActorId, a.DispatchTick, a.OrderMessageId,
+                a.AcknowledgmentReceivedTick ?? -1, S(a.Assignment.ToString()), S(a.Execution.ToString()), S(a.AuthorityStatus) }).ToList();
+            expectationRows = world.InspectExpectations().OrderBy(x => x.AttemptId).Select(x => new[] { x.AttemptId, x.JobId, x.ActorId, x.AcknowledgmentTick, x.Deadline,
+                expectationClosed.TryGetValue(x.AttemptId, out long closed) ? closed : -1, S(x.Status.ToString()), S(x.Reason), S(x.TaskKind), x.ResultMessageId }).ToList();
+            incidentRows = world.InspectMissingReports().OrderBy(i => i.Id).Select(i => new[] { i.Id, i.AttemptId, i.JobId, i.ActorId, i.OpenedTick, i.AdmissionTick, IncidentClosed(i, Delivery),
+                S(i.Kind), S(i.WorkResponse.ToString()), S(i.WorkResolution), S(i.WorkerStatusResponse), i.ResponseMessageId, i.ReplacementAttemptId, i.ReplacementResultMessageId, i.PatrolOrderMessageId, i.PatrolResultMessageId }).ToList();
+            facilityRows = world.InspectFacilityTasks().OrderBy(t => t.JobId).Select(t => new[] { t.JobId, S(t.Subject.ToString()), t.CreatedTick, Delivery(t.CompletionMessageId),
+                S(t.Status.ToString()), S(t.Reason), t.ReportsReceived, t.AttemptId, t.FirstMessageId, t.LatestMessageId }).ToList();
         }
 
         public void Write(Utf8JsonWriter j, ulong seed, long every, long horizon, string digest)
@@ -332,6 +414,7 @@ public static class Timeline
             {
                 j.WriteStartObject(); j.WriteString("kind", p.Kind); j.WriteNumber("id", p.Id); Position(j, "position", p.Position); j.WriteNumber("capacity", p.Capacity);
                 j.WriteNumber("assignedActorId", p.Assigned); j.WriteNumber("detentionFacilityId", p.Detention); j.WriteString("label", p.Label);
+                if (p.Changes.Count > 0) Rows(j, "statusChanges", p.Changes);
                 j.WriteEndObject();
             }
             j.WriteEndArray();
@@ -363,7 +446,16 @@ public static class Timeline
                 j.WriteEndObject();
             }
             j.WriteEndArray();
-            Rows(j, "events", events);
+            Rows(j, "events", events.OrderBy(e => e[0]));
+            Rows(j, "messages", messageRows);
+            j.WriteStartObject("authority");
+            Rows(j, "beliefs", beliefs); Rows(j, "beliefChanges", beliefChanges);
+            Rows(j, "attempts", attemptRows); Rows(j, "expectations", expectationRows); Rows(j, "incidents", incidentRows); Rows(j, "facilityTasks", facilityRows);
+            j.WriteStartObject("frames");
+            Numbers(j, "openExpectations", openExpectations); Numbers(j, "overdueExpectations", overdueExpectations); Numbers(j, "openIncidents", openIncidents);
+            Numbers(j, "openFacilityTasks", openFacilityTasks); Numbers(j, "awaitingAcknowledgment", awaitingAcknowledgment);
+            j.WriteEndObject();
+            j.WriteEndObject();
             j.WriteStartObject("frames");
             Numbers(j, "ticks", frameTicks);
             j.WriteStartArray("citizens");

@@ -63,17 +63,19 @@ digests, statuses and gameplay metrics are the batch-isolation comparisons.
 
 `timeline` writes `timeline.json.gz`, a gzip JSON viewer projection (schema 1,
 `kind: "station_timeline"`) for `tools/viewer/index.html`. It is not a save format and
-no gameplay system reads it. The exporter creates the world, advances it in `--every`
-chunks, folds each chunk's trace into per-citizen tracks and samples inspection views.
-Advancing in chunks does not change the run: `finalDigest` equals the ordinary run's
-digest. Output is deterministic for a build, scenario, seed and interval.
+no gameplay system reads it. The exporter creates the world and advances it one tick at
+a time, recording exact machine, terminal and detention status changes; every `--every`
+ticks it folds the trace into per-citizen tracks and samples inspection views. Advancing
+in steps does not change the run: `finalDigest` equals the ordinary run's digest. Output
+is deterministic for a build, scenario, seed and interval.
 
 The header has scenario, source, seed, content/build/final digests, `tickMs`,
 `dayTicks`, `dutyTicks`, `cohorts`, `startTick`, `horizon` and `every`. `strings` is
 an intern table; index 0 is always the empty string and means "none". `rooms` are the
 final tiles (id, definition, family, position, traversal). `places` are need services,
 terminals, machines, workstations and detention facilities with kind, id, position,
-capacity, assigned actor and detention facility. `needs` lists rule thresholds in
+capacity, assigned actor and detention facility; machines, terminals and detention
+facilities add `statusChanges` `[tick, up]` (up as in `frames`). `needs` lists rule thresholds in
 displayed units. `custody` has one entry per detention stay: subject, leader, escort
 start/status/members, intake and release ticks (-1 when absent).
 
@@ -86,14 +88,38 @@ Each citizen has id, name, role, account, initial position, `rosters`
   failure, queue, terminalId, needServiceId, partnerId]`. `began` is -1 if a queued
   action never started and `end` is -1 if unfinished at the horizon; outcome is 0 open,
   1 completed, 2 failed, 3 cancelled; queue is 0, 1 (need service) or 2 (terminal).
-- `learned`: `[tick, key, value, source, eventId, messageId]` for knowledge value
+- `learned`: `[tick, key, value, source, eventId, messageId, causeId]` for knowledge value
   changes only; value -1 is an eviction. Initial knowledge plus these rows reproduces
   `InspectKnowledge` at any tick; repeated observations of an unchanged value are omitted.
 
 `events` keeps every other trace event as `[id, tick, type, actorId, detail, tileId,
 causeId, messageId, terminalId, attemptId, taskId, itemId, quantity]`. Observations,
 movement, and action request/start/complete/cancel events are represented by the
-tracks instead; action failures are kept in both. `frames` holds the samples at
+tracks instead; action failures are kept in both. Cause IDs are resolved to exported
+nodes: an event, an action's `requestEventId` or a `learned` event ID. Folded action and
+movement events resolve to their action's request; a folded observation that something
+cites is exported as an `ObservationRecorded` event, so every non-zero cause resolves.
+The viewer also links an uncaused event to the first event of its message.
+
+`messages` lists every non-seeded message as `[id, kind, physicalSender, senderAccount,
+recipientKind, recipientAccount, terminalId, submittedTick, deliveryTick, firstReadTick,
+attemptId, taskId, subjectKey, claim, relatedMessageId]` (-1 for an unread message).
+`authority` holds the central institution: initial `beliefs` `[key, value, source,
+messageId, observedTick, receivedTick]` and `beliefChanges` `[tick, key, value, messageId,
+eventId, causeId]`, which reproduce `InspectBeliefs` at any tick; final `attempts`
+`[id, jobId, actorId, dispatchTick, orderMessageId, acknowledgedTick, assignment, execution,
+authorityStatus]`; report `expectations` `[attemptId, jobId, actorId, acknowledgedTick,
+deadline, closedTick, status, reason, taskKind, resultMessageId]`; `incidents` `[id,
+attemptId, jobId, actorId, openedTick, admissionTick, closedTick, kind, workResponse,
+workResolution, workerStatus, responseMessageId, replacementAttemptId,
+replacementResultMessageId, patrolOrderMessageId, patrolResultMessageId]`, closed when a
+work response and a patrol or worker response have arrived; `facilityTasks` `[jobId,
+subject, createdTick, closedTick, status, reason, reportsReceived, attemptId,
+firstMessageId, latestMessageId]`; and per-frame counts in `frames` (`openExpectations`,
+`overdueExpectations`, `openIncidents`, `openFacilityTasks`, `awaitingAcknowledgment`).
+Status strings in these records are final; open/closed ticks place them in time.
+
+`frames` holds the samples at
 `frames.ticks`: per citizen `needs` (flattened, one value per rule), need `mode`,
 routine `activity`, `inventory` and sampled `custody` strings; per place `busy`,
 `queue` and `up` (2 working, 1 disconnected, 0 down or disabled); and per tile `dirt`.
