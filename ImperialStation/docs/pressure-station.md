@@ -2,6 +2,11 @@
 
 Requested 2026-10-29. Status: implementation and verification in progress.
 
+Next work: [staffing, daily timing and response times](acceptance-current.md#next-step--staffing-daily-timing-and-response-times),
+covering the six issues raised in the user's 32-person log review and their
+recommended fixes. That section defines the implementation order and verification
+requirements; expansion and physical emergency alarms remain deferred.
+
 Completion clarification approved by the user: insufficient evidence is a valid
 explicit outcome. Every initial claim must have a completed verification and either
 an accepted case, a received clear inspection, or a documented evidence-based review
@@ -133,7 +138,10 @@ At least one released subject must resume a real available task.
   is now retained immediately after the fresh zero-dirt observation, while delivery
   still requires ordinary terminal transport. A regression fails before the fix and
   passes afterward, including exact state/event replay. The unchanged nine-day
-  population gate is running in `artifacts/pressure-2048-completion/`.
+  population gate in `artifacts/pressure-2048-completion/` still fails its primary
+  recovery check: all 63 required releases complete, but the first clear sample is
+  tick 318,000, leaving only 6,000 clear ticks. The cleanup regression is fixed;
+  that correction alone does not establish timely population recovery.
 - The latest complete suite passes all **843 tests**, zero failures or skips:
   `artifacts/pressure-tests/pressure-all-completion.trx`. Recovery assertions now
   accept an authenticated original reply only when no patrol had been posted.

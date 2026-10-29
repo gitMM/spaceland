@@ -35,8 +35,73 @@ escort histories show stale search priorities and predictable critical needs dur
 long journeys. The subsequent `pressure-2048-ready` trial completes every required
 release and exact state/event replay, but leaves only 30,000 clear ticks versus the
 required 36,000. Its last cleaner lost a fresh completion observation when leaving
-for a need break. The corrected population proof is running in
-`artifacts/pressure-2048-completion/` with the same nine-day horizon and all gates.
+for a need break. The subsequent `artifacts/pressure-2048-completion/` primary run
+also completes all 63 required releases, but first clears its backlogs at tick
+318,000, leaving only 6,000 clear ticks. It fails the unchanged 36,000-tick clear-day
+requirement; replay cannot turn that primary failure into a passing population gate.
+
+## Next step — staffing, daily timing and response times
+
+Requested after the user's review of the 32-person logs (2026-10-29). This is the
+next implementation and verification step, not a completed milestone. Keep the
+station layout and population fixed; expansion remains deferred.
+
+1. **Stagger guard shifts.** The pressure generator currently places every guard
+   in cohort 0, leaving predictable gaps in security coverage. Distribute guard
+   duty across the day and verify that each interval can supply a complete escort
+   team while allowing patrols, breaks and ongoing custody commitments. Merely
+   putting one guard on each shift is insufficient. Declare any redistribution of
+   existing citizen roles or duty lengths explicitly; do not silently add staff.
+
+2. **Escalate unacknowledged urgent orders; defer emergency alarms.** Add bounded
+   acknowledgment deadlines and reassignment when an eligible team does not
+   acknowledge. Distinguish posting, delivery, actual reading and acknowledgment;
+   handle late replies without duplicate active assignments or custody effects.
+   First test overnight coverage with ordinary awake staff. A future emergency
+   wake-up must use an explicitly modeled physical alarm or local interaction:
+   an inbox message must not wake a sleeper. Add that mechanism only if the
+   staffing and response-time evidence shows it is necessary.
+
+3. **Align sleep and meal opportunities.** Sleep currently overlaps some pre-duty
+   meal windows, and critical hunger/bladder needs interrupt sleep. Budget time
+   for travel, queues, meals, toilet use and check-in around sleep and duty. Check
+   physiological rates and thresholds as well as the calendar; preserve actual
+   service durations and relief. Classify late eligibility, committed-action
+   delays and travel across a window boundary, and verify that due goals are
+   retained according to the routine rules. Do not hide misses or reset needs.
+
+4. **Improve cafeteria selection using learned information.** Distance already
+   affects selection; extend it with observed or received estimates of queue wait
+   and food availability. Retain when and how each estimate was learned, allow it
+   to become stale, and use bounded reconsideration after local failure. Citizens
+   must not read live remote stock or queues. Verify useful alternatives without
+   repeated switching between cafeterias.
+
+5. **Remember terminal outages consistently.** Some retry-delay resets are fixed,
+   but reporting, audits and credential recovery need consistent tests for learned
+   outages, increasing retry delays and eligible alternative terminals. Travel
+   must not erase an observed failure. Respect terminal capabilities and record
+   permissions; use bounded rechecks or new observations to discover restoration.
+
+6. **Test response times, including overnight incidents.** Eventual completion is
+   insufficient. Measure physical incident to discovery, received report to order,
+   order to acknowledgment, acknowledgment to arrival, and arrival to resolution.
+   Separate detection delay from institutional response delay. Report median,
+   95th-percentile and maximum waits plus unresolved counts and ages. Declare
+   fixture-specific limits before assessing a fix. Include shift boundaries,
+   overnight incidents, occupied/unavailable guards, terminal outages and late
+   acknowledgments; show the cause of each missed response target.
+
+Implementation order: establish the measurements and overnight controls in item 6
+alongside staffing and routine changes in items 1 and 3. Then address terminal and
+cafeteria choices (5 and 4). Exercise acknowledgment/reassignment from item 2 in
+those controls; physical emergency alarms remain a deferred scope addition.
+
+Verify changes first with targeted controls and the 32-person station, then the
+same declared workload at 2,048 people. Preserve the full clear-day recovery gate,
+daily participation, finite resources, knowledge boundaries, bounded retries,
+unique assignments and exact state/event continuation after save/load. Keep
+evidence-based review outcomes valid without forcing unsupported reprimands.
 
 ## Remaining daily-life verification
 
