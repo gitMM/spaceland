@@ -51,11 +51,11 @@ namespace Station.Core
             if (goal == NeedKind.Social)
             {
                 var partners = new System.Collections.Generic.List<long>();
-                // Core walks the local candidates Mind orders; each consent check is the partner's own (see ConversationConsents).
+                // The initiator sees only who is here and visibly idle; the partner decides consent itself when asked (StartConversation).
                 foreach (long id in LocalConversationCandidates(actor, agent.ConversationCursor))
                 {
-                    ConversationPartnerCandidatesExamined++; agent.ConversationCursor = id;
-                    var other = actors[new Id<ActorTag>(id)]; if (other.Action?.Kind != ActionKind.Move && ConversationConsents(other)) partners.Add(id);
+                    ConversationPartnerCandidatesExamined++;
+                    if (actors[new Id<ActorTag>(id)].Action == null) partners.Add(id);
                 }
                 plan = ConversationPolicy.Plan(ActorView(actor.Id), partners, Conversations!.DurationTicks, planner.MaximumDepth, planner.NodeBudget);
             }
@@ -65,7 +65,9 @@ namespace Station.Core
             {
                 PlansFound++; agent.BlockedReason = ""; agent.RetryAt = 0; agent.PlannedTick = processingTick;
                 var step = plan.Steps[0].Intent; agent.ServiceId = step.ServiceId;
-                long cause = Emit("PlanSelected", actor, detail: (preSleep.HasValue ? "pre-sleep-relief/v1" : goal == NeedKind.Bladder ? "seek-toilet/v1" : goal == NeedKind.Social ? "conversation/v1" : "optional-rest/v1") + "; need=" + goal + "; due=" + agent.ToiletDueTick + "; cost=" + plan.Cost);
+                // The next invitation starts after this partner, so a refusal moves on to someone else.
+                if (goal == NeedKind.Social) agent.ConversationCursor = step.TargetActor.Value;
+                long cause = Emit("PlanSelected", actor, detail: (preSleep.HasValue ? "pre-sleep-relief/v1" : goal == NeedKind.Bladder ? "seek-toilet/v1" : goal == NeedKind.Social ? "conversation/v1" : "optional-rest/v1") + "; need=" + goal + "; due=" + agent.ToiletDueTick + "; cost=" + plan.Cost + (goal == NeedKind.Social ? "; partner=" + step.TargetActor.Value : ""));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.NeedCommand, Intent = step, CauseId = cause }); return;
             }
             if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; agent.BlockedReason = "PlanBudgetExhausted"; }

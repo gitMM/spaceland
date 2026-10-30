@@ -30,7 +30,9 @@ public sealed class DecisionInputIsolationTests
     // Advances both worlds to the same tick, hides a change in the second, then advances both to the same end.
     private static (World Plain, World Changed) Twin(Func<World> make, long changeAt, Action<World> change, long end)
     {
-        var plain = make(); var changed = make(); plain.AdvanceTo(changeAt); changed.AdvanceTo(changeAt); change(changed);
+        var plain = make(); var changed = make();
+        if (changeAt >= 0) { plain.AdvanceTo(changeAt); changed.AdvanceTo(changeAt); }
+        change(changed);
         plain.AdvanceTo(end); changed.AdvanceTo(end); return (plain, changed);
     }
     // A forged physical identity: the supervisor's body now claims another role and account. The institution never saw it.
@@ -84,5 +86,15 @@ public sealed class DecisionInputIsolationTests
         long Terminal(World w) => Assert.Single(w.Trace, e => e.Type == "DiscrepancyAuditOpened").TerminalId;
         Assert.NotEqual(0, Terminal(plain)); Assert.Equal(Terminal(plain), Terminal(changed));
         Assert.Equal(plain.InspectAudits(new(2)).Single().TerminalId, changed.InspectAudits(new(2)).Single().TerminalId);
+    }
+
+    [Fact]
+    public void T08_ConversationInitiatorChoosesFromVisiblePartnersNotTheirPrivateGoals()
+    {
+        // Citizen 1 privately loses its roster, so it believes it is on duty and will decline; citizen 2 can see only who is present and still.
+        var (plain, changed) = Twin(() => Load("conversation", catalog: "tiles").CreateWorld(42, true), -1, w => Set(Entry(w, "routines", new Id<ActorTag>(1)), "KnownRoster", null), 0);
+        string Choice(World w) => w.Trace.First(e => e.Type == "PlanSelected" && e.ActorId == 2).Detail;
+        Assert.EndsWith("partner=1", Choice(plain)); Assert.Equal(Choice(plain), Choice(changed));
+        Assert.Contains(changed.Trace, e => e.Type == "ActionFailed" && e.ActorId == 2 && e.Detail.Contains("ConsentDeclined"));
     }
 }

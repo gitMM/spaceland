@@ -52,7 +52,7 @@ namespace Station.Core
         }
         private bool OffDutyConversation(Id<ActorTag> actor) => ConversationPolicy.OffDuty(routines.TryGetValue(actor, out var r) ? r.KnownRoster : null, NeedNow);
         private bool ConversationOpportunity(Id<ActorTag> actor) => ConversationPolicy.Opportunity(AtSeek(actor, NeedKind.Social), () => OffDutyConversation(actor));
-        // Evaluated for the invited partner: its own checks may wake its own goals.
+        // Evaluated once, for the invited partner, when asked: its own checks may wake its own goals.
         private bool ConversationConsents(Actor actor) =>
             GoalPriority.FirstDeferring(ConversationPolicy.ConsentGates, g => g == PriorityGate.Inactive ? Conversations == null : Defers(actor, g)) == PriorityGate.None &&
             ConversationPolicy.Consents(Conversations!.ExplicitConsentActors.Contains(actor.Id.Value), needAgents.ContainsKey(actor.Id.Value), () => OffDutyConversation(actor.Id));

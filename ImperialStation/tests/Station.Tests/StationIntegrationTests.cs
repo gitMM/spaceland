@@ -56,7 +56,8 @@ public sealed class StationIntegrationTests
         // Schema 49 (escort acknowledgment deadlines) follows 48 (learned terminal outages,
         // cafeteria estimates). Workers, rests and the 422 meals are unchanged.
         // Schema 50 saves each citizen's own record-grant notices (T08 decision inputs).
-        Assert.Equal("88b455b7bc9d984d8501c0c4b502696686416616dd1e9e61a7855298b21dfeec", measured.Digest);
+        // Conversation initiators no longer read partners' private consent, so who is asked changes.
+        Assert.Equal("f24696251f02c5a49b700110f83bdee210a7aadec15653dd35bc53b4b1683992", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

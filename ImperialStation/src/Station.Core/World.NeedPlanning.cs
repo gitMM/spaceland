@@ -166,7 +166,14 @@ namespace Station.Core
             }
             if (failure != FailureReason.None)
             {
-                if (agent.Goal == NeedKind.Social) { agent.BlockedReason = failure.ToString(); agent.RetryAt = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff); WakeNeed(actor); return; }
+                if (agent.Goal == NeedKind.Social)
+                {
+                    agent.BlockedReason = failure.ToString(); agent.RetryAt = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff);
+                    // A timer set before the refusal must not run ahead of the new retry clock.
+                    if (agent.NextDecision >= 0 && agent.NextDecision < agent.RetryAt)
+                    { foreach (var e in scheduled.ForActor(agent.ActorId).Where(e => e.Kind == ScheduledKind.EvaluateNeed).ToArray()) scheduled.Remove(e); agent.NextDecision = -1; }
+                    WakeNeed(actor); return;
+                }
                 agent.KnownFailures[agent.ServiceId] = new NeedServiceFailureSnapshot { ServiceId = agent.ServiceId, ActionId = action, Tick = processingTick, RetryAt = checked(processingTick + agent.Backoff), Reason = failure };
                 agent.BlockedReason = failure.ToString(); agent.Backoff = NextWorkBackoff(agent.Backoff);
                 Emit("NeedServiceFailureLearned", actor, new Id<ActionTag>(action), detail: "service=" + agent.ServiceId + "; " + failure);
