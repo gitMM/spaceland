@@ -306,7 +306,28 @@ yet weigh the known duty start.
 all pass the gate, exact state and continuation replay and the independent audit:
 4 reprimands and 2 releases each; clear from 138,000 (150,000 for seed 7); 18–21
 missed windows, none needing attention; worst check-in gap 2,012–2,088; distinct
-state digests. 256-citizen seed runs are in progress.
+state digests.
+
+At 256 citizens every run passes the gate, exact state and continuation replay and
+the independent audit, with 16 reprimands, all 8 qualifying subjects released and
+no missed window needing attention:
+
+| Run | Clear from | Missed windows | Worst check-in gap | Assignments (max failures) |
+| --- | --- | --- | --- | --- |
+| `pressure-256-routines` (seed 42) | 138,000 | 125 | 2,322 | 509 (20) |
+| `pressure-256-roster-change` | 138,000 | 125 | 2,322 | 512 (24) |
+| `seeds/p256-s7` | 144,000 | 122 | 2,162 | 513 (21) |
+| `seeds/p256-s91` | 138,000 | 122 | 2,422 | 510 (21) |
+| `seeds/p256-s1234` | 138,000 | 118 | 2,929 | 529 (23) |
+| `seeds/p256-s2026` | 138,000 | 130 | 2,422 | 511 (24) |
+
+The seed-42 misses are 82 `InitialSleepWindow`, 27 `LateEligibility`, 13 `InCustody`,
+2 `EscortOrCustodyDuty` and 1 `CredentialRecovery`. In the roster control all 12
+changed cleaners adopted their new roster only by reading it; all 212 of their duty
+boundaries follow the known roster and 8 old-roster-only check-ins occurred before
+the reads. Seed 1234's 2,929-tick gap is close to the 3,000 bound; the bound is a
+declared assessment choice, not a calibrated one. The complete suite passes **856
+tests** (`artifacts/pressure-tests/routines-all.trx`).
 
 T22 still lacks calibration of the declared targets and roster-aware sleep start; the
 missed-window, check-in and unread-roster obligations now have integrated evidence.
@@ -342,11 +363,11 @@ family-level audit limits even where these specific tests pass.
 | T19 | CleanupOrderTests; IncidentResponseTests; PatrolTests | partial: autonomous cleanup/patrol/replacement covered; broader recovery/generation open |
 | T20 | QA, Audit, Personnel, Detention, Guard, Escort and InstitutionalStationTests | partial: integrated chain and eight declared controls pass, including full capacity and replacement after interruption; complete variant/requirement audit remains open |
 | T21 | InformationTests; RoutineTests; daily/population terminal use | partial: reads/privacy/queues/offline orders covered; complete contention/security variant audit open |
-| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; every missed window classified (none unexplained), check-in gaps bounded and the `roster-change` control pass at 32 (2026-10-30; 256 in progress); calibration and roster-aware sleep start remain open |
+| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; every missed window classified (none unexplained), check-in gaps bounded and the `roster-change` control pass at 32 and 256 (2026-10-30); calibration and roster-aware sleep start remain open |
 | T23 | PlanningTests; RepairPlanningTests | pass: known costs change choices; unknown changes do not |
 | T24 | ConstructionGeneratorTests; RecoveryGeneratorTests | partial: declared transformations covered only for implemented generator families |
-| T25 | ReproducibilityTests; RunnerTests; feature checkpoint tests | partial: broad continuation coverage; every-fixture × 20-seed × five-tick campaign not closed |
-| T26 | AuthorityTests; IncidentResponseTests; RecoveryStationTests; benchmark recovery | partial: finite-burst physical and institutional backlogs drain at 32 and 2,048 citizens (historical; population gate is now 256); controlled calibration and full specialized institutional workload remain open |
+| T25 | ReproducibilityTests; RunnerTests; feature checkpoint tests | partial: broad continuation coverage; pressure workload replays exactly for four extra seeds at 32 and 256 (2026-10-30); every-fixture × 20-seed × five-tick campaign not closed |
+| T26 | AuthorityTests; IncidentResponseTests; RecoveryStationTests; benchmark recovery | partial: finite-burst physical and institutional backlogs drain at 32 and 256 citizens for seeds 42, 7, 91, 1234 and 2026 (clear from 138,000–150,000; 2026-10-30); controlled calibration and full specialized institutional workload remain open |
 | T27 | NeedTests; NeedServiceTests | pass: exact need accumulation, thresholds, mode changes and continuation |
 
 ## Requirement inventory

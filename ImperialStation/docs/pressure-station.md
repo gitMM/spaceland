@@ -109,6 +109,10 @@ New measurements in `pressure-result.json`:
   roster schedules). The gate requires each change to be read by the citizen, every
   boundary to follow the roster it knew, and at least one old-roster-only event.
 
+Evidence for these three measurements (32 and 256 citizens, seeds 42, 7, 91, 1234 and
+2026, and the roster control) is in
+[remaining daily-life verification](acceptance-current.md#remaining-daily-life-verification).
+
 Evidence at 32 citizens (this host, .NET 8.0.33):
 
 | Run | Gate | Clear from | Missed windows | Critical sleep interruptions | No-team samples (roster/needs/commitments) |
