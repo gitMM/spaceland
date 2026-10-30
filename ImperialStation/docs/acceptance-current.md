@@ -214,6 +214,49 @@ daily participation, finite resources, knowledge boundaries, bounded retries,
 unique assignments and exact state/event continuation after save/load. Keep
 evidence-based review outcomes valid without forcing unsupported reprimands.
 
+## Follow-up — population margin and unacknowledged facility orders (2026-10-30)
+
+The 256-citizen gate passed with no margin (first clear sample 288,000, exactly one
+clear day). Dirt was the binding backlog; machines were repaired by tick 120,000. The
+response report showed repair dispatch waiting up to ~82,000 ticks for a cleaner with
+no assignment, single cleaners taking up to ~217,000 ticks on accumulated corridor
+spills, and facility orders waiting up to ~25,000 ticks for an off-duty assignee.
+
+- **Repair priority.** Facility and incident repair dispatch may choose a qualified
+  on-duty responder whose only commitment is routine cleanup; uncommitted responders
+  are still preferred. Escort, patrol, repair and verification commitments still bind.
+- **Evidence hold.** A machine is not dispatched for repair while the authority's own
+  quality check of its claimed repair is scheduled, with a supervisor or assigned, nor
+  after a reported discrepancy until a case decision for that repair has been posted
+  (bounded to one configured day). Without the hold, repair priority let the subject
+  or a cleaner repair sabotaged machines before inspection or filing (0 reprimands at
+  32; two `StaleWorkRecords` reviews at 256).
+- **Cleanup helpers.** When the latest received report for a cleanup task exceeds what
+  one cleaner clears in a duty period (duty ticks / clean-unit ticks), up to two extra
+  cleanup orders for the same tile go to on-duty, uncommitted cleaners (at most four
+  over the task's life). Each is its own job; the tile's last removed unit completes all.
+- **Unacknowledged facility orders.** A facility repair or cleanup order with no
+  acknowledgment two configured hours after dispatch goes to another eligible on-duty
+  responder through the ordinary superseding dispatch (`OrderCancelled` to the silent
+  one). A late reply reaches only the superseded attempt. Helper orders are not
+  reassigned. `FacilityTests.UnacknowledgedCleanupOrderIsReassignedAndTheLateReplyChangesNothing`
+  fails without the change and passes with it, including restore and continuation.
+
+| Run | Clear from | Clear ticks | Reprimands / releases | Failed actions (max) | Audit |
+| --- | --- | --- | --- | --- | --- |
+| `p32-item2` (before) | 288,000 | 36,000 | 4 / 2 | 350 (22) | passed |
+| `p32-margin` | 144,000 | 180,000 | 4 / 2 | 352 (20) | passed, 66 assignments |
+| `pressure-256-item2` (before) | 288,000 | 36,000 | 16 / 8 | 2,663 (23) | passed |
+| `pressure-256-margin` | 138,000 | 186,000 | 16 / 8 | 2,756 (20) | passed, 509 assignments |
+
+At 256: 83 helper orders, 47 reassigned facility orders, all 16 cases accepted, all 8
+qualifying subjects released and back at work, exact state and event replay. Facility
+dispatch waits are now only the evidence hold (max 48,753, `EvidenceHoldForQualityVerification`).
+Remaining: 41 facility acknowledgments still exceed the target because the assignee went
+off duty (`ResponderOffDuty`), when no eligible replacement was on duty. The pressure
+test now requires backlogs clear by day six. The suite passes **855 tests**
+(`artifacts/pressure-tests/margin-all.trx`); snapshot schema stays 49.
+
 ## Remaining daily-life verification
 
 Prioritize T22: classify the 46 missed ordinary routine windows in the current normal

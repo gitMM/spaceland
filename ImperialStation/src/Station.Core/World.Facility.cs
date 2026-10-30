@@ -106,13 +106,95 @@ namespace Station.Core
             Emit("FacilityTaskResponse", messageId: message.Id, attemptId: attempt.Id, detail: task.Status + "; " + task.Reason);
             RequestFacilityReview(processingTick);
         }
+        // Evidence hold: the authority's own pending quality verification of a machine's
+        // claimed repair must inspect it before another repair can change the evidence. A
+        // reported discrepancy keeps the hold until a case decision for that repair is posted,
+        // bounded to one configured day after the report so a missing filing cannot freeze it.
+        private bool AwaitingQualityVerification(JobSnapshot job)
+        {
+            if (job.Kind != WorkKind.RepairMachine) return false;
+            foreach (var q in qualityChecks.Values.Where(q => q.MachineId == job.MachineId))
+            {
+                if (q.Status is QualityAssuranceStatus.Scheduled or QualityAssuranceStatus.PendingSupervisor or QualityAssuranceStatus.Assigned) return true;
+                if (q.Status != QualityAssuranceStatus.ReportedDiscrepancy || !messages.TryGetValue(q.ResultMessageId, out var result)) continue;
+                long limit = checked(result.DeliveryTick + (Routines?.DayTicks ?? Authority?.UnacknowledgedTicks ?? 0));
+                if (processingTick < limit && !caseReplies.Values.Any(reply => messages[reply].Draft.AttemptId == q.RepairAttemptId)) return true;
+            }
+            return false;
+        }
+        // Urgent facility orders are bounded like escorts: two configured hours (day / 12).
+        private long FacilityAcknowledgmentTicks => Routines != null ? Math.Max(1, Routines.DayTicks / 12) : Authority?.UnacknowledgedTicks ?? 1;
+        private const int MaximumCleanupHelpers = 2;
+        // The current facility order, while it is still unacknowledged by its assignee.
+        private WorkAttemptSnapshot? UnacknowledgedFacilityOrder(FacilityTaskSnapshot task) =>
+            task.Status == FacilityTaskStatus.Assigned && workAttempts.TryGetValue(task.AttemptId, out var a) && a.Assignment == AssignmentStatus.Active &&
+            !a.AcknowledgmentReceivedTick.HasValue && a.DispatchKey.StartsWith("facility/", StringComparison.Ordinal) ? a : null;
+        private long FacilityAcknowledgmentDeadline(FacilityTaskSnapshot task) => UnacknowledgedFacilityOrder(task) is WorkAttemptSnapshot a ? checked(a.DispatchTick + FacilityAcknowledgmentTicks) : -1;
         private void RequestFacilityReview(long tick)
         {
-            if (Facility == null || !facilityTasks.Values.Any(t => t.Status == FacilityTaskStatus.Pending)) return;
+            if (Facility == null || !facilityTasks.Values.Any(t => t.Status == FacilityTaskStatus.Pending || FacilityAcknowledgmentDeadline(t) >= 0 || CleanupHelpersWanted(t) > 0)) return;
             if (processingPhase >= EventPhase.Decision && tick <= processingTick) tick = checked(processingTick + 1);
             if (nextFacilityReview >= 0 && nextFacilityReview <= tick) return;
             foreach (var old in scheduled.Where(e => e.Kind == ScheduledKind.ReviewFacilityTasks).ToArray()) scheduled.Remove(old);
             nextFacilityReview = tick; Schedule(new ScheduledEvent { Tick = tick, Phase = EventPhase.Decision, Kind = ScheduledKind.ReviewFacilityTasks });
+        }
+        // An order nobody acknowledged within the deadline goes to another on-duty, eligible
+        // responder through the ordinary superseding dispatch. A late reply to the old order
+        // reaches only that superseded attempt and changes neither the job nor the task.
+        private void ReassignUnacknowledgedFacilityOrders(IAuthorityView view)
+        {
+            DispatchCandidate[]? candidates = null;
+            foreach (var task in facilityTasks.Values.OrderBy(t => t.CreatedTick).ThenBy(t => t.JobId).ToArray())
+            {
+                var silent = UnacknowledgedFacilityOrder(task); if (silent == null || processingTick < checked(silent.DispatchTick + FacilityAcknowledgmentTicks)) continue;
+                var job = jobs[task.JobId]; if (AwaitingQualityVerification(job)) continue;
+                candidates ??= Candidates(view).ToArray();
+                long selected = job.Kind == WorkKind.CleanTile ? AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), silent.ActorId, candidates) :
+                    AuthorityDispatch.Replacement(view, job.MachineId, silent.ActorId, candidates);
+                if (selected == 0) { task.Reason = "UnacknowledgedNoEligibleReplacement"; continue; }
+                Emit("FacilityOrderUnacknowledged", attemptId: silent.Id, messageId: silent.OrderMessageId, detail: "job=" + task.JobId + "; from=" + silent.ActorId + "; to=" + selected);
+                var attempt = CreateWorkAttempt(processingTick, new AssignmentSeed("facility/" + task.JobId + "/unacknowledged/" + silent.Id, task.JobId, new Id<ActorTag>(selected), checked(processingTick + Facility!.OrderTicks)));
+                task.AttemptId = attempt.Id; task.Reason = "ReassignedUnacknowledged"; DispatchWork(attempt.Id, task.CauseId); candidates = null;
+            }
+        }
+        // A reported spill larger than one cleaner clears in a known duty period gets up to
+        // two additional cleanup orders for the same tile. Each helper is a separate job;
+        // the tile's last removed unit completes them all. Uses only received reports and
+        // published durations, never live dirt.
+        private long ReportedUnits(FacilityTaskSnapshot task) => messages.TryGetValue(task.LatestMessageId, out var latest) && latest.Draft.Claim.Kind == FactValueKind.Number ? latest.Draft.Claim.Number : 0;
+        private static bool OpenAttempt(WorkAttemptSnapshot a, long tick) => a.Assignment == AssignmentStatus.Active && a.Expires > tick && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected");
+        // Additional cleaners still wanted for an assigned cleanup task, within the lifetime bound.
+        private long CleanupHelpersWanted(FacilityTaskSnapshot task)
+        {
+            if (cleanliness == null || Routines == null || cleanliness.CleanUnitTicks < 1 || task.Status != FacilityTaskStatus.Assigned || task.Subject.SubjectKind != SubjectKind.Tile) return 0;
+            long perShift = Math.Max(1, Routines.DutyTicks / cleanliness.CleanUnitTicks), units = ReportedUnits(task);
+            long wanted = Math.Min(MaximumCleanupHelpers, (units + perShift - 1) / perShift - 1);
+            string prefix = "facility-assist/" + task.JobId + "/";
+            var helpers = workAttempts.Values.Where(a => a.DispatchKey.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+            return helpers.Length >= 2 * MaximumCleanupHelpers ? 0 : Math.Max(0, wanted - helpers.Count(a => OpenAttempt(a, processingTick)));
+        }
+        private void AddCleanupHelpers(IAuthorityView view)
+        {
+            DispatchCandidate[]? candidates = null;
+            foreach (var task in facilityTasks.Values.Where(t => CleanupHelpersWanted(t) > 0).OrderBy(t => t.CreatedTick).ThenBy(t => t.JobId).ToArray())
+            {
+                long units = ReportedUnits(task);
+                string prefix = "facility-assist/" + task.JobId + "/";
+                var helpers = workAttempts.Values.Where(a => a.DispatchKey.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+                // Bounded: at most twice the helper limit over the task's whole life.
+                for (int n = helpers.Length; CleanupHelpersWanted(task) > 0; n++)
+                {
+                    candidates ??= Candidates(view).ToArray();
+                    long selected = AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(task.Subject.SubjectId), workAttempts[task.AttemptId].ActorId, candidates.Where(c => !helpers.Any(h => h.ActorId == c.Person.ActorId && h.Assignment == AssignmentStatus.Active)));
+                    if (selected == 0) break;
+                    long id = nextJob; nextJob = checked(nextJob + 1);
+                    jobs.Add(id, new JobSnapshot { Id = id, Kind = WorkKind.CleanTile, TileId = task.Subject.SubjectId, ReportedUnits = units, PhysicalStatus = WorkExecution.Pending });
+                    var attempt = CreateWorkAttempt(processingTick, new AssignmentSeed(prefix + n, id, new Id<ActorTag>(selected), checked(processingTick + Facility!.OrderTicks)));
+                    Emit("CleanupHelperDispatched", attemptId: attempt.Id, detail: "job=" + task.JobId + "; helper-job=" + id + "; units=" + units);
+                    DispatchWork(attempt.Id, task.CauseId); candidates = null;
+                    helpers = workAttempts.Values.Where(a => a.DispatchKey.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+                }
+            }
         }
         private void ReviewFacilityTasks()
         {
@@ -121,6 +203,7 @@ namespace Station.Core
             foreach (var task in facilityTasks.Values.Where(t => t.Status == FacilityTaskStatus.Pending).OrderBy(t => t.CreatedTick).ThenBy(t => t.JobId).ToArray())
             {
                 var job = jobs[task.JobId];
+                if (AwaitingQualityVerification(job)) { task.Reason = "AwaitingQualityVerification"; continue; }
                 candidates ??= Candidates(view).ToArray();
                 long selected = job.Kind == WorkKind.CleanTile ? AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), 0, candidates) :
                     AuthorityDispatch.Replacement(view, job.MachineId, 0, candidates);
@@ -132,8 +215,12 @@ namespace Station.Core
                 // next selection; failed selections cannot change commitments.
                 candidates = null;
             }
-            if (!facilityTasks.Values.Any(t => t.Status == FacilityTaskStatus.Pending)) return;
+            ReassignUnacknowledgedFacilityOrders(view);
+            AddCleanupHelpers(view);
+            var waiting = facilityTasks.Values.Select(FacilityAcknowledgmentDeadline).Where(t => t > processingTick).DefaultIfEmpty(-1).Min();
+            if (!facilityTasks.Values.Any(t => t.Status == FacilityTaskStatus.Pending)) { if (waiting > 0) RequestFacilityReview(waiting); return; }
             long next = NextHourTick(HourBucket(processingTick));
+            if (waiting > 0) next = Math.Min(next, waiting);
             foreach (var person in view.Personnel.Where(p => p.Roster != null)) next = Math.Min(next, person.Roster!.NextBoundary(processingTick));
             foreach (var attempt in workAttempts.Values.Where(a => a.Expires > processingTick)) next = Math.Min(next, attempt.Expires);
             foreach (var patrol in patrolOrders.Values.Where(p => p.Payload.Expires > processingTick)) next = Math.Min(next, patrol.Payload.Expires);

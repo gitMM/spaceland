@@ -16,6 +16,12 @@ public sealed class PressureStationTests
         Assert.True(result.CheckpointMatches && result.ContinuationTraceMatches);
         Assert.True(result.RecoveryTick >= PressureStation.PressureEnd);
         Assert.True(result.Participation.Horizon - result.RecoveryTick >= StationBaseline.Day);
+        // Repair priority over routine cleanup, cleanup helpers for large spills and
+        // reassignment of silent facility orders leave a wide margin (138,000 measured).
+        Assert.True(result.RecoveryTick <= 6 * StationBaseline.Day, "Backlogs should clear by day six, leaving three clear days.");
+        Assert.True(result.Events.GetValueOrDefault("CleanupHelperDispatched") > 0);
+        // The evidence hold keeps every sabotaged machine for its quality inspection.
+        Assert.All(result.CaseOutcomes, c => Assert.Equal(PressureStation.CaseOutcomeKind.Accepted, c.Outcome));
         // Staggered guards: every duty interval has a rostered escort team, and no
         // escort waits for a shift change before dispatch.
         var coverage = Assert.Single(result.GuardCoverage);

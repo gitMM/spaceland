@@ -265,6 +265,16 @@ public static partial class PressureStation
             return Boundary(stage.Stage == "Acknowledgment" ? "ResponderOccupiedOrUnread" : stage.Stage == "Resolution" ? "WorkOrCustodyDuration" : "ResponderOccupied");
         }
 
+        // A repair dispatch deliberately waits while the authority's own quality check of the
+        // machine's claimed repair is outstanding (the evidence hold).
+        private bool HeldForQuality(World world, ResponseChain chain, ResponseStage stage)
+        {
+            if (chain.Chain != "facility" || stage.Stage != "Dispatch") return false;
+            var subject = chain.Key.Split(';', StringSplitOptions.TrimEntries)[1];
+            if (!subject.StartsWith("Machine:", StringComparison.Ordinal) || !long.TryParse(subject[8..], out long machine)) return false;
+            return world.InspectQualityAssurance().Any(q => q.MachineId == machine && q.ReceivedTick <= stage.Start && q.VerificationJobId > 0 &&
+                (q.ResultMessageId == 0 || Get(delivered, q.ResultMessageId) is var result && (result < 0 || result > stage.Start)));
+        }
         private ResponseStage Stage(string name, long start, long end) => new() { Stage = name, Start = start, End = start < 0 ? -1 : end };
         private long Get(Dictionary<long, long> map, long key) => map.TryGetValue(key, out long v) ? v : -1;
 
@@ -324,7 +334,8 @@ public static partial class PressureStation
                 long discovery = reports.TryGetValue(subject, out var seen) ? seen.Where(t => t >= Math.Max(incident, after)).DefaultIfEmpty(-1).Min() : -1;
                 var list = jobAttempts.GetValueOrDefault(task.JobId) ?? new List<long>();
                 long first = list.Count > 0 ? list[0] : 0, msg = Get(orderMessage, first);
-                long order = Get(orderTick, first), ack = Get(ackReceived, first);
+                // A reassigned order is acknowledged by whichever attempt replied first.
+                long order = Get(orderTick, first), ack = list.Select(a => Get(ackReceived, a)).Where(t => t >= 0).DefaultIfEmpty(-1).Min();
                 long arrival = list.Select(a => Get(workStart, a)).Where(t => t >= 0 && t >= order).DefaultIfEmpty(-1).Min();
                 long resolved = task.ResolvedObservedTick >= 0 ? task.ResolvedObservedTick : Resolution(task.JobId);
                 if (resolved >= 0) lastResolved[subject] = resolved;
@@ -416,7 +427,7 @@ public static partial class PressureStation
                 {
                     long target = ResponseTargets.GetValueOrDefault(chain.Chain + "/" + stage.Stage, -1);
                     if (target < 0 || stage.End >= 0 && stage.Duration <= target) continue;
-                    stage.Cause = (stage.End < 0 ? "Unresolved:" : "") + Classify(chain.Chain, stage, chain.Responders, incidentDistrict);
+                    stage.Cause = (stage.End < 0 ? "Unresolved:" : "") + (HeldForQuality(world, chain, stage) ? "EvidenceHoldForQualityVerification" : Classify(chain.Chain, stage, chain.Responders, incidentDistrict));
                     exceptional = true;
                 }
                 if (exceptional) exceptions.Add(chain);

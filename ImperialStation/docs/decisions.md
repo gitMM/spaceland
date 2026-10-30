@@ -387,3 +387,7 @@ the result, so no snapshot schema change is needed.
 | Give escort dispatches a two-configured-hour acknowledgment deadline and reassign only a completely silent team | A partly acknowledged team may already be moving; revoking it could interrupt custody. Its partner wait is bounded by `TeamNotReady`. |
 | Record a reply after reassignment as late and restore no commitment | Late replies cannot create duplicate active assignments or custody effects. |
 | Do not add a physical emergency alarm | With staggered guards no escort or patrol order went unacknowledged at 32 or 256 citizens. |
+| Let a repair take a responder committed only to routine cleanup | A broken machine outranks cleaning; uncommitted responders are still preferred, and escort, patrol, repair and verification commitments still bind. |
+| Hold repair dispatch for a machine under the authority's own pending quality check or undecided discrepancy | Repair priority otherwise destroyed misconduct evidence before inspection or filing; the hold is bounded to one configured day after a reported discrepancy. |
+| Add up to two cleanup helpers when a reported spill exceeds one cleaner's duty period | Uses only received reports and published durations; at most four helpers per task over its life. |
+| Reassign a facility order unacknowledged after two configured hours | Uses the ordinary superseding dispatch, so late replies affect only the old attempt. |
