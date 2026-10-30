@@ -13,7 +13,8 @@ namespace DeathStar
     // Foundry's curved grid they are bent like the tiles (CurvedTileMesh.Bend) and distances use the cells' curved centres.
     // Lamps light only the interiors (rendering layer 1), so no light falls through walls onto the hull outside. With
     // colliders (always in play) each room gets a mesh collider and its tile's window glass another, for StationWalker.
-    // Each room hangs the sliding doors on its faces towards +x, +y and +z (its neighbour hangs the others); TickDoors
+    // A sliding door hangs while either room it joins is built (so a hall's doors come with it) and goes with the
+    // last of them; TickDoors
     // slides them open as someone comes near, in play the ring centre. The lifts (Lift, LiftAt) are found for the whole
     // station at Init. Up and Gravity give the walker its gravity: out from the core, fading to nothing towards it.
     // With people, each room gets a reference person or two (TileBuilder.Figure), standing on its floor for scale (in
@@ -193,7 +194,9 @@ namespace DeathStar
         // A sliding door between two homes: its two leaves, where they hang shut and the way each slides open (station
         // space), how far, its middle and how open it is.
         sealed class Door{public Transform[] leaves=new Transform[2];public Vector3[] shut=new Vector3[2],slide=new Vector3[2];public Vector3 centre;public float travel,open;public Mesh mesh;}
-        readonly Dictionary<Vector3Int,List<Door>> doors=new Dictionary<Vector3Int,List<Door>>();
+        // keyed by the face's cell on its -x, -y or -z side and the direction across it (+x, +y or +z)
+        readonly Dictionary<(Vector3Int cell,Vector3Int d),Door> doors=new Dictionary<(Vector3Int,Vector3Int),Door>();
+        static (Vector3Int cell,Vector3Int d) DoorKey(Vector3Int cell,Vector3Int n)=>n.x+n.y+n.z<0?(cell+n,-n):(cell,n);
         static readonly Finish LeafFinish=new Finish(TileSlot.Trim,TilePattern.Plain,new Color(0.72f,0.74f,0.78f),0f);
         Vector3 Station(Vector3 p)=>warp!=null?warp.Map(p):p;
         // The door in face d of cell (Way.Door) on the face's plane: its middle, the directions across and up it (their
@@ -207,12 +210,12 @@ namespace DeathStar
             normal=Vector3.Cross(up,across).normalized;if(Vector3.Dot(normal,FaceNormal(cell,d))<0)normal=-normal;
         }
         // Each leaf is half the opening, shaped to it (on sheared cells it is a parallelogram), 6 cm thick on the face.
-        void HangDoors(Vector3Int cell,Transform room)
+        void HangDoors(Vector3Int around)
         {
-            List<Door> list=null;
-            foreach(var d in TileStructure.Directions)
+            foreach(var n in TileStructure.Directions)
             {
-                if(d.x+d.y+d.z<0||builder.WayBetween(cell,cell+d)!=TileBuilder.Way.Door)continue;
+                var key=DoorKey(around,n);var (cell,d)=key;
+                if(doors.ContainsKey(key)||builder.WayBetween(cell,cell+d)!=TileBuilder.Way.Door)continue;
                 DoorAt(cell,d,out var centre,out var across,out var up,out var normal);
                 var corners=new Vector3[8];
                 for(int i=0;i<8;i++)corners[i]=across*((i&1)!=0?0.25f:-0.25f)+up*((i&2)!=0?0.5f:-0.5f)+normal*((i&4)!=0?0.03f:-0.03f);
@@ -221,7 +224,7 @@ namespace DeathStar
                 for(int i=0;i<2;i++)
                 {
                     float side=i==0?-1:1;
-                    var go=new GameObject("Door leaf"){hideFlags=HideFlags.DontSave};go.transform.SetParent(room,true);
+                    var go=new GameObject("Door leaf"){hideFlags=HideFlags.DontSave};go.transform.SetParent(Holder,true);
                     door.shut[i]=centre+across*(0.25f*side);door.slide[i]=across.normalized*side;
                     go.transform.SetPositionAndRotation(Holder.TransformPoint(door.shut[i]),Holder.rotation);
                     go.AddComponent<MeshFilter>().sharedMesh=door.mesh;
@@ -229,15 +232,25 @@ namespace DeathStar
                     if(Application.isPlaying||colliders){var c=go.AddComponent<MeshCollider>();c.sharedMesh=door.mesh;c.convex=true;}
                     door.leaves[i]=go.transform;
                 }
-                (list??=new List<Door>()).Add(door);
+                doors[key]=door;
             }
-            if(list!=null)doors[cell]=list;
+        }
+        // Takes down the doors of cell (just dropped) whose other room isn't built either.
+        void DropDoors(Vector3Int cell)
+        {
+            foreach(var n in TileStructure.Directions)
+            {
+                var key=DoorKey(cell,n);
+                if(built.ContainsKey(cell+n)||!doors.TryGetValue(key,out var door))continue;
+                foreach(var leaf in door.leaves)if(leaf!=null)Release(leaf.gameObject);
+                Release(door.mesh);doors.Remove(key);
+            }
         }
         // Opens each door whose middle lies within DoorReach of who and shuts the others, over dt.
         public void TickDoors(Vector3 who,float dt)
         {
             bool moved=false;var at=Holder.InverseTransformPoint(who);
-            foreach(var list in doors.Values)foreach(var d in list)
+            foreach(var d in doors.Values)
             {
                 float target=(at-d.centre).magnitude<DoorReach?1:0;if(d.open==target)continue;
                 d.open=Mathf.MoveTowards(d.open,target,dt/DoorTime);float e=d.open*d.open*(3-2*d.open);moved=true;
@@ -412,7 +425,7 @@ namespace DeathStar
                 glass=GlassMesh(cell,go.transform);if(glass!=null)go.AddComponent<MeshCollider>().sharedMesh=glass;
             }
             if(people)People(cell,go.transform,mesh);
-            HangDoors(cell,go.transform);
+            HangDoors(cell);
             var family=structure.cells[cell].family;
             if(family!=TileFamily.Command&&family!=TileFamily.Industrial)SetGlass(cell,clear);
             built[cell]=(go,mesh,glass);
@@ -422,7 +435,7 @@ namespace DeathStar
         {
             if(!built.TryGetValue(cell,out var b))return;
             built.Remove(cell);
-            if(doors.TryGetValue(cell,out var hung)){foreach(var d in hung)Release(d.mesh);doors.Remove(cell);}
+            DropDoors(cell);
             if(b.go==null)return;
             SetGlass(cell,materials[(int)TileSlot.Glass]);
             Release(b.go);Release(b.mesh);Release(b.glass);
