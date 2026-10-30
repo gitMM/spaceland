@@ -16,6 +16,10 @@ guard team after interruption. Full release gates remain partial.
 
 ## Active verification — fixed station under pressure
 
+Population scope (user decision, 2026-10-30): population runs and tests use **256
+citizens** (four 64-citizen groups), not 2,048. The 2,048-citizen results below are
+historical evidence and are no longer pursued as a gate.
+
 The [combined pressure workload](pressure-station.md) now passes at 32 citizens:
 overlapping recovery and disciplinary chains, shared guards, all daily meals/sleep,
 drained work and service queues, conservation and exact state/event continuation.
@@ -48,7 +52,8 @@ next implementation and verification step, not a completed milestone. Keep the
 station layout and population fixed; expansion remains deferred.
 
 **Status 2026-10-30: items 6, 1 and 3 implemented and verified at 32 citizens;
-the 2,048-citizen run is pending (see below); items 5, 4 and 2 are not started.**
+the 256-citizen population gate passes (clear from 288,000, exact replay, independent
+audit); items 5, 4 and 2 are addressed below.**
 The suite passes **849 tests**, zero failures or skips
 (`artifacts/pressure-tests/staffing-timing-all.trx`). Snapshot schema is 46.
 Details, evidence and limitations are in the
@@ -174,7 +179,7 @@ cafeteria choices (5 and 4). Exercise acknowledgment/reassignment from item 2 in
 those controls; physical emergency alarms remain a deferred scope addition.
 
 Verify changes first with targeted controls and the 32-person station, then the
-same declared workload at 2,048 people. Preserve the full clear-day recovery gate,
+same declared workload at 256 people. Preserve the full clear-day recovery gate,
 daily participation, finite resources, knowledge boundaries, bounded retries,
 unique assignments and exact state/event continuation after save/load. Keep
 evidence-based review outcomes valid without forcing unsupported reprimands.
@@ -230,7 +235,7 @@ family-level audit limits even where these specific tests pass.
 | T10 | RepairPlanningTests | partial: existing component/fabrication alternatives pass; nested production domains open |
 | T11 | Historical construction tests and reports | deferred: expansion removed from first-release scope |
 | T12–T14 | ReproducibilityTests; feature snapshots; StationIntegrationTests | pass for implemented states: checkpoints, chunking, concurrent worlds and pure inspection |
-| T15 | population/recovery/institutional benchmarks; StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests | partial: finite recovery plus an audit-to-release chain with 2,048 real citizens pass; many simultaneous institutional chains, calibration and full gate inventory remain open |
+| T15 | population/recovery/institutional benchmarks; StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests | partial: finite recovery plus an audit-to-release chain with 2,048 real citizens pass (historical; population gate is now 256); many simultaneous institutional chains, calibration and full gate inventory remain open |
 | T16 | PlanningTests budget exhaustion | pass: bounded failure/backoff and continuation |
 | T17 | WorkTests and integration workload | partial: actual ongoing work measured; all blocked-job recovery policies open |
 | T18 | AutonomousRecoveryTests; RecoveryGeneratorTests; integrated lost-card variant | partial: real recovery/resumption covered; complete requirement/generator audit open |
@@ -241,7 +246,7 @@ family-level audit limits even where these specific tests pass.
 | T23 | PlanningTests; RepairPlanningTests | pass: known costs change choices; unknown changes do not |
 | T24 | ConstructionGeneratorTests; RecoveryGeneratorTests | partial: declared transformations covered only for implemented generator families |
 | T25 | ReproducibilityTests; RunnerTests; feature checkpoint tests | partial: broad continuation coverage; every-fixture × 20-seed × five-tick campaign not closed |
-| T26 | AuthorityTests; IncidentResponseTests; RecoveryStationTests; benchmark recovery | partial: finite-burst physical and institutional backlogs drain at 32 and 2,048 citizens; controlled calibration and full specialized institutional workload remain open |
+| T26 | AuthorityTests; IncidentResponseTests; RecoveryStationTests; benchmark recovery | partial: finite-burst physical and institutional backlogs drain at 32 and 2,048 citizens (historical; population gate is now 256); controlled calibration and full specialized institutional workload remain open |
 | T27 | NeedTests; NeedServiceTests | pass: exact need accumulation, thresholds, mode changes and continuation |
 
 ## Requirement inventory

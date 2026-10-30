@@ -24,7 +24,8 @@ waves of machine faults, card losses, spills and terminal outages create ordinar
 recovery work. Only initial misconduct and environmental disturbances are scripted;
 all responses must use the existing autonomous simulation.
 
-Acceptance: 32 citizens first, then the same generator at 2,048. Require overlapping
+Acceptance: 32 citizens first, then the same generator at 256 (the population gate
+since 2026-10-30; earlier 2,048 trials below are historical). Require overlapping
 work and institutions, local credential recovery, completed repairs, authorized
 detention/release and resumed work, continued daily meals/sleep and roster activity,
 conserved finite resources, no duplicate assignments/effects or retry storms, drained
@@ -41,7 +42,7 @@ this workload or treat outstanding construction gates as required release work.
 
 This increment implements items 6, 1 and 3 of the
 [next step](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
-Items 5, 4 and 2 are not started. Population acceptance at 2,048 citizens is pending.
+Items 5, 4 and 2 follow in a later section. The population gate is now 256 citizens.
 
 Declared workload changes (all in `PressureStation.Generator.cs`):
 
@@ -137,8 +138,31 @@ Remaining findings and limitations:
 - Response targets are fixture assessments for the shortened day, not calibrated
   real-time limits. Cause classification uses published rosters, recorded need
   activities and terminal events; `ResponderOccupied` is the residual category.
-- 2,048 citizens: `artifacts/pressure-2048-staggered/` was started on this build
-  and had not finished when this section was written.
+- The 2,048-citizen run of this build was stopped at tick 36,000 when the population
+  gate changed to 256.
+
+Population gate, `artifacts/pressure-256-staggered/` (four groups, nine days):
+**passes**, including exact state and continuation-event replay and the independent
+`tools/audit-pressure.cjs` audit (371 assignments, no duplicate active assignment).
+Backlogs clear from tick 288,000, exactly the required 36,000 clear ticks. 16
+reprimands; all 8 qualifying subjects released and all 8 resumed real work. Every
+citizen eats and sleeps each day; 2,304 scheduled rests complete, none overdue; one
+critical need interrupted sleep; maximum individual failures 23. 136 missed windows:
+117 `CommittedAction` (82 pre-duty meals opening during sleep), 19 `NeverSelected`.
+Every group has three guards per cohort and zero roster-gap samples (needs/breaks
+144–187, commitments 0–96 per group). Primary execution 86.8 s, replay 81.7 s.
+State `5d0c4526…eb01`, continuation `52125ac3…8ff3`.
+
+| Stage at 256 | n | Median | p95 | Max | Missed: cause |
+| --- | --- | --- | --- | --- | --- |
+| escort dispatch | 8 | 0 | 0 | 0 | — |
+| escort acknowledgment | 8 | 1,297 | 6,394 | 6,394 | 2 `TerminalOutage` |
+| escort arrival | 8 | 888 | 30,654 | 30,654 | 4 `ResponderOffDuty` (team formed late in shift) |
+| patrol dispatch | 12 | 1 | 113,692 | 113,692 | 5 `GuardsCommittedOrUnavailable` |
+| facility dispatch | 83 | 0 | 80,879 | 82,214 | 32 `NoUncommittedOnDutyResponder` |
+| facility acknowledgment | 83 | 5,909 | 25,223 | 25,440 | 31 `ResponderOffDuty`, 14 `TerminalOutage` |
+| facility resolution | 83 | 1,876 | 215,254 | 217,105 | 32 `ResponderOffDuty`, 5 work duration |
+| credential detection | 48 | 169 | 16,500 | 16,500 | 16 `LossHolderAsleep`, 8 off duty |
 
 ## Workload
 
@@ -181,7 +205,10 @@ worker has already completed it. If all assignments are terminal, a later inbox
 read and on-duty boundary prove return to idle duty; that is counted separately.
 At least one released subject must resume a real available task.
 
-## Current evidence
+## Historical evidence (before 2026-10-30)
+
+Entries naming 2,048 citizens are historical; that population is no longer run.
+
 
 - `artifacts/pressure-32-completion/` passes all nine-day gates and the independent
   assignment-history/case audit, including exact state and every continuation event.
@@ -384,7 +411,7 @@ Commands from `ImperialStation/`:
 
 ```powershell
 dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32
-dotnet run --project src/Station.Runner -c Release --no-build -- benchmark pressure --count 2048 --out artifacts/pressure-2048
+dotnet run --project src/Station.Runner -c Release --no-build -- benchmark pressure --count 256 --out artifacts/pressure-256
 ```
 
 `pressure-result.json` is the gate result; the inherited `result.json` only reports

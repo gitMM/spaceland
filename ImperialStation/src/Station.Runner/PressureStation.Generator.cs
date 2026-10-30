@@ -7,6 +7,9 @@ public static partial class PressureStation
 {
     public const long PressureEnd = 84000;
     public const int GuardsPerCohort = 3;
+    // The population workload: four 64-citizen groups. Larger counts remain possible
+    // through --count, but 256 is the population gate and test size (2026-10-30).
+    public const int PopulationCount = 256;
     // Variants: "" (staggered guard shifts with a mixed wave schedule), "single-cohort-guards"
     // (the same schedule with the earlier four guards per group, all in cohort 0; a
     // comparison control only), "daytime" (staggered guards, the earlier all-daytime waves)

@@ -48,11 +48,11 @@ public sealed class PressureStationTests
     [Fact]
     public void StaggeredGuardsComeFromDeclaredCleanersWithoutChangingPopulation()
     {
-        var staggered = PressureStation.Create(2048).Scenario.InitialState;
-        var single = PressureStation.Create(2048, variant: "single-cohort-guards").Scenario.InitialState;
+        var staggered = PressureStation.Create(PressureStation.PopulationCount).Scenario.InitialState;
+        var single = PressureStation.Create(PressureStation.PopulationCount, variant: "single-cohort-guards").Scenario.InitialState;
         Assert.Equal(single.Actors.Count, staggered.Actors.Count);
-        var cardLoss = PressureStation.Create(2048).Scenario.Disturbances.Where(d => d.Type == "CardLoss").Select(d => d.ActorId).ToHashSet();
-        for (long b = 0; b < 2048; b += 64)
+        var cardLoss = PressureStation.Create(PressureStation.PopulationCount).Scenario.Disturbances.Where(d => d.Type == "CardLoss").Select(d => d.ActorId).ToHashSet();
+        for (long b = 0; b < PressureStation.PopulationCount; b += 64)
         {
             var guards = staggered.Actors.Where(a => a.Role == "guard" && (a.Id - 1) / 64 == b / 64).Select(a => a.Id).ToArray();
             Assert.Equal(9, guards.Length);
@@ -69,10 +69,11 @@ public sealed class PressureStationTests
     [Fact]
     public void PopulationGeneratorCreatesRealIndependentBedsAndScaledMisconduct()
     {
-        var scenario = PressureStation.Create(2048);
-        Assert.Equal(64, scenario.Scenario.ScriptedActors.Count);
-        Assert.Equal(512, scenario.Scenario.ScriptedActors.Sum(a => a.Commands.Count));
-        Assert.Equal(384, scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"));
+        // 256 citizens (four 64-citizen groups) is the population workload.
+        var scenario = PressureStation.Create(PressureStation.PopulationCount);
+        Assert.Equal(8, scenario.Scenario.ScriptedActors.Count);
+        Assert.Equal(64, scenario.Scenario.ScriptedActors.Sum(a => a.Commands.Count));
+        Assert.Equal(48, scenario.Scenario.Disturbances.Count(d => d.Type == "CardLoss"));
         var state = scenario.Scenario.InitialState;
         foreach (var supervisor in state.Actors.Where(a => a.Role == "supervisor"))
         {
@@ -86,13 +87,13 @@ public sealed class PressureStationTests
             Assert.Contains(state.Information.Recovery!.Desks, d => d.TerminalId == desk.Id);
         }
         var w = scenario.CreateWorld();
-        Assert.Equal(32, w.InspectNeedServices().Count(n => n.Definition.Kind == Station.Contracts.NeedServiceKind.Bed && n.Definition.DetentionFacilityId == 1));
+        Assert.Equal(4, w.InspectNeedServices().Count(n => n.Definition.Kind == Station.Contracts.NeedServiceKind.Bed && n.Definition.DetentionFacilityId == 1));
         Assert.Empty(w.InspectEquipment());
         Assert.All(scenario.Scenario.InitialState.Actors.Where(a => a.Role == "guard"), a =>
             Assert.Single(scenario.Scenario.InitialState.Items, i => i.Resource == "guard_equipment" &&
                 i.LocationKind == Station.Contracts.LocationKind.ActorInventory && i.Owner == a.Id && i.Quantity == 1));
         w.AdvanceTo(50);
-        Assert.Equal(128, w.InspectMachines().Count(m => m.Id <= 128 && !m.Operational));
+        Assert.Equal(16, w.InspectMachines().Count(m => m.Id <= 16 && !m.Operational));
         w.AssertAccounting();
     }
 }

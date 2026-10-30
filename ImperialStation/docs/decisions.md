@@ -378,3 +378,4 @@ the result, so no snapshot schema change is needed.
 | Record why a routine window was missed | `CommittedAction`, `TravelAcrossBoundary`, a blocked reason or `NeverSelected` distinguish delays from defects; nothing is reset or hidden. |
 | Measure response stages from the recorded trace and final snapshots only | The report cannot influence decisions or replay; declared targets are assessment targets, not gates. |
 | Classify missed targets from published rosters, recorded need activities and terminal state | Separates detection delay from institutional response, and off-duty or asleep responders from occupied ones. |
+| Use 256 citizens (four 64-citizen groups) for population runs and tests instead of 2,048 | User decision. 256 keeps several groups, districts and cross-group dispatch while each run fits an iteration cycle; 2,048 results remain historical evidence. |

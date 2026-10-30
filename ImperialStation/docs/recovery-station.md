@@ -1,5 +1,8 @@
 # Station disruption and recovery
 
+> **2026-10-30:** population runs now use **256 citizens**; 2,048-citizen runs are no
+> longer used. 2,048 results below are historical evidence, not a current gate.
+
 Snapshot-format note: the performance evidence below belongs to the archived
 format-42 build. The later [institutional milestone](institutional-station.md) uses
 format 43 and includes deliberate behavior fixes. Reuse the archived executable for
@@ -18,7 +21,7 @@ Implementation plan:
 2. Record phase measurements and per-citizen participation; require physical
    recovery, delivered resolution reports and a draining institutional backlog.
 3. Run 32 citizens, investigate failures and add regression coverage for fixes.
-4. Run the same generator with 2,048 citizens, verify checkpoint continuation and
+4. Run the same generator with 256 citizens (2,048 before 2026-10-30), verify checkpoint continuation and
    record timings, memory and every unmet acceptance condition.
 
 The inherited shortened-day fixture uses 36,000 ticks per configured day; it does
@@ -95,7 +98,7 @@ From `ImperialStation/`, build Release and run:
 
 ```powershell
 dotnet run --project src/Station.Runner -c Release --no-build -- benchmark recovery --count 32 --out artifacts/recovery-32
-dotnet run --project src/Station.Runner -c Release --no-build -- benchmark recovery --count 2048 --out artifacts/recovery-2048
+dotnet run --project src/Station.Runner -c Release --no-build -- benchmark recovery --count 256 --out artifacts/recovery-256
 ```
 
 `recovery-result.json` is the acceptance result; `result.json` contains only the
@@ -262,7 +265,7 @@ optimization trial remains in `recovery-2048-fast/`; its replay was sampled for
 verified artifacts and intermediate measurements are preserved.
 
 For daily iteration, run the 32-citizen acceptance command above. It includes
-disruption, recovery and checkpoint replay. Use the 2,048-citizen gate for changes
+disruption, recovery and checkpoint replay. Use the 256-citizen population gate for changes
 that affect scale or dispatch behavior. The optional
 [bounded probe](../tools/Station.Profile/README.md) helps isolate slow phases from
 an existing checkpoint and reports restore time separately.

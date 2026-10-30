@@ -9,11 +9,11 @@ From `ImperialStation/`:
 ```powershell
 dotnet build tools/Station.Profile -c Release
 dotnet tools/Station.Profile/bin/Release/net8.0/Station.Profile.dll initial 32 180000
-dotnet tools/Station.Profile/bin/Release/net8.0/Station.Profile.dll artifacts/recovery-2048-verified/burst-end.bin 3000
+dotnet tools/Station.Profile/bin/Release/net8.0/Station.Profile.dll artifacts/recovery-256/burst-end.bin 3000
 ```
 
 The second command measures a complete small simulation without acceptance
-exports. The third measures ticks 48000–51000 of the existing population recovery.
+exports. The third measures ticks 48000–51000 of an existing population recovery (run `benchmark recovery --count 256 --out artifacts/recovery-256` first).
 JSON output separates initialization/restore from simulation seconds and includes
 allocation, event count and the final digest. Traces are drained every 1000 ticks.
 Compare matching event counts and digests as well as timings. Keep isolated
@@ -25,7 +25,7 @@ The complete acceptance test, including checkpoint continuation, remains:
 dotnet run --project src/Station.Runner -c Release --no-build -- benchmark recovery --count 32 --out artifacts/recovery-32
 ```
 
-Use `--count 2048` for the population gate. For CPU samples, an optional locally
+Use `--count 256` for the population gate. For CPU samples, an optional locally
 installed `dotnet-trace` can launch either probe:
 
 ```powershell

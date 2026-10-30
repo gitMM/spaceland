@@ -130,7 +130,7 @@ public static class Program
                 Console.WriteLine(JsonData.Write(recovery)); return recovery.Status == "completed" ? 0 : 1;
             }
             if (input is not ("daily" or "population")) throw new ArgumentException("benchmark requires daily, population, recovery, institutional or pressure.");
-            int population = Option("--count") is string n ? int.Parse(n, CultureInfo.InvariantCulture) : input == "daily" ? 12 : 2048;
+            int population = Option("--count") is string n ? int.Parse(n, CultureInfo.InvariantCulture) : input == "daily" ? 12 : PressureStation.PopulationCount;
             var workload = StationBaseline.Create(population, input == "daily" ? 2 : 1, Option("--seed") is string seedText ? ulong.Parse(seedText, CultureInfo.InvariantCulture) : 42);
             var measured = StationBaseline.Execute(workload, Option("--out") ?? "artifacts/baseline-" + input, requireDaily: input == "daily",
                 progress: tick => { if (tick % 6000 == 0) Console.Error.WriteLine("Baseline tick " + tick + "/" + workload.Scenario.InitialState.Horizon); });
