@@ -6,13 +6,33 @@ namespace Station.Runner;
 public static partial class PressureStation
 {
     public const long PressureEnd = 84000;
-    public static LoadedScenario Create(int population = 32, ulong seed = 42)
+    public const int GuardsPerCohort = 3;
+    // Variants: "" (staggered guard shifts with a mixed wave schedule), "single-cohort-guards"
+    // (the same schedule with the earlier four guards per group, all in cohort 0; a
+    // comparison control only), "daytime" (staggered guards, the earlier all-daytime waves)
+    // and "overnight" (staggered guards, every wave in the day cohort's night).
+    public static readonly IReadOnlyList<string> Variants = new[] { "", "single-cohort-guards", "daytime", "overnight" };
+    // Wave start offsets within each configured day. The mixed default keeps the first
+    // wave during day duty, starts the second at the 24,000 shift boundary while the day
+    // cohort sleeps, and puts the third in the evening after day duty has ended.
+    public static IReadOnlyList<long> WaveOffsets(string variant) => variant switch
+    { "daytime" => new long[] { 6000, 6000, 6000 }, "overnight" => new long[] { 24000, 24000, 24000 }, _ => new long[] { 6000, 24000, 15000 } };
+    // Declared staffing redistribution: five existing cleaners per group (b+21..b+25,
+    // never card-loss or misconduct actors) become guards, giving three guards per
+    // cohort so each interval keeps a two-guard escort team plus one guard for patrol,
+    // breaks or an ongoing custody commitment. Population and duty lengths are unchanged.
+    public static IReadOnlyList<long> ConvertedGuards(long groupBase) => Enumerable.Range(21, 5).Select(i => groupBase + i).ToArray();
+    public static LoadedScenario Create(int population = 32, ulong seed = 42, string variant = "")
     {
         if (population < 32 || population % 16 != 0) throw new ArgumentException("Pressure population must be a multiple of 16, at least 32.");
+        if (!Variants.Contains(variant)) throw new ArgumentException("Unknown pressure variant: " + variant);
+        bool staggered = variant != "single-cohort-guards";
+        var waves = WaveOffsets(variant);
+        if (staggered && population % 64 != 0 && population % 64 < 32) throw new ArgumentException("Staggered guard shifts need every 64-citizen group to have at least 32 citizens.");
         var baseline = StationBaseline.Create(population, days: 9, seed: seed);
         var scenario = JsonData.Read<ScenarioData>(baseline.ScenarioJson, "pressure base");
         var catalog = JsonData.Read<CatalogData>(baseline.CatalogJson, "pressure catalog");
-        var s = scenario.InitialState; s.Id = "pressure-station-" + population;
+        var s = scenario.InitialState; s.Id = "pressure-station-" + population + (variant.Length > 0 ? "-" + variant : "");
         s.ResponseChainRoles.Clear();
         CoordinateData At(int x) => new() { X = x };
         var roles = new List<string> { "cleaner", "worker", "supervisor", "guard" };
@@ -24,6 +44,7 @@ public static partial class PressureStation
         {
             subjects.Add(b + 1); subjects.Add(b + 7); supervisors.Add(b + 2);
             guards.AddRange(Enumerable.Range(b + 3, 4).Select(i => (long)i));
+            if (staggered) guards.AddRange(ConvertedGuards(b));
         }
         foreach (var a in s.Actors)
         {
@@ -35,6 +56,12 @@ public static partial class PressureStation
         s.JobSystem!.Jobs.RemoveAll(j => nonCleaners.Contains(j.Id));
         s.JobSystem.Assignments.RemoveAll(a => nonCleaners.Contains(a.ActorId));
         foreach (var r in s.Routines!.Assignments.Where(r => s.Actors.Single(a => a.Id == r.ActorId).Role != "cleaner")) r.Cohort = 0;
+        // Staggered guard duty: within each group, guards rotate through the three
+        // cohorts in ID order. Subjects and supervisors remain on the day cohort.
+        if (staggered)
+            foreach (var group in guards.GroupBy(g => (g - 1) / 64))
+                foreach (var (guard, index) in group.OrderBy(g => g).Select((g, i) => (g, i)))
+                    s.Routines.Assignments.Single(r => r.ActorId == guard).Cohort = index % s.Routines.Configuration.Cohorts;
         s.Cleanliness!.MeanSoilingTicks = 0;
         s.Cleanliness.Access.Roles.Add("worker"); s.Cleanliness.Access.RequiresCredential = true;
         foreach (var d in s.Cleanliness.Dirt) d.Units = 400;
@@ -42,11 +69,12 @@ public static partial class PressureStation
         // Finite nine-day provisioning with margin for six meals per citizen/day.
         // A food-shortage variant is separate from the declared disruption waves.
         foreach (var meal in s.Items.Where(i => i.Resource == "meal")) meal.Quantity = 16 * 60;
-        // Assigned bedrooms sit across each district's maintenance corridor. A dead-end
-        // work alcove otherwise becomes permanently unobserved after its first
-        // jobs finish; faults are still discovered only by local perception.
-        foreach (var bed in s.Needs!.Services.Where(n => n.Kind == NeedServiceKind.Bed)) bed.Position.X += 2;
-        foreach (var roster in s.Routines.Assignments) roster.RestTile!.X += 2;
+        // Assigned bedrooms open onto each district's maintenance corridor (x+1), where
+        // spills land. At x+2 they sat one tile from the next district's services, so
+        // nearest-service travel bypassed the corridor and it went unobserved for days.
+        // Faults and dirt are still discovered only by local perception.
+        foreach (var bed in s.Needs!.Services.Where(n => n.Kind == NeedServiceKind.Bed)) bed.Position.X += 1;
+        foreach (var roster in s.Routines.Assignments) roster.RestTile!.X += 1;
         s.Facility = new() { ReportingRoles = new() { "cleaner", "supervisor", "guard" }, RepeatTicks = StationBaseline.Day, OrderTicks = s.Horizon };
         s.Authority!.PatrolRole = "guard"; s.Authority.GraceTicks = 2000;
         s.QualityAssurance = new() { SamplePermille = 1000, DelayTicks = 50, OrderTicks = s.Horizon };
@@ -86,13 +114,13 @@ public static partial class PressureStation
             s.Items.Add(new() { Id = item++, Resource = "correct", Quantity = 1, LocationKind = LocationKind.MachineSlot, Owner = machine });
             for (int wave = 0; wave < 3; wave++)
             {
-                long start = 6000 + wave * StationBaseline.Day;
+                long start = waves[wave] + wave * StationBaseline.Day;
                 long actor = d * 16 + 2 + wave;
                 scenario.Disturbances.Add(new() { Type = "CardLoss", Tick = start, ActorId = actor, ItemId = actor });
                 scenario.Disturbances.Add(new() { Type = "MachineFault", Tick = start, WorkServiceId = machine });
                 scenario.Disturbances.Add(new() { Type = "Spill", Tick = start + 200, Tile = At(x + 1), DirtUnits = 100 });
                 scenario.Disturbances.Add(new() { Type = "TerminalChange", Tick = start + 500, TerminalId = terminal.Id, Enabled = true, Connected = false });
-                scenario.Disturbances.Add(new() { Type = "TerminalChange", Tick = 12000 + wave * StationBaseline.Day, TerminalId = terminal.Id, Enabled = true, Connected = true });
+                scenario.Disturbances.Add(new() { Type = "TerminalChange", Tick = start + 6000, TerminalId = terminal.Id, Enabled = true, Connected = true });
             }
         }
         long machineId = 0;

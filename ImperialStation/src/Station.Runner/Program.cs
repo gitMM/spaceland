@@ -80,7 +80,7 @@ public static class Program
             ulong generatorSeed = Option("--seed") is string g ? ulong.Parse(g, CultureInfo.InvariantCulture) : 42;
             var source = input switch
             {
-                "pressure" => PressureStation.Create(Count(32), generatorSeed),
+                "pressure" => PressureStation.Create(Count(32), generatorSeed, Option("--variant") ?? ""),
                 "recovery" => RecoveryStation.Create(Count(32), generatorSeed),
                 "institutional" => InstitutionalStation.Create(Count(32), generatorSeed, Option("--variant") ?? "normal"),
                 "daily" => StationBaseline.Create(Count(12), 2, generatorSeed),
@@ -113,7 +113,7 @@ public static class Program
             if (input == "pressure")
             {
                 var pressure = PressureStation.Execute(PressureStation.Create(Option("--count") is string pressureCount ? int.Parse(pressureCount, CultureInfo.InvariantCulture) : 32,
-                    Option("--seed") is string pressureSeed ? ulong.Parse(pressureSeed, CultureInfo.InvariantCulture) : 42), Option("--out") ?? "artifacts/pressure-station");
+                    Option("--seed") is string pressureSeed ? ulong.Parse(pressureSeed, CultureInfo.InvariantCulture) : 42, Option("--variant") ?? ""), Option("--out") ?? "artifacts/pressure-station");
                 Console.WriteLine(JsonData.Write(pressure)); return pressure.Status == "completed" ? 0 : 1;
             }
             if (input == "institutional")
