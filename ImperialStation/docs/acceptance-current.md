@@ -7,8 +7,8 @@ demonstrated scope and `partial` means required variants or integrated clauses r
 
 Current state:
 
-- **Suite:** 901 passed, zero failed or skipped, after the decision-boundary move
-  (858 before it, `artifacts/pressure-tests/identical-services-all.trx`). Snapshot schema 49.
+- **Suite:** 914 passed, zero failed or skipped, after the T08 decision-input fixes
+  (901 after the decision-boundary move, 858 before it). Snapshot schema 53.
 - **Active milestone:** the [fixed station under sustained pressure](pressure-station.md)
   passes at 32 and 256 citizens for seeds 42, 7, 91, 1234 and 2026, with exact state
   and continuation-event replay and the independent assignment audit. It stays open
@@ -18,7 +18,7 @@ Current state:
   **256 citizens** (four 64-citizen groups). 2,048-citizen results are historical.
 - **Scope amendment** (2026-10-29): fixed layout and population; expansion (T11,
   R-AUT-01..08) is deferred. See [Acceptance gates](#acceptance-gates).
-- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](architecture.md#decision-boundary-2026-10-30)). T08 stays partial: Core still builds some decision inputs from world truth.
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](architecture.md#decision-boundary-2026-10-30)). The nine decision-input leaks that audit found are closed (T08 pass for the audited inputs; see [T08 decision inputs](#follow-up--t08-decision-inputs-2026-10-30)). R-ARC-04 stays partial: `IInstitutionView` carries only the tick.
 
 ## Completed milestones and historical evidence
 
@@ -256,6 +256,48 @@ Remaining: 41 facility acknowledgments still exceed the target because the assig
 off duty (`ResponderOffDuty`), when no eligible replacement was on duty. The pressure
 test now requires backlogs clear by day six. The suite passes **855 tests**
 (`artifacts/pressure-tests/margin-all.trx`); snapshot schema stays 49.
+
+## Follow-up — T08 decision inputs (2026-10-30)
+
+The decision-boundary audit listed nine places where Core built a decider's inputs from
+world truth or another party's private state. Each is now fixed one commit at a time, with
+a regression in `DecisionInputIsolationTests`. Each regression runs two identical worlds,
+changes only state the decider cannot know in one of them just before the decision, and
+requires the same choice. Every regression failed on the code before its fix.
+
+| # | Decider and leak | Now uses | Regression | Behaviour |
+| --- | --- | --- | --- | --- |
+| 1 | Detention request and case filing authentication and reply choice read `actors[PhysicalSender]` and `actors.Values` | authority `registrations` (personnel now requires the authority) | forged physical role/account | identical |
+| 2 | Detention intake and revoked-at-intake read the `detentionAuthorizations` register | latest `DetentionAuthorization` ledger record | register revoked without record | identical |
+| 3 | Supervisor's request threshold from private `PersonnelConfig` | `PublicKnowledge.Personnel` | private threshold raised | identical |
+| 4 | Audit terminal from the `recordAccess` grant table | citizen's own grant notices (schema 50) | grant table cleared | identical |
+| 5 | Conversation initiator evaluated and woke partners' private consent | visibly idle local candidates; the partner decides once at `StartConversation`; the cursor moves past a refusal | partner's private roster dropped | **changed** |
+| 6 | Same-tile waits and on-arrival switch read live queues | perceived waits, set on arrival and on every visible change (schema 51) | unseen occupant added | identical |
+| 7 | Recovery discovery, desks, capability, inbox completion read registries and global message stage | own credential facts, `PublicKnowledge.RecoveryDesks`, enrolment knowledge (schema 52), the read's own result | registry, desk and capability changes; source check | identical |
+| 8 | Late work-order read scanned the message store for own completions | own completion memory (schema 53) | own posts re-attributed in the store | identical |
+| 9 | Failed custody: leader read co-located guards' needs and copies | guards on the leader's team list, each on its own copy | planted non-team copy | identical |
+
+"Identical" means the pressure continuation trace hash is unchanged; schemas 50–53 still
+change checkpoint bytes. Item 5 is the only behaviour change: initiators now ask partners
+who may refuse. That exposed and fixed a stale need timer on refusal, and the chosen
+partner is now named in the `conversation/v1` plan detail. The pinned 128-citizen
+digest in `StationIntegrationTests` was updated at each schema or behaviour change.
+
+Every gate below completed with checkpoint match, exact continuation-trace replay, zero
+invalid causes or trace gaps, 325 accounting checks and a passing independent audit.
+
+| Run | Continuation trace hash | Clear from | Reprimands / releases | Failed actions (max) | Conversations | Assignments |
+| --- | --- | --- | --- | --- | --- | --- |
+| p32 before | `c6237bbf…bfda95976b` | 144,000 | 4 / 2 | 340 (24) | 528 | 66 |
+| p32 after | `7ad7636e…8d906256` | 150,000 | 4 / 2 | 396 (22) | 530 | 66 |
+| p256 before | `f2defb88…fc58c2c4c` | 138,000 | 16 / 8 | 2,756 (20) | 4,154 | 509 |
+| p256 after | `b0e69ad4…689c1b3a1` | 138,000 | 16 / 8 | 2,868 (21) | 4,196 | 515 |
+
+Per commit, items 1–3 reproduce the "before" hashes, item 4 keeps them with new checkpoint
+bytes, item 5 produces the "after" hashes and items 6–9 keep them. Final checkpoint
+SHA-256: p32 `b92434f5…5ca530`, p256 `440df8b8…f148c35e`. Suite 914 passed. The extra failed
+actions after item 5 are declined invitations (`ConsentDeclined`); the individual bound
+(100) is far off.
 
 ## Remaining daily-life verification
 

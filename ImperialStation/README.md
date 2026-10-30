@@ -7,7 +7,7 @@ network services at runtime, and can be copied out of this repository and built 
 
 ## Status (2026-10-30)
 
-**901 tests pass; the first release is still incomplete.** First-release scope uses a
+**914 tests pass; the first release is still incomplete.** First-release scope uses a
 **fixed layout and population**; expansion and construction acceptance are deferred,
 while existing beds, allocation and occupancy stay in scope.
 
@@ -17,7 +17,7 @@ while existing beds, allocation and occupancy stay in scope.
   check-in bound, roster-aware sleep start, off-duty facility acknowledgments and
   broader concurrent institutional load.
 - **Population gate:** 256 citizens since 2026-10-30; 2,048-citizen results are historical.
-- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](docs/architecture.md#decision-boundary-2026-10-30)). T08 stays partial: Core still builds some decision inputs from world truth.
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](docs/architecture.md#decision-boundary-2026-10-30)). The decision-input leaks that audit found are closed (T08 pass for the audited inputs); R-ARC-04 stays partial because `IInstitutionView` carries only the tick.
 - **Requirements and gates:** the [acceptance matrix](docs/acceptance-current.md) is the
   current map of all 230 requirement IDs and T00–T27. Delivered systems are summarised
   in the [build specification's implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-30>).
