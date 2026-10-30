@@ -16,7 +16,7 @@ namespace Station.Core
         {
             if (!inspection.Discrepancy || audits.ContainsKey(inspection.AttemptId)) return;
             var actor = actors[new Id<ActorTag>(inspection.ActorId)];
-            long terminal = AuditPlanning.ChooseTerminal(recordAccess.Values.Where(g => g.Actor == actor.Id).Select(g => (g.TerminalId, g.Kind, g.RequiredRole)), actor.Role);
+            long terminal = AuditPlanning.ChooseTerminal(KnownRecordGrants(actor.Id), actor.Role);
             var audit = new AuditSnapshot { VerificationAttemptId = inspection.AttemptId, ActorId = actor.Id.Value, TerminalId = terminal, Backoff = planner.InitialBackoff };
             audits.Add(audit.VerificationAttemptId, audit);
             Emit("DiscrepancyAuditOpened", actor, attemptId: audit.VerificationAttemptId, terminalId: terminal, detail: "ResolveJobDiscrepancy");

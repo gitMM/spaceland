@@ -75,4 +75,14 @@ public sealed class DecisionInputIsolationTests
         Assert.Equal(5, changed.Personnel!.DetentionThreshold);
         foreach (var w in new[] { plain, changed }) Assert.Equal(DetentionRequestStatus.Queued, Assert.Single(w.InspectLocalDetentionRequests(new(2))).Status);
     }
+
+    [Fact]
+    public void T08_AuditTerminalComesFromTheCitizensOwnGrantsNotTheAuthorityGrantTable()
+    {
+        // The records office silently drops the supervisor's grants; the supervisor still holds its grant notice.
+        var (plain, changed) = Twin(() => Load("discrepancy_audit").CreateWorld(42, true), 28, w => ((IDictionary)Get(w, "recordAccess")).Clear(), 29);
+        long Terminal(World w) => Assert.Single(w.Trace, e => e.Type == "DiscrepancyAuditOpened").TerminalId;
+        Assert.NotEqual(0, Terminal(plain)); Assert.Equal(Terminal(plain), Terminal(changed));
+        Assert.Equal(plain.InspectAudits(new(2)).Single().TerminalId, changed.InspectAudits(new(2)).Single().TerminalId);
+    }
 }
