@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -37,9 +38,7 @@ namespace Station.Core
         private void PlanDetentionIntake(Actor actor, LocalGuardOrderSnapshot local, EscortSnapshot group)
         {
             if (actor.Id.Value != local.Payload.Leader || group.Status != EscortStatus.AwaitingIntake) return;
-            // A local refusal remains known until this service changes. Routine
-            // wakeups must not turn a full facility into a two-tick retry loop.
-            if (local.Reason is "Intake/FacilityFull" or "Intake/ServiceBusy" or "Intake/NoPower" or "Intake/Disconnected") return;
+            if (!DetentionServicePolicy.RetryIntake(local.Reason)) return;
             if (Detention == null || !Detention.Facilities.Any(f => f.Id == local.Payload.Dispatch.FacilityId)) { local.Reason = "DetentionServiceNotDeclared"; return; }
             if (!SpendPlanningRequest()) { RequestGuardDecision(local, checked(processingTick + 1)); return; }
             // The copied destination and facility identity choose the action; current
@@ -76,7 +75,7 @@ namespace Station.Core
             }
             int otherSlots = detentionStays.Values.Count(s => s.FacilityId == action.ServiceId && s.AuthorizationId != p.AuthorizationId && s.Status is DetentionStayStatus.Reserved or DetentionStayStatus.Detained or DetentionStayStatus.Releasing);
             int otherOperations = detentionStays.Values.Count(s => s.FacilityId == action.ServiceId && s.AuthorizationId != p.AuthorizationId && s.Status is DetentionStayStatus.Reserved or DetentionStayStatus.Releasing);
-            return otherSlots >= facility.Definition.Capacity || otherOperations >= facility.Definition.ServiceCapacity ? FailureReason.ServiceBusy : FailureReason.None;
+            return DetentionServicePolicy.IntakeAdmits(facility.Definition, otherSlots, otherOperations) ? FailureReason.None : FailureReason.ServiceBusy;
         }
         private void StartDetentionIntake(Actor leader, ActiveAction action)
         {
@@ -85,10 +84,9 @@ namespace Station.Core
             {
                 if (localGuardOrders.TryGetValue(action.GuardOrderId, out var order))
                 {
-                    order.Reason = "Intake/" + failure;
-                    if (failure == FailureReason.ServiceBusy && detentionFacilities.TryGetValue(action.ServiceId, out var unavailable))
-                        order.Reason = !unavailable.Powered ? "Intake/NoPower" : !unavailable.Connected ? "Intake/Disconnected" :
-                            detentionStays.Values.Count(s => s.FacilityId == action.ServiceId && s.Status is DetentionStayStatus.Reserved or DetentionStayStatus.Detained or DetentionStayStatus.Releasing) >= unavailable.Definition.Capacity ? "Intake/FacilityFull" : "Intake/ServiceBusy";
+                    bool known = detentionFacilities.TryGetValue(action.ServiceId, out var unavailable);
+                    int occupied = known ? detentionStays.Values.Count(s => s.FacilityId == action.ServiceId && s.Status is DetentionStayStatus.Reserved or DetentionStayStatus.Detained or DetentionStayStatus.Releasing) : 0;
+                    order.Reason = DetentionServicePolicy.IntakeRefusal(failure, known ? unavailable!.Definition : null, known && unavailable!.Powered, known && unavailable!.Connected, occupied);
                 }
                 ObserveRevokedIntake(leader, action); Fail(leader, action.Id, failure); return;
             }
@@ -131,9 +129,9 @@ namespace Station.Core
             if (stay.Status != DetentionStayStatus.Detained) throw new InvalidOperationException("Release timer does not own a detained occupant.");
             var f = detentionFacilities[stay.FacilityId]; var target = actors[new Id<ActorTag>(stay.ActorId)];
             if (processingTick < stay.ReleaseDue) throw new InvalidOperationException("Premature detention release.");
-            if (target.Action != null && IsNeedAction(target.Action.Kind) && f.Powered && f.Connected && FacilityOperations(stay.FacilityId) < f.Definition.ServiceCapacity) CancelRunning(target);
-            if (!f.Powered || !f.Connected || FacilityOperations(stay.FacilityId) >= f.Definition.ServiceCapacity || target.Action != null || target.Position != f.Definition.Position)
-            { stay.Reason = "ReleaseServiceUnavailable"; ScheduleDetentionRelease(stay, checked(processingTick + planner.InitialBackoff)); return; }
+            if (DetentionServicePolicy.PreemptNeedForRelease(f.Definition, f.Powered, f.Connected, FacilityOperations(stay.FacilityId), target.Action != null && IsNeedAction(target.Action.Kind))) CancelRunning(target);
+            if (!DetentionServicePolicy.ReleaseReady(f.Definition, f.Powered, f.Connected, FacilityOperations(stay.FacilityId), target.Action != null, target.Position == f.Definition.Position))
+            { stay.Reason = DetentionServicePolicy.ReleaseDeferredReason; ScheduleDetentionRelease(stay, checked(processingTick + planner.InitialBackoff)); return; }
             var action = new ActiveAction { Id = new Id<ActionTag>(nextAction++), Kind = ActionKind.ReleaseDetention, Target = f.Definition.Position, ServiceId = stay.FacilityId,
                 Started = processingTick, Completes = checked(processingTick + f.Definition.ReleaseTicks) };
             action.CauseId = Emit("DetentionReleaseDue", target, detail: "authorization=" + authorization + "; due=" + stay.ReleaseDue, causeId: stay.IntakeEventId);

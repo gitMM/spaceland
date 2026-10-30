@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -67,9 +68,7 @@ namespace Station.Core
             if (!ValidConstructionSurveyDraft(d)) return "InvalidClaim";
             if (m.Seeded || m.SessionId < 1 || m.TerminalId < 1 || !registrations.Values.Any(p => p.AccountId == m.SenderAccount.Value)) return "UnauthenticatedReport";
             if (!growthCommitments.TryGetValue(d.Subject.SubjectId, out var c)) return "UnknownProject";
-            if (c.AcceptedReportId == 0 || m.DeliveryTick < c.AcceptedTick) return "NotYetCredited";
-            if (d.Claim.Number > c.Berths || d.ObservedTick < c.CommittedTick || d.ObservedTick > m.SubmittedTick) return "InvalidCapacityOrObservationTime";
-            return "";
+            return SurveyEvidencePolicy.Admissibility(c.AcceptedReportId != 0, c.AcceptedTick, c.Berths, c.CommittedTick, m.DeliveryTick, d.Claim.Number, d.ObservedTick, m.SubmittedTick);
         }
         private bool ReceiveConstructionSurvey(MessageSnapshot m, long cause)
         {
@@ -77,13 +76,13 @@ namespace Station.Core
             var prior = acceptedConstructionSurveys.Select(id => messages[id]).FirstOrDefault(old => old.SenderAccount == m.SenderAccount && old.Draft.OperationKey == m.Draft.OperationKey);
             if (prior != null)
             {
-                Emit(SameDraft(prior.Draft, m.Draft) ? "ConstructionSurveyDuplicate" : "ConstructionSurveyRejected", messageId: m.Id, causeId: cause, detail: "OperationKeyAlreadyUsed"); return false;
+                Emit(SurveyEvidencePolicy.DuplicateRetry(SameDraft(prior.Draft, m.Draft)) ? "ConstructionSurveyDuplicate" : "ConstructionSurveyRejected", messageId: m.Id, causeId: cause, detail: "OperationKeyAlreadyUsed"); return false;
             }
             string reason = ConstructionSurveyRejection(m);
             if (reason.Length > 0) { Emit("ConstructionSurveyRejected", messageId: m.Id, causeId: cause, detail: reason); return false; }
             var c = growthCommitments[m.Draft.Subject.SubjectId]; long previous = c.BelievedBerths;
             // Last received admissible evidence wins, as for other authority beliefs. Never inspect physics here.
-            growthState!.BelievedCompletedBerths = checked(growthState.BelievedCompletedBerths - previous + m.Draft.Claim.Number);
+            growthState!.BelievedCompletedBerths = SurveyEvidencePolicy.CorrectedBelief(growthState.BelievedCompletedBerths, previous, m.Draft.Claim.Number);
             c.BelievedBerths = m.Draft.Claim.Number; c.CapacityEvidenceMessageId = m.Id; acceptedConstructionSurveys.Add(m.Id);
             Emit("ConstructionCapacityCorrected", messageId: m.Id, causeId: cause, detail: "project=" + c.ProjectId + "; previous=" + previous + "; usable=" + c.BelievedBerths + "; believed=" + growthState.BelievedCompletedBerths);
             RequestGrowthReview(processingTick); return true;

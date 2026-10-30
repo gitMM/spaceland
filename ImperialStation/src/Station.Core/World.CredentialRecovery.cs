@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -157,7 +158,8 @@ namespace Station.Core
             if (!ValidRecoveryDraft(message.Draft) || message.Draft.Kind != MessageKind.LostCardReport || !RecoveryTransportAuthentic(message) ||
                 !credentials.TryGetValue(message.Draft.Subject.SubjectId, out var credential) || credential.Definition.Holder != message.PhysicalSender || credential.Definition.Account != message.SenderAccount)
                 throw new InvalidOperationException("Invalid authenticated recovery report.");
-            if (!recoveryCaseByCredential.TryGetValue(credential.Definition.Id, out long caseId))
+            bool open = recoveryCaseByCredential.TryGetValue(credential.Definition.Id, out long caseId);
+            if (RecoveryCasePolicy.OnLostCardReport(open) == LostCardResponse.OpenCaseAndRevoke)
             {
                 caseId = nextRecoveryCase++;
                 var recovery = new CredentialRecoveryCaseSnapshot { Id = caseId, ActorId = message.PhysicalSender.Value, AccountId = message.SenderAccount.Value, OldCredentialId = credential.Definition.Id, FirstRequestMessageId = message.Id, AcceptedTick = processingTick };

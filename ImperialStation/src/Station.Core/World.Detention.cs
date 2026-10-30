@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -42,8 +43,7 @@ namespace Station.Core
                 Emit("DetentionDecisionRead", actor, messageId: message.Id, detail: decision.State + "; " + decision.Reason); return;
             }
             var c = message.Draft.CaseDecision;
-            if (message.Draft.Kind != MessageKind.CaseDecision || c?.Accepted != true || Personnel == null || actor.Role != Personnel.SupervisorRole ||
-                c.QualifyingCount < Personnel.DetentionThreshold || localDetentionRequests.ContainsKey(message.Id)) return;
+            if (message.Draft.Kind != MessageKind.CaseDecision || c == null || !DetentionDecisions.ShouldRequestDetention(c, Personnel, actor.Role) || localDetentionRequests.ContainsKey(message.Id)) return;
             var request = new LocalDetentionRequestSnapshot { CaseReplyMessageId = message.Id, ActorId = actor.Id.Value, AccountId = c.AccountId, CaseId = c.CaseId };
             localDetentionRequests.Add(message.Id, request);
             var payload = new DetentionRequestPayload(c.AccountId, c.CaseId, message.Id);
@@ -76,40 +76,31 @@ namespace Station.Core
             var p = message.Draft.DetentionRequest!; string key = message.SenderAccount.Value + "/" + message.Draft.OperationKey;
             string reason = ValidateDetentionRequest(message); var state = DetentionDecisionState.Rejected; long authorization = 0, expires = 0;
             long validationVersion = records.Version; int count = QualifyingReprimandCount(p.AccountId, processingTick);
-            if (reason == "PersonnelUnavailable") state = DetentionDecisionState.Waiting;
+            DetentionDecisionPayload? prior = null; bool priorSame = false, priorReleased = false, priorRevoked = false; long priorExpires = 0;
             if (detentionRequestKeys.TryGetValue(key, out long priorId))
             {
-                var prior = detentionRequests[priorId].Decision;
-                if (!SameDraft(messages[priorId].Draft, message.Draft)) { reason = "IdempotencyConflict"; state = DetentionDecisionState.Rejected; }
-                else if (reason.Length == 0)
+                prior = detentionRequests[priorId].Decision; priorSame = SameDraft(messages[priorId].Draft, message.Draft);
+                if (prior.State == DetentionDecisionState.Approved)
                 {
-                    if (prior.State == DetentionDecisionState.Approved && detentionAuthorizations[prior.AuthorizationId].Expires > processingTick && !ReleaseWasReceived(prior.AuthorizationId, processingTick, records.Version) && !RevocationWasKnownToAuthority(prior.AuthorizationId, processingTick, records.Version))
-                    { state = DetentionDecisionState.Approved; authorization = prior.AuthorizationId; expires = prior.Expires; reason = "DuplicateRequest"; }
-                    else { state = prior.State == DetentionDecisionState.Waiting ? DetentionDecisionState.Waiting : DetentionDecisionState.Rejected; reason = prior.State == DetentionDecisionState.Waiting ? prior.Reason : "PriorRequestClosed"; }
+                    priorExpires = detentionAuthorizations[prior.AuthorizationId].Expires;
+                    priorReleased = ReleaseWasReceived(prior.AuthorizationId, processingTick, records.Version); priorRevoked = RevocationWasKnownToAuthority(prior.AuthorizationId, processingTick, records.Version);
                 }
             }
-            else if (reason.Length == 0)
+            bool hasActive = activeDetentionAuthorizations.TryGetValue(p.AccountId, out long active);
+            var choice = DetentionDecisions.Decide(new DetentionRequestFacts(processingTick, p.AccountId, reason, count, Personnel?.DetentionThreshold ?? 0, prior, priorSame, priorExpires, priorReleased, priorRevoked,
+                Detention != null && Authority != null, hasActive, active, hasActive ? detentionAuthorizations[active].Expires : 0, registrations.Values));
+            state = choice.State; reason = choice.Reason;
+            if (choice.Authorization is DetentionAuthorizationChoice.ReusePrior or DetentionAuthorizationChoice.ReuseActive) { authorization = choice.AuthorizationId; expires = choice.Expires; }
+            else if (choice.Authorization == DetentionAuthorizationChoice.IssueNew)
             {
-                if (Detention == null || Authority == null) { state = DetentionDecisionState.Waiting; reason = "DetentionPolicyUnavailable"; }
-                else if (activeDetentionAuthorizations.TryGetValue(p.AccountId, out long active) && detentionAuthorizations[active].Expires > processingTick)
-                { state = DetentionDecisionState.Approved; authorization = active; expires = detentionAuthorizations[active].Expires; reason = "ExistingAuthorization"; }
-                else if (count < Personnel!.DetentionThreshold) reason = "ThresholdNotMet";
-                else
-                {
-                    var subject = registrations.Values.Where(r => r.AccountId == p.AccountId).ToArray();
-                    if (subject.Length != 1) { state = DetentionDecisionState.Waiting; reason = "AmbiguousSubjectIdentity"; }
-                    else
-                    {
-                        expires = checked(processingTick + Detention.OrderTicks); long followingId = checked(nextDetentionAuthorization + 1);
-                        authorization = nextDetentionAuthorization; nextDetentionAuthorization = followingId; state = DetentionDecisionState.Approved; reason = "Approved";
-                        var order = new DetentionAuthorizationSnapshot { Id = authorization, AccountId = p.AccountId, ActorId = subject[0].ActorId, RequestMessageId = message.Id, CaseId = p.CaseId,
-                            IssuedTick = processingTick, Expires = expires, SentenceTicks = Detention.SentenceTicks, CountThroughCaseId = nextCase - 1, CountThroughRecordVersion = validationVersion, JustifyingCases = QualifyingReprimandCases(p.AccountId, processingTick) };
-                        detentionAuthorizations.Add(order.Id, order); activeDetentionAuthorizations[p.AccountId] = order.Id; RecordDetentionAuthorization(order);
-                        Schedule(new ScheduledEvent { Tick = expires, Phase = EventPhase.Decision, Kind = ScheduledKind.ExpireDetentionAuthorization, Value = order.Id });
-                        OpenEscortDispatch(order.Id);
-                        Emit("DetentionAuthorized", messageId: message.Id, causeId: cause, detail: "authorization=" + order.Id + "; account=" + p.AccountId + "; known-actor=" + order.ActorId);
-                    }
-                }
+                expires = checked(processingTick + Detention!.OrderTicks); long followingId = checked(nextDetentionAuthorization + 1);
+                authorization = nextDetentionAuthorization; nextDetentionAuthorization = followingId;
+                var order = new DetentionAuthorizationSnapshot { Id = authorization, AccountId = p.AccountId, ActorId = choice.SubjectActorId, RequestMessageId = message.Id, CaseId = p.CaseId,
+                    IssuedTick = processingTick, Expires = expires, SentenceTicks = Detention.SentenceTicks, CountThroughCaseId = nextCase - 1, CountThroughRecordVersion = validationVersion, JustifyingCases = QualifyingReprimandCases(p.AccountId, processingTick) };
+                detentionAuthorizations.Add(order.Id, order); activeDetentionAuthorizations[p.AccountId] = order.Id; RecordDetentionAuthorization(order);
+                Schedule(new ScheduledEvent { Tick = expires, Phase = EventPhase.Decision, Kind = ScheduledKind.ExpireDetentionAuthorization, Value = order.Id });
+                OpenEscortDispatch(order.Id);
+                Emit("DetentionAuthorized", messageId: message.Id, causeId: cause, detail: "authorization=" + order.Id + "; account=" + p.AccountId + "; known-actor=" + order.ActorId);
             }
             if (!detentionRequestKeys.ContainsKey(key)) detentionRequestKeys.Add(key, message.Id);
             var result = new DetentionDecisionPayload(message.Id, p.AccountId, authorization, state, reason, count, expires, nextCase - 1);

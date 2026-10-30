@@ -76,8 +76,8 @@ namespace Station.Core
                 local.Reason = "PreparingForEscort";
                 RequestNeedDecision(needAgents[local.ActorId], processingTick);
             }
-            if (order.Reason == "PreparingForEscort") return;
-            if (failure == FailureReason.UnknownRequiredFact && order.Status == GuardOrderStatus.TargetLocated)
+            var retry = GuardOutcomePolicy.AfterFailedHandoff(failure, order.Reason == "PreparingForEscort", order.Status == GuardOrderStatus.TargetLocated);
+            if (retry == CustodyRetry.AwaitLocalHandoff)
             {
                 // A failed local handshake reports only that a precondition is
                 // unmet. Retain the leader's own observation and wait without
@@ -86,7 +86,7 @@ namespace Station.Core
                 RequestGuardDecision(order, Math.Min(checked(processingTick + order.Backoff), GuardTargetWaitDeadline(order)));
                 order.Backoff = NextWorkBackoff(order.Backoff); return;
             }
-            if (failure != FailureReason.NotAtRequiredTile) return;
+            if (retry != CustodyRetry.Reinspect) return;
             // The co-located team took part in this failed local handoff. Each
             // guard must inspect again; no remote member or authority is updated.
             foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
