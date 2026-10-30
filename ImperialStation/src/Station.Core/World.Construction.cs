@@ -103,7 +103,7 @@ namespace Station.Core
             }
             foreach (var input in recipe.Inputs) RecordRecipeDelta(actor, action, input.Resource, -input.Quantity);
             Topology.AddCompleted(new Tile(new Id<TileTag>(project.TileId), project.DefinitionId, project.Site));
-            InitializeNeedServices(beds); foreach (var bed in beds) constructedBerths.Add(bed.Id);
+            InitializeNeedServices(beds); foreach (var bed in beds) { constructedBerths.Add(bed.Id); ServiceVisiblyChanged(needServices[bed.Id]); }
             project.Status = ConstructionStatus.Completed; project.ActiveActionId = 0; project.CompletedTick = processingTick;
             project.CompletedActionId = action.Id.Value; project.CompletedActorId = actor.Id.Value; project.BerthIds = Array.AsReadOnly(beds.Select(b => b.Id).ToArray());
             project.CompletionEventId = Emit("ConstructionCompleted", actor, action.Id, target: project.Site, detail: "project=" + project.Id + "; tile=" + project.TileId + "; berths=" + definition.Berths, causeId: action.CauseId);

@@ -34,42 +34,36 @@ namespace Station.Core
         {
             var agent = repairAgents[actorId]; agent.NextDecision = -1; var actor = actors[actorId];
             if (EscortControls(actorId) || actor.Action != null || agent.Pending.Count == 0 || DeferToNeed(actor) || RepairCredentialBlocked(actor, agent.Pending[0]) || DeferToDueGoal(actor)) return;
-            // Finishing work can establish success after shift end. Recognize that
-            // known result without starting another physical repair step off duty.
-            if (!KnownOnDuty(actorId) && !actor.Knowledge.Entries.Values.Any(e => e.Fact.Key.Equals(new FactKey(SubjectKind.Machine, agent.Pending[0], AttributeKind.Operational)) && e.Fact.Value.Equals(FactValue.Boolean(true)))) return;
+            // Off duty, only a known result is recognized (Mind rule).
+            if (!RepairPolicy.Proceeds(KnownOnDuty(actorId), actor.Knowledge.Entries.Values.Select(e => e.Fact), agent.Pending[0])) return;
             // Explicit report-first priority avoids two independent goals issuing competing intents.
             // Report completion wakes this retained repair; it never discards carried materials.
-            if (!needAgents.ContainsKey(actorId.Value) && reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0) return;
-            if (!needAgents.ContainsKey(actorId.Value) && checkIns.TryGetValue(actorId, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick)) return;
-            if (planningBudgetTick != processingTick) { planningBudgetTick = processingTick; planningRequestsThisTick = 0; }
-            if (planningRequestsThisTick >= planner.RequestsPerTick) { RequestRepairDecision(agent, checked(processingTick + 1)); return; }
-            planningRequestsThisTick++; PlannerRequests++;
+            if (WorkReportsFirst(actorId)) return;
+            if (!SpendPlanningRequest()) { RequestRepairDecision(agent, checked(processingTick + 1)); return; }
             var result = RepairPlanning.Plan(ActorView(actorId), agent.Pending[0], planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += result.Expansions; agent.LastOutcome = result.Outcome; agent.LastCost = result.Cost;
-            if (result.Outcome == PlanOutcome.PlanFound)
+            var step = RepairPolicy.Classify(result);
+            if (step != WorkGoalStep.Blocked)
             {
                 PlansFound++; agent.BlockedReason = ""; agent.Backoff = planner.InitialBackoff;
-                if (result.Steps.Count == 0)
+                if (step == WorkGoalStep.Completed)
                 {
                     Emit("RepairGoalCompleted", actor, detail: "repair-known-equipment/v1; machine=" + agent.Pending[0]);
                     RepairOrderSatisfied(agent, agent.Pending[0]);
                     agent.Pending.RemoveAt(0); agent.CompletedRepairs++; RequestRepairDecision(agent, processingTick); return;
                 }
-                var first = result.Steps[0].Intent;
-                if (agent.Attempts.TryGetValue(agent.Pending[0], out long attemptId)) first = new ActionIntent(first.Actor, first.Kind, first.Target, first.Item, first.ServiceId, first.Message, first.RecipeId, attemptId, first.Query, first.Quantity, first.OtherItem);
-                if ((first.Kind == ActionKind.PickUp || first.Kind == ActionKind.Install || first.Kind == ActionKind.SplitStack) && first.Item.Value == 0)
-                    throw new InvalidOperationException("Repair plan attempted to execute an unbound hypothetical output.");
+                var first = RepairPolicy.FirstIntent(result, agent.Attempts.TryGetValue(agent.Pending[0], out long attemptId) ? attemptId : (long?)null);
                 long cause = Emit("PlanSelected", actor, causeId: publicKnowledge?.Work?.Equipment.FirstOrDefault(m => m.Id == agent.Pending[0])?.RequiresCredential == true ? RestoredCredentialCause(actor) : 0, detail: "repair-known-equipment/v1; machine=" + agent.Pending[0] + "; cost=" + result.Cost + "; " + string.Join(" -> ", result.Steps.Select(s => s.Name)));
                 PinRepairPlan(actor, agent, result);
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, Value = DecisionSource(actor, DueSource.None), Intent = first, CauseId = cause });
                 return;
             }
-            if (result.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; agent.BlockedReason = "PlanBudgetExhausted"; }
-            else { PlansUnavailable++; agent.BlockedReason = "NoKnownRepairPrerequisitesOrRoute"; }
+            if (result.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
+            agent.BlockedReason = RepairPolicy.BlockedReason(result.Outcome);
             RepairOrderBlocked(agent, agent.BlockedReason);
             Emit("PlanUnavailable", actor, detail: "repair-known-equipment/v1; " + result.Outcome + "; retry=" + agent.Backoff);
             RequestRepairDecision(agent, checked(processingTick + agent.Backoff));
-            agent.Backoff = Math.Min(planner.MaximumBackoff, agent.Backoff > planner.MaximumBackoff / 2 ? planner.MaximumBackoff : checked(agent.Backoff * 2));
+            agent.Backoff = NextWorkBackoff(agent.Backoff);
         }
         private static void ReleaseRepairPins(Actor actor, RepairAgent agent)
         {
@@ -80,11 +74,11 @@ namespace Station.Core
         }
         private static void PinRepairPlan(Actor actor, RepairAgent agent, PlanResult plan)
         {
-            var itemIds = new SortedSet<long>(plan.Steps.Select(s => s.Intent.Item.Value).Where(id => id > 0));
+            var itemIds = RepairPolicy.PlannedItems(plan);
             foreach (var entry in actor.Knowledge.Entries.Values)
             {
                 var f = entry.Fact;
-                if (f.Pinned || !(f.Key.SubjectKind == SubjectKind.Machine && f.Key.SubjectId == agent.Pending[0] || f.Key.SubjectKind == SubjectKind.Item && itemIds.Contains(f.Key.SubjectId))) continue;
+                if (f.Pinned || !RepairPolicy.PinsForPlan(f.Key, agent.Pending[0], itemIds)) continue;
                 agent.PlanPins.Add(f.Key); entry.Fact = new KnowledgeFact(f.Id, f.Key, f.Value, f.SourceKind, f.SourceId, f.ObservedTick, f.LearnedTick, true, f.SourceActorId); entry.Recency = ++actor.Knowledge.Sequence;
             }
         }
@@ -93,12 +87,12 @@ namespace Station.Core
             if (!repairAgents.TryGetValue(actor.Id, out var agent) || actor.Action != null) return;
             ReleaseRepairPins(actor, agent);
             if (failed) agent.BlockedReason = actor.LastFailure.ToString();
-            RequestRepairDecision(agent, failed ? checked(processingTick + agent.Backoff) : processingTick);
+            RequestRepairDecision(agent, WorkBackoff.RetryTick(processingTick, agent.Backoff, failed));
         }
         private void OnRepairKnowledgeChanged(Actor actor, FactKey key)
         {
             if (!repairAgents.TryGetValue(actor.Id, out var agent) || agent.Pending.Count == 0 || actor.Action != null) return;
-            if (key.SubjectKind != SubjectKind.Item && key.SubjectKind != SubjectKind.Tile && !(key.SubjectKind == SubjectKind.Machine && agent.Pending.Contains(key.SubjectId))) return;
+            if (!RepairPolicy.KnowledgeWakes(key, agent.Pending)) return;
             agent.Backoff = planner.InitialBackoff; RequestRepairDecision(agent, processingTick);
         }
         public IReadOnlyList<RepairAgentSnapshot> InspectRepairAgents() => repairAgents.Values.Select(a => new RepairAgentSnapshot

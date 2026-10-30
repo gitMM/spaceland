@@ -5,72 +5,30 @@
 
 Nothing here is a requirement for H1–H4. Implementing agents MUST NOT build these features unless a later spec revision promotes them with requirement IDs and tests.
 
-## Implementation status — 2026-10-29
+## Implementation status — 2026-10-30
 
-Scope update: the user has deferred station expansion. First release now has a
-fixed layout and population; construction acceptance is historical, not a release
-blocker. The active milestone combines recovery and concurrent institutions under
-sustained pressure; see [the pressure workload](../../../ImperialStation/docs/pressure-station.md).
+None of the infiltration features below has been started. They stay deferred until
+the first release is complete; the required foundation is being built independently in
+[`ImperialStation/`](../../../ImperialStation/README.md), outside Unity's `Assets` tree.
 
-The required simulation foundation is being implemented independently in
-[`ImperialStation/`](../../../ImperialStation/README.md), outside Unity's `Assets`
-tree. The first release is **not yet complete**. This roadmap's proposed infiltration
-features have not been promoted to first-release requirements.
+The foundation now covers deterministic simulation and replay, bounded planning and
+private knowledge, physical terminals and credentials, autonomous work and reporting,
+rosters and overdue responses, maintenance/QA/audits, detention and escorts, needs and
+daily routines, and credential recovery. Station expansion has been removed from the
+first release (fixed layout and population). The fixed-station
+[pressure workload](../../../ImperialStation/docs/pressure-station.md) passes at 32 and
+256 citizens across five seeds with exact replay; the complete suite passes 901 tests.
 
-Delivered foundation systems include deterministic simulation and replay, bounded
-planning and private knowledge, physical terminals and credentials, autonomous work
-and reporting, rosters and overdue responses, maintenance/QA/audits, detention and
-escorts, needs and daily routines, credential recovery, and autonomous habitat
-construction. Later local construction surveys now correct authority capacity
-records through delayed terminal reports while preserving physical state.
-
-The latest complete suite passed **816 tests**, and the capacity-correction scenario
-replays with identical state, trace and causal proofs. This does not establish full
-release readiness: initial capacity identification, construction follow-up, remaining
-institutional variants, remaining daily/population acceptance variants and the complete
-acceptance audit still need work. The new integrated station proves two configured
-days of autonomous daily participation and sustained work, including shortage,
-recovery and checkpoint controls. A 2,048-citizen population baseline now measures
-real work, needs and terminal use. See the [integration report](../../../ImperialStation/docs/integration-baseline.md)
-and [current acceptance matrix](../../../ImperialStation/docs/acceptance-current.md).
-The subsequent [finite disruption/recovery goal](../../../ImperialStation/docs/recovery-station.md)
-also passes at 32 and 2,048 citizens: all lost credentials and faulted machines
-recover, overdue work and patrol responses arrive, finite backlogs drain, and
-daily meals/sleep continue across five shortened days. Checkpoint continuation
-matches. The specialized institutional follow-up is recorded below; full calibration and release gates stay open.
-The subsequent performance pass reduces the same population simulation from
-14m21s to 5m20s with identical final state; the small recovery/replay check takes
-about four seconds. Reproduction and timing scope are in the recovery report.
-
-The [specialized institutional follow-up](../../../ImperialStation/docs/institutional-station.md)
-now passes at 32 and 2,048 citizens. Eight small controls cover correct work, the
-reprimand threshold, unavailable guards, terminal/intake outages, full capacity and
-an interrupted escort followed by a different guard team. Daily life, release,
-resumed work and checkpoint continuation are measured. Wider concurrent institutional
-load and complete first-release acceptance remain open.
-The complete small institutional command takes **3.309 seconds**; the population
-command takes **213.815 seconds** including checkpoint continuation. Compilation is
-excluded. These are two-day institutional measurements, not a direct comparison
-with the five-day recovery benchmark above.
-
-See the [build specification's implementation status](<imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>)
-for the delivered-system inventory and remaining gates, and the
-[latest verification report](../../../ImperialStation/docs/institutional-station.md)
-for reproducible evidence. Visible-role challenges, credential impersonation,
-information-theft/extraction missions, sabotage dependencies and authoritative FPS
-stealth remain roadmap proposals; the implemented foundation is not a playable
-infiltration release.
+Remaining first-release work (calibration, broader institutional load, the T20/T25
+variant campaigns, work domains, observability and the viewer) is tracked in the
+[build specification's implementation status](<imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-30>)
+and the [acceptance matrix](../../../ImperialStation/docs/acceptance-current.md).
+Visible-role challenges, credential impersonation, information-theft/extraction
+missions, sabotage dependencies and authoritative FPS stealth remain roadmap
+proposals; the implemented foundation is not a playable infiltration release.
 
 The user revoked the computer-shutdown instruction on 2026-10-29. Keep the computer running.
 
-Stabilization, the acceptance matrix, the integrated daily station, the population
-baseline and repairs exposed by the declared institutional controls are complete
-for their measured scope. The recommended next increment is to classify missed
-ordinary routine windows and close the remaining daily-life priority/unread-roster
-checks, using the small station for iteration. Then broaden concurrent institutional
-load and seed coverage. The build specification's **Recommended next increment —
-close daily-life acceptance gaps** records this guidance; the acceptance matrix
-retains all other open gates. Roadmap features remain deferred.
 
 ## 0. Added in v1.2: expected-presence tags
 

@@ -23,7 +23,8 @@ namespace Station.Core
         public IReadOnlyList<ReprimandSnapshot> InspectReprimands() => reprimands.Values.Select(c => c.Copy()).ToArray();
         public IReadOnlyList<CaseFilingSnapshot> InspectCaseFilings(Id<ActorTag> actor) => caseFilings.Values.Where(f => f.ActorId == actor.Value).Select(f => f.Copy()).ToArray();
         private void InitializePersonnel(PersonnelConfig config)
-        { if (Information == null || !JobsEnabled) throw new ArgumentException("Personnel requires information and jobs."); Personnel = config; }
+        { if (Information == null || !JobsEnabled || Authority == null) throw new ArgumentException("Personnel requires information, jobs and the authority's registrations."); Personnel = config;
+          publicKnowledge = publicKnowledge!.WithPersonnel(new PublicPersonnelPolicy(config.SupervisorRole, config.DetentionThreshold)); }
         private void RecordQueryDisclosure(Actor actor, ActiveAction action, RecordEntry entry, long capturedVersion)
         {
             if (Personnel == null || !(entry.Kind is RecordKind.WorkAttempt or RecordKind.WorkReport)) return;
@@ -71,8 +72,8 @@ namespace Station.Core
             var p = message.Draft.CaseSubmission!;
             long at = historicalTick ?? processingTick;
             if (Personnel == null) return "PersonnelUnavailable";
-            if (!actors.TryGetValue(message.PhysicalSender, out var sender) || sender.Account != message.SenderAccount || sender.Role != Personnel.SupervisorRole || message.TerminalId < 1 || message.SessionId < 1 || message.SubmittedTick < 0) return "RequesterPermissionDenied";
-            if (p.Policy != AccountabilityPolicy.Version || p.Violation != "WrongInstalledPart") return "UnsupportedAccountabilityPolicy";
+            if (RegisteredSender(message)?.Role != Personnel.SupervisorRole || message.TerminalId < 1 || message.SessionId < 1 || message.SubmittedTick < 0) return "RequesterPermissionDenied";
+            if (!CasePolicy.SupportedPolicy(p)) return "UnsupportedAccountabilityPolicy";
             if (!messages.TryGetValue(p.InspectionReportId, out var inspection) || inspection.PhysicalSender != message.PhysicalSender || inspection.SenderAccount != message.SenderAccount ||
                 inspection.Draft.Kind != MessageKind.WorkCompleted || inspection.Draft.InspectionReport == null || inspection.TerminalId < 1 || inspection.SessionId < 1 || inspection.SubmittedTick < 0 || inspection.SubmittedTick > message.SubmittedTick ||
                 !inspection.Draft.Subject.Equals(new FactKey(SubjectKind.Machine, p.MachineId, AttributeKind.Operational)) || !inspection.Draft.Claim.Equals(FactValue.Boolean(false)) ||
@@ -94,46 +95,36 @@ namespace Station.Core
                 !publicKnowledge.Work.Resources.Any(r => r.Id == specification.InstalledResource)) return "InvalidInspectionEvidenceShape";
             var attempts = CaseAttemptHistory(p.MachineId).Where(r => r.Tick <= at && r.Version <= throughRecordVersion).ToArray();
             var reports = records.History.Values.Where(r => r.Kind == RecordKind.WorkReport && r.Tick <= at && r.Version <= throughRecordVersion && attempts.Any(a => a.EntityId == RecordNumber(r, AttributeKind.AttemptId))).ToArray();
-            if (attempts.Any(r => r.Version > p.AttemptVersion) || reports.Any(r => r.Version > p.ReportVersion)) return "StaleWorkRecords";
-            if (!attempts.Concat(reports).Select(r => r.Version).OrderBy(v => v).SequenceEqual(p.Evidence.Select(e => e.RecordVersion))) return "IncompleteCaseHistory";
-            var evidence = inspection.Draft.InspectionReport;
-            var finding = AccountabilityPolicy.Assess(p.MachineId, evidence.RequiredResource, evidence.InstalledResource, inspection.Draft.ObservedTick, rows, true);
-            return finding.Attributable && finding.JobId == p.JobId && finding.AttemptId == p.AttemptId && finding.AccountId == p.AccountId && finding.Reason == p.Violation ? "" : "AccountabilityPolicyRejected:" + finding.Reason;
+            return CasePolicy.EvidenceStandard(p, inspection.Draft.InspectionReport, inspection.Draft.ObservedTick, attempts, reports, rows);
         }
         public int QualifyingReprimandCount(long account, long tick)
             => QualifyingReprimandCases(account, tick).Length;
-        private long[] QualifyingReprimandCases(long account, long tick, long throughCaseId = long.MaxValue, long throughRecordVersion = long.MaxValue)
-        {
-            if (Personnel == null || account < 1 || tick < 0) return Array.Empty<long>();
-            long start = tick >= Personnel.QualifyingWindow ? tick - Personnel.QualifyingWindow : 0;
-            long completed = records.History.Values.Where(e => e.Kind == RecordKind.DetentionRelease && e.AccountId == account && e.Tick <= tick && e.Version <= throughRecordVersion).Select(e => RecordNumber(e, AttributeKind.ObservedTick)).DefaultIfEmpty(-1).Max();
-            return reprimands.Values.Where(r => r.AcceptedTick > completed && r.CaseId <= throughCaseId && r.AccountId == account && r.AcceptedTick >= start && r.AcceptedTick <= tick).Select(r => r.CaseId).ToArray();
-        }
+        private long[] QualifyingReprimandCases(long account, long tick, long throughCaseId = long.MaxValue, long throughRecordVersion = long.MaxValue) =>
+            ReprimandPolicy.QualifyingCases(Personnel, account, tick, records.History.Values, reprimands.Values.Select(r => new ReprimandEntry(r.CaseId, r.AccountId, r.AcceptedTick)), throughCaseId, throughRecordVersion);
         private bool ReceiveCaseSubmission(MessageSnapshot message, long cause)
         {
             if (message.Draft.Kind != MessageKind.FileCase) return true;
             var p = message.Draft.CaseSubmission!; string key = message.SenderAccount.Value + "/" + message.Draft.OperationKey;
             long validationVersion = records.Version;
-            string reason = ValidateCaseSubmission(message); long caseId = 0;
-            if (filingKeys.TryGetValue(key, out long previous) && !SameDraft(messages[previous].Draft, message.Draft)) reason = "IdempotencyConflict";
-            if (reason.Length == 0)
+            string validation = ValidateCaseSubmission(message); long caseId = 0;
+            bool conflict = filingKeys.TryGetValue(key, out long previous) && !SameDraft(messages[previous].Draft, message.Draft);
+            bool known = caseKeys.TryGetValue(p.CanonicalKey, out long existing); var canonical = known ? cases[existing] : null;
+            var choice = CasePolicy.Decide(validation, conflict, known, canonical?.Submission.AccountId ?? 0, canonical?.FilingMessageId ?? 0, p.AccountId, message.Id);
+            string reason = choice.Reason;
+            if (choice.Outcome == CaseAcceptance.AlreadyAccepted) caseId = existing;
+            else if (choice.Outcome == CaseAcceptance.OpenCase)
             {
-                if (caseKeys.TryGetValue(p.CanonicalKey, out caseId))
-                { if (cases[caseId].Submission.AccountId != p.AccountId) { caseId = 0; reason = "CanonicalCaseAccountConflict"; } else reason = "AlreadyAccepted"; }
-                else
-                {
-                    caseId = nextCase++; reason = "Accepted";
-                    cases.Add(caseId, new DisciplinaryCaseSnapshot { Id = caseId, FilingMessageId = message.Id, AcceptedTick = processingTick, Submission = p, ValidationRecordVersion = validationVersion }); caseKeys.Add(p.CanonicalKey, caseId);
-                    reprimands.Add(caseId, new ReprimandSnapshot { CaseId = caseId, AccountId = p.AccountId, AcceptedTick = processingTick, Policy = p.Policy });
-                    var fields = new[] { Number(AttributeKind.TaskId, p.JobId), Number(AttributeKind.AttemptId, p.AttemptId), Number(AttributeKind.MachineId, p.MachineId), Number(AttributeKind.MessageId, message.Id), Text(AttributeKind.Violation, p.Violation), Text(AttributeKind.Policy, p.Policy) };
-                    records.Append(RecordKind.Case, caseId, p.AccountId, processingTick, "case/" + p.CanonicalKey, fields);
-                    records.Append(RecordKind.Reprimand, caseId, p.AccountId, processingTick, "reprimand/" + caseId, new[] { Number(AttributeKind.CaseId, caseId), Text(AttributeKind.Policy, p.Policy) });
-                    Emit("ReprimandAccepted", messageId: message.Id, causeId: cause, detail: "case=" + caseId + "; account=" + p.AccountId + "; " + p.CanonicalKey);
-                }
+                caseId = nextCase++;
+                cases.Add(caseId, new DisciplinaryCaseSnapshot { Id = caseId, FilingMessageId = message.Id, AcceptedTick = processingTick, Submission = p, ValidationRecordVersion = validationVersion }); caseKeys.Add(p.CanonicalKey, caseId);
+                reprimands.Add(caseId, new ReprimandSnapshot { CaseId = caseId, AccountId = p.AccountId, AcceptedTick = processingTick, Policy = p.Policy });
+                var fields = new[] { Number(AttributeKind.TaskId, p.JobId), Number(AttributeKind.AttemptId, p.AttemptId), Number(AttributeKind.MachineId, p.MachineId), Number(AttributeKind.MessageId, message.Id), Text(AttributeKind.Violation, p.Violation), Text(AttributeKind.Policy, p.Policy) };
+                records.Append(RecordKind.Case, caseId, p.AccountId, processingTick, "case/" + p.CanonicalKey, fields);
+                records.Append(RecordKind.Reprimand, caseId, p.AccountId, processingTick, "reprimand/" + caseId, new[] { Number(AttributeKind.CaseId, caseId), Text(AttributeKind.Policy, p.Policy) });
+                Emit("ReprimandAccepted", messageId: message.Id, causeId: cause, detail: "case=" + caseId + "; account=" + p.AccountId + "; " + p.CanonicalKey);
             }
             if (!filingKeys.ContainsKey(key)) filingKeys.Add(key, message.Id);
             // A reply travels through the mailbox. This does not update a supervisor's private goal.
-            if (actors.Values.Any(a => a.Account == message.SenderAccount))
+            if (RegisteredAccount(message.SenderAccount))
             {
                 var decision = new CaseDecisionPayload(message.Id, caseId, p.AccountId, caseId == 0 ? 0 : QualifyingReprimandCount(p.AccountId, processingTick), reason, nextCase - 1, validationVersion);
                 long reply = PostAuthorityWork(new MessageDraft(MessageKind.CaseDecision, RecipientKind.Account, message.SenderAccount, message.Draft.Subject,

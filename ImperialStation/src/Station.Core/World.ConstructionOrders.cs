@@ -18,7 +18,7 @@ namespace Station.Core
         {
             var actor = actors[new Id<ActorTag>(order.ActorId)];
             if (actor.Action != null || processingTick >= order.Expires || !KnownOnDuty(actor.Id) || PrepareCredentialGoal(actor)) return;
-            if (localOrders.Values.Any(o => o.ActorId == order.ActorId && o.Kind == WorkKind.ConstructHabitat && o.Status == LocalOrderStatus.Working && o.AttemptId < order.AttemptId)) return;
+            if (ConstructionPlanning.YieldsToEarlierOrder(order.AttemptId, OwnLocalOrders(order.ActorId))) return;
             if (!needAgents.ContainsKey(actor.Id.Value) && (reportAgents.TryGetValue(actor.Id, out var reports) && reports.Pending.Count > 0 || checkIns.TryGetValue(actor.Id, out var checkIn) && checkIn.Due)) return;
             if (!SpendPlanningRequest()) { RequestOrderDecision(order, checked(processingTick + 1)); return; }
             var result = ConstructionPlanning.Plan(ActorView(actor.Id), ReadConstructionSpecification(order), planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
@@ -73,20 +73,14 @@ namespace Station.Core
         {
             var job = jobs[attempt.JobId];
             if (job.Kind != WorkKind.ConstructHabitat || message.Draft.Kind != MessageKind.WorkCompleted || !growthCommitments.TryGetValue(job.ProjectId, out var c)) return;
-            if (c.AcceptedReportId > 0) { Emit("ConstructionReportDuplicate", messageId: message.Id, attemptId: attempt.Id, detail: "project=" + c.ProjectId); return; }
+            if (!ExpansionPlanning.AcceptsCompletionClaim(c.AcceptedReportId)) { Emit("ConstructionReportDuplicate", messageId: message.Id, attemptId: attempt.Id, detail: "project=" + c.ProjectId); return; }
             // This is the authority's acceptance of a claim, never a physical completion check.
             long capacity = checked(growthState!.BelievedCompletedBerths + c.Berths);
             c.BelievedBerths = c.Berths; c.CapacityEvidenceMessageId = message.Id; c.AcceptedReportId = message.Id; c.AcceptedTick = processingTick; growthState.BelievedCompletedBerths = capacity;
             Emit("ConstructionCapacityAccepted", messageId: message.Id, attemptId: attempt.Id, detail: "project=" + c.ProjectId + "; believed=" + capacity + "; retired=" + c.Berths);
             RequestGrowthReview(processingTick);
         }
-        private long SelectConstructionWorker(IAuthorityView view, long project, long excluded = 0)
-        {
-            var spec = ConstructionSpecification(project);
-            return view.Personnel.Select(Candidate).Where(c => c.Person.ActorId != excluded && !c.Committed && c.KnownOrigin.HasValue && c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && spec.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
-                .Select(c => (Id: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, spec.Site, view.NominalTravelTicks)))
-                .OrderBy(c => c.Cost).ThenBy(c => c.Id).Select(c => c.Id).FirstOrDefault();
-        }
+        private long SelectConstructionWorker(IAuthorityView view, long project, long excluded = 0) => ConstructionPlanning.Worker(view, ConstructionSpecification(project), excluded, Candidate);
         private bool DispatchGrowthProjects()
         {
             bool pending = false;

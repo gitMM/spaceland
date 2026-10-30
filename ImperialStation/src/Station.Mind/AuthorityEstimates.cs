@@ -49,6 +49,10 @@ namespace Station.Mind
             long total = checked(travel + work + target.Cost + view.LoginTicks + view.PostTicks + view.LatencyTicks);
             return new WorkDurationEstimate(travel, work, target.Cost, target.Terminal.Id, total);
         }
+        // The estimator for an acknowledged job, chosen by its kind.
+        public static WorkDurationEstimate? ForJob(IAuthorityView view, long actorId, AuthorityJobTarget job, long acknowledgmentTerminal, long inspectTicks) =>
+            job.Kind == WorkKind.ConstructHabitat ? Construction(view, actorId, job.Construction!, acknowledgmentTerminal) : job.Kind != WorkKind.CleanTile ? Repair(view, actorId, job.MachineId, acknowledgmentTerminal, job.Kind == WorkKind.VerifyMachine) :
+                Cleanup(view, actorId, new Id<TileTag>(job.TileId), job.ReportedUnits, inspectTicks, acknowledgmentTerminal);
         public static long OffDutyExtension(long receipt, long baseDeadline, RosterPayload? roster, long checkInWindow)
         {
             if (receipt < 0 || baseDeadline < receipt || checkInWindow < 0) throw new ArgumentException("Invalid deadline interval.");

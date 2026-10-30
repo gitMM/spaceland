@@ -41,6 +41,7 @@ namespace Station.Core
         private void WriteRecords(BinaryWriter w)
         {
             w.Write(recordAccess.Count); foreach (var grant in recordAccess.Values) { w.Write(grant.Actor.Value); w.Write(grant.TerminalId); w.Write(grant.RequiredRole); w.Write((int)grant.Kind); }
+            w.Write(knownRecordGrants.Count); foreach (var grant in knownRecordGrants) { w.Write(grant.Key.Actor); w.Write(grant.Key.Terminal); w.Write((int)grant.Key.Kind); w.Write(grant.Value); }
             w.Write(records.History.Count); foreach (var entry in records.History.Values) WriteRecord(w, entry);
             w.Write(recordReceipts.Count);
             foreach (var pair in recordReceipts)
@@ -55,6 +56,12 @@ namespace Station.Core
                 if (!actors.TryGetValue(grant.Actor, out var actor) || actor.Role != grant.RequiredRole || !terminals.TryGetValue(grant.TerminalId, out var terminal) || (terminal.Definition.Capabilities & TerminalCapability.Records) == 0 ||
                     !terminal.Definition.PermittedRoles.Contains(grant.RequiredRole, StringComparer.Ordinal) || !(grant.Kind is RecordKind.WorkAttempt or RecordKind.WorkReport)) throw new ArgumentException("Invalid snapshot record grant.");
                 recordAccess.Add((grant.Actor.Value, grant.TerminalId, grant.Kind), grant);
+            }
+            count = Count(r);
+            for (int i = 0; i < count; i++)
+            {
+                var key = (r.ReadInt64(), r.ReadInt64(), ReadEnum<RecordKind>(r)); string role = r.ReadString();
+                if (!actors.ContainsKey(new Id<ActorTag>(key.Item1)) || string.IsNullOrWhiteSpace(role) || !(key.Item3 is RecordKind.WorkAttempt or RecordKind.WorkReport) || !knownRecordGrants.TryAdd(key, role)) throw new ArgumentException("Invalid snapshot known record grant.");
             }
             count = Count(r);
             for (int i = 0; i < count; i++)

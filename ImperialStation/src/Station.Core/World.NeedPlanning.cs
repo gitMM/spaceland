@@ -58,7 +58,7 @@ namespace Station.Core
                 if (!actors.ContainsKey(new Id<ActorTag>(id))) throw new ArgumentException("Unknown autonomous need actor.");
                 var agent = new NeedAgentSnapshot { ActorId = id, Backoff = planner.InitialBackoff }; needAgents.Add(id, agent);
                 UpdateToiletGoal(agent);
-                if (UrgentNeed(new Id<ActorTag>(id)) != null || agent.ToiletSequence > 0 || OptionalRestOpportunity(new Id<ActorTag>(id)) || ConversationOpportunity(new Id<ActorTag>(id))) RequestNeedDecision(agent, 0);
+                if (MayHaveNeedGoal(new Id<ActorTag>(id), agent)) RequestNeedDecision(agent, 0);
             }
         }
         private long OwnNeedCustodyFacility(Id<ActorTag> actor)
@@ -66,20 +66,18 @@ namespace Station.Core
             var escort = ActiveEscort(actor);
             return escort == null ? -1 : escort.Status == EscortStatus.Detained && EscortPayload(escort).SubjectActorId == actor.Value ? detentionStays[escort.AuthorizationId].FacilityId : 0;
         }
-        private NeedValue? UrgentNeed(Id<ActorTag> actor) => NeedValues(actor.Value).Where(v => v.Band >= NeedBand.Urgent).OrderByDescending(v => v.Band).ThenBy(v => v.Kind).FirstOrDefault();
+        private NeedValue? UrgentNeed(Id<ActorTag> actor) => NeedPriority.UrgentNeed(NeedValues(actor.Value));
+        // Gathers own report queue and order state; Mind decides whether an urgent order is known.
         private bool KnownUrgentOrder(Id<ActorTag> actor)
         {
-            if (reportAgents.TryGetValue(actor, out var reports) && reports.Pending.Count > 0)
-            {
-                // Existing guard/patrol protocols wait for their reporting queue.
-                // A locally blocked queue must not prohibit all useful relief.
-                if (reports.BlockedReason.Length > 0 && reports.NextDecision > NeedNow) return false;
-                if (reports.Pending.Any(p => p.Kind is MessageKind.EscortAcknowledged or MessageKind.EscortOutcome or MessageKind.PatrolAccepted or MessageKind.PatrolFound or MessageKind.PatrolNotLocated or MessageKind.PatrolBlocked or MessageKind.RequestDetention)) return true;
-            }
-            return GuardHasPriority(actor) || KnownOnDuty(actor) &&
-                (localGuardOrders.Values.Any(l => l.ActorId == actor.Value && l.Payload.Expires > NeedNow && l.Status == GuardOrderStatus.AcknowledgmentPending) ||
-                 localPatrols.Values.Any(l => l.ActorId == actor.Value && l.Payload.Expires > NeedNow && (l.Status is LocalPatrolStatus.Read or LocalPatrolStatus.AcceptancePending or LocalPatrolStatus.Searching)));
+            bool pending = reportAgents.TryGetValue(actor, out var reports) && reports.Pending.Count > 0;
+            return GoalPriority.KnownUrgentOrder(pending, pending && GoalPriority.LocallyBlocked(reports!.BlockedReason.Length > 0, reports.NextDecision, NeedNow),
+                pending ? reports!.Pending.Select(p => p.Kind) : Enumerable.Empty<MessageKind>(), () => GuardHasPriority(actor), KnownOnDuty(actor),
+                () => localGuardOrders.Values.Any(l => l.ActorId == actor.Value && l.Payload.Expires > NeedNow && l.Status == GuardOrderStatus.AcknowledgmentPending),
+                () => localPatrols.Values.Any(l => l.ActorId == actor.Value && l.Payload.Expires > NeedNow && (l.Status is LocalPatrolStatus.Read or LocalPatrolStatus.AcceptancePending or LocalPatrolStatus.Searching)));
         }
+        private bool MayHaveNeedGoal(Id<ActorTag> actor, NeedAgentSnapshot agent) =>
+            NeedPriority.MayHaveNeedGoal(UrgentNeed(actor) != null, agent.ToiletSequence, () => OptionalRestOpportunity(actor), () => ConversationOpportunity(actor));
         private bool TravellingForNeed(Actor actor, NeedKind kind) => (actor.Action?.Kind is ActionKind.Move or ActionKind.AllocateBerth or ActionKind.Rest) && needAgents.TryGetValue(actor.Id.Value, out var agent) && agent.ActiveActionId == actor.Action.Id.Value && agent.Goal == kind || TravellingForDailyNeed(actor, kind);
         private void RequestNeedDecision(NeedAgentSnapshot agent, long tick)
         {
@@ -97,15 +95,14 @@ namespace Station.Core
             if (!needAgents.TryGetValue(actor.Id.Value, out var agent)) return;
             UpdateToiletGoal(agent);
             if (threshold) { agent.RetryAt = 0; agent.UrgentRetryAt = 0; }
-            if (actor.Action == null && (UrgentNeed(actor.Id) != null || agent.ToiletSequence > 0 || OptionalRestOpportunity(actor.Id) || ConversationOpportunity(actor.Id))) RequestNeedDecision(agent, NeedNow);
+            if (actor.Action == null && MayHaveNeedGoal(actor.Id, agent)) RequestNeedDecision(agent, NeedNow);
         }
         // All ordinary decision producers consult this before issuing an intent.
         // A failed bounded attempt yields until its private retry clock expires.
         private bool DeferToNeed(Actor actor, bool urgentOrder = false)
         {
-            if (!needAgents.TryGetValue(actor.Id.Value, out var agent) || agent.UrgentRetryAt > NeedNow) return false;
-            var need = UrgentNeed(actor.Id);
-            if (need == null || need.Band != NeedBand.Critical && (urgentOrder || KnownUrgentOrder(actor.Id))) return false;
+            if (!needAgents.TryGetValue(actor.Id.Value, out var agent) || NeedPriority.UrgentRetryPending(agent.UrgentRetryAt, NeedNow)) return false;
+            if (!NeedPriority.Preempts(UrgentNeed(actor.Id), urgentOrder, () => KnownUrgentOrder(actor.Id))) return false;
             RequestNeedDecision(agent, NeedNow); return true;
         }
         private void EvaluateNeed(Id<ActorTag> actorId)
@@ -113,59 +110,44 @@ namespace Station.Core
             var agent = needAgents[actorId.Value]; agent.NextDecision = -1; var actor = actors[actorId];
             if (actor.Action != null || agent.PlannedTick == processingTick) return;
             var need = UrgentNeed(actorId);
-            if (need == null || agent.UrgentRetryAt > processingTick) { EvaluateLowerNeed(actor, agent); return; }
-            if (need.Band != NeedBand.Critical && KnownUrgentOrder(actorId)) { agent.BlockedReason = "KnownUrgentOrder"; return; }
+            switch (NeedPriority.UrgentStep(need, agent.UrgentRetryAt, processingTick, () => KnownUrgentOrder(actorId)))
+            {
+                case UrgentNeedStep.LowerNeed: EvaluateLowerNeed(actor, agent); return;
+                case UrgentNeedStep.KnownUrgentOrder: agent.BlockedReason = "KnownUrgentOrder"; return;
+            }
             if (!SpendPlanningRequest()) { RequestNeedDecision(agent, checked(processingTick + 1)); return; }
-            var view = ActorView(actorId); var plan = new PlanResult(PlanOutcome.NoPlan); int remaining = planner.NodeBudget;
-            // One bounded policy request can reject an unavailable higher need
-            // and seek useful relief for another. All searches share its node cap.
-            var candidates = view.Needs.Where(v => v.Band >= NeedBand.Urgent && (v.Band == NeedBand.Critical || !KnownUrgentOrder(actorId))).OrderByDescending(v => v.Band).ThenBy(v => v.Kind).ToList();
-            // Urgent (not critical) sleep first relieves a need forecast to become critical in bed.
-            var preSleep = candidates.FirstOrDefault()?.Kind == NeedKind.SleepPressure && candidates[0].Band != NeedBand.Critical ? PreSleepRelief(actorId) : null;
-            if (preSleep.HasValue) candidates.Insert(0, view.Needs.Single(v => v.Kind == preSleep.Value));
-            foreach (var candidate in candidates)
-            {
-                need = candidate; agent.Goal = need.Kind;
-                plan = NeedPlanning.Plan(view, need.Kind, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining, KnownServiceWaits(actorId));
-                PlannerExpansions += plan.Expansions; remaining -= plan.Expansions;
-                if (plan.Outcome != PlanOutcome.NoPlan) break;
-                if (remaining <= 0) { plan = new PlanResult(PlanOutcome.BudgetExhausted); break; }
-            }
-            bool fallback = false;
-            // A real alternative need wins before fallback rest. Rest never satisfies sleep.
-            var sleep = view.Needs.FirstOrDefault(v => v.Kind == NeedKind.SleepPressure && v.Band >= NeedBand.Urgent && (v.Band == NeedBand.Critical || !KnownUrgentOrder(actorId)));
-            if (plan.Outcome == PlanOutcome.NoPlan && sleep != null && remaining > 0 && agent.SleepFallbackRetryAt <= processingTick)
-            {
-                need = sleep; agent.Goal = NeedKind.SleepPressure;
-                plan = NeedPlanning.Plan(view, NeedKind.WorkStrain, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining);
-                PlannerExpansions += plan.Expansions; fallback = plan.Outcome == PlanOutcome.PlanFound;
-            }
+            var view = ActorView(actorId);
+            var candidates = NeedPriority.UrgentCandidates(view.Needs, () => KnownUrgentOrder(actorId), () => PreSleepRelief(actorId), out var preSleep);
+            var sleep = NeedPriority.UrgentSleep(view.Needs, () => KnownUrgentOrder(actorId));
+            var choice = NeedPlanning.PlanUrgent(view, candidates, sleep, agent.SleepFallbackRetryAt <= processingTick, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId),
+                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId));
+            PlannerExpansions += choice.Expansions; var plan = choice.Plan; bool fallback = choice.Fallback;
+            if (choice.Need != null) { need = choice.Need; agent.Goal = need.Kind; }
             agent.LastOutcome = plan.Outcome; agent.LastCost = plan.Cost;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
                 PlansFound++; agent.BlockedReason = fallback ? UnmetSleepReason : ""; agent.RetryAt = 0; agent.UrgentRetryAt = 0; agent.PlannedTick = processingTick;
                 var step = plan.Steps[0].Intent; agent.ServiceId = step.ServiceId;
                 if (fallback) Emit("SleepUnmet", actor, detail: UnmetSleepReason + "; planning rest; service=" + step.ServiceId);
-                long cause = Emit("PlanSelected", actor, detail: (preSleep == need.Kind ? "pre-sleep-relief/v1" : "urgent-need/v1") + "; need=" + need.Kind + "; band=" + need.Band + "; service=" + step.ServiceId + "; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
+                long cause = Emit("PlanSelected", actor, detail: (preSleep == need!.Kind ? "pre-sleep-relief/v1" : "urgent-need/v1") + "; need=" + need.Kind + "; band=" + need.Band + "; service=" + step.ServiceId + "; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.NeedCommand, Intent = step, CauseId = cause }); return;
             }
             if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; agent.BlockedReason = "PlanBudgetExhausted"; }
             else { PlansUnavailable++; agent.BlockedReason = OwnNeedCustodyFacility(actorId) == 0 ? "CustodyRestricted" : sleep != null ? UnmetSleepReason : "NoKnownReliefRouteOrEligibleService"; }
-            agent.RetryAt = checked(processingTick + agent.Backoff);
-            foreach (var failure in agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick)) agent.RetryAt = Math.Min(agent.RetryAt, failure.RetryAt);
+            agent.RetryAt = NeedPriority.RetryAt(processingTick, agent.Backoff, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.RetryAt));
             agent.Backoff = NextWorkBackoff(agent.Backoff);
             agent.UrgentRetryAt = agent.RetryAt;
             Emit("PlanUnavailable", actor, detail: "urgent-need/v1; " + agent.BlockedReason + "; retryAt=" + agent.RetryAt);
             RequestNeedDecision(agent, agent.RetryAt); WakeAfterNeed(actor);
-            if (agent.ToiletSequence > 0 || OptionalRestOpportunity(actor.Id) || ConversationOpportunity(actor.Id))
+            if (NeedPriority.MayHaveNeedGoal(false, agent.ToiletSequence, () => OptionalRestOpportunity(actor.Id), () => ConversationOpportunity(actor.Id)))
             { agent.RetryAt = 0; RequestNeedDecision(agent, checked(processingTick + 1)); }
         }
         private void StartNeedIntent(ScheduledEvent command)
         {
             var actor = actors[command.Intent.Actor]; var agent = needAgents[actor.Id.Value];
             if (actor.Action != null) return;
-            var need = NeedValues(actor.Id.Value).FirstOrDefault(n => n.Kind == agent.Goal && (n.Band >= NeedBand.Seek || PreSleepRelief(actor.Id) == n.Kind));
-            if (need == null || (need.Band >= NeedBand.Urgent ? need.Band != NeedBand.Critical && KnownUrgentOrder(actor.Id) : !LowerNeedMayStart(actor, agent.Goal))) { WakeNeed(actor); WakeAfterNeed(actor); return; }
+            var need = NeedValues(actor.Id.Value).FirstOrDefault(n => NeedPriority.StillSought(n, agent.Goal, () => PreSleepRelief(actor.Id)));
+            if (NeedPriority.StartBlocked(need, () => KnownUrgentOrder(actor.Id), () => LowerNeedMayStart(actor, agent.Goal))) { WakeNeed(actor); WakeAfterNeed(actor); return; }
             if (GuardJourneyNeedsRelief(actor.Id))
                 foreach (var local in localGuardOrders.Values.Where(l => l.ActorId == actor.Id.Value && l.Status == GuardOrderStatus.TargetLocated)) local.Reason = "PreparingForEscort";
             agent.ActiveActionId = nextAction;
@@ -184,7 +166,14 @@ namespace Station.Core
             }
             if (failure != FailureReason.None)
             {
-                if (agent.Goal == NeedKind.Social) { agent.BlockedReason = failure.ToString(); agent.RetryAt = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff); WakeNeed(actor); return; }
+                if (agent.Goal == NeedKind.Social)
+                {
+                    agent.BlockedReason = failure.ToString(); agent.RetryAt = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff);
+                    // A timer set before the refusal must not run ahead of the new retry clock.
+                    if (agent.NextDecision >= 0 && agent.NextDecision < agent.RetryAt)
+                    { foreach (var e in scheduled.ForActor(agent.ActorId).Where(e => e.Kind == ScheduledKind.EvaluateNeed).ToArray()) scheduled.Remove(e); agent.NextDecision = -1; }
+                    WakeNeed(actor); return;
+                }
                 agent.KnownFailures[agent.ServiceId] = new NeedServiceFailureSnapshot { ServiceId = agent.ServiceId, ActionId = action, Tick = processingTick, RetryAt = checked(processingTick + agent.Backoff), Reason = failure };
                 agent.BlockedReason = failure.ToString(); agent.Backoff = NextWorkBackoff(agent.Backoff);
                 Emit("NeedServiceFailureLearned", actor, new Id<ActionTag>(action), detail: "service=" + agent.ServiceId + "; " + failure);

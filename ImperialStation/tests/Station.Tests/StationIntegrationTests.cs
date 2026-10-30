@@ -55,7 +55,11 @@ public sealed class StationIntegrationTests
         // (not only the schema byte) changes. Status, workers and rests are unchanged.
         // Schema 49 (escort acknowledgment deadlines) follows 48 (learned terminal outages,
         // cafeteria estimates). Workers, rests and the 422 meals are unchanged.
-        Assert.Equal("cdb5e1e424cf86ccf5fc6fb16835811c89da25826ec2251b2261acb1fcd5803a", measured.Digest);
+        // Schema 50 saves each citizen's own record-grant notices (T08 decision inputs).
+        // Conversation initiators no longer read partners' private consent, so who is asked changes.
+        // Schema 51 saves what each citizen sees of the services on its own tile; 52 saves its
+        // knowledge of its own alternate identity proof; 53 its memory of its own completion posts.
+        Assert.Equal("7a179fbda0a775ad481009a03840c791e34e870d6789f33d30a3a7aee2fa2fe7", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

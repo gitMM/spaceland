@@ -13,6 +13,31 @@ namespace Station.Mind
             // Quotient/remainder avoids overflowing an otherwise representable target.
             return checked(population + population / 1000 * reservePermille + (population % 1000 * reservePermille + 999) / 1000);
         }
+        // Berths still to commit: none once believed capacity meets the target.
+        public static long Deficit(long believedCompletedBerths, long target, long pendingBerths) =>
+            believedCompletedBerths >= target ? 0 : Math.Max(0, target - believedCompletedBerths - pendingBerths);
+        // The first received completion claim retires a commitment; later ones are duplicates.
+        public static bool AcceptsCompletionClaim(long acceptedReportId) => !(acceptedReportId > 0);
+        // Habitat placements adjacent to the believed layout inside the growth bounds,
+        // excluding reserved sites, cheapest recipe first. Publication and administrative
+        // commitments are the sole occupancy evidence.
+        public static ExpansionCandidate[] Candidates(IEnumerable<Coord> believedLayout, Coord minimum, Coord maximum, IEnumerable<Coord> reservedSites,
+            IEnumerable<HabitatOption> definitions, IEnumerable<string> registeredRoles, int limit)
+        {
+            var layout = new SortedSet<Coord>(believedLayout); var reserved = new SortedSet<Coord>(reservedSites); var roles = registeredRoles.ToArray();
+            bool Inside(Coord c) => c.X >= minimum.X && c.X <= maximum.X && c.Y >= minimum.Y && c.Y <= maximum.Y && c.Z >= minimum.Z && c.Z <= maximum.Z;
+            var sites = new SortedSet<Coord>();
+            foreach (var tile in layout)
+            foreach (var site in tile.Neighbors())
+                if (Inside(site) && !layout.Contains(site) && !reserved.Contains(site)) sites.Add(site);
+            var options = from d in definitions
+                          where d.Family == TileFamily.Habitat && d.Berths > 0 && roles.Any(r => d.Roles.Contains(r, StringComparer.Ordinal))
+                          from site in sites
+                          orderby d.Duration, site
+                          select new { d.DefinitionId, Site = site, d.Berths, d.Duration, d.Inputs };
+            return options.OrderBy(c => c.Duration).ThenBy(c => c.Site).ThenBy(c => c.DefinitionId, StringComparer.Ordinal).Take(limit)
+                .Select((c, i) => new ExpansionCandidate(i + 1, c.DefinitionId, c.Site, c.Berths, c.Duration, c.Inputs)).ToArray();
+        }
         public static ExpansionPlan Plan(long deficit, IEnumerable<ExpansionCandidate> candidates, IEnumerable<MaterialAmount> available, int maximumDepth = 8, int nodeBudget = 512)
         {
             if (deficit < 0) throw new ArgumentOutOfRangeException(nameof(deficit));

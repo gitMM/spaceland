@@ -11,6 +11,15 @@ namespace Station.Mind
         private sealed class Part
         { internal long Id; internal string Resource = ""; internal long Quantity; internal Coord At; internal bool Held; internal long Cost; internal ulong Bit; }
         public static bool KnownCompleted(IActorView view, ConstructionOrder order) => view.Knowledge.Any(f => f.Key.Equals(new FactKey(SubjectKind.Tile, order.TileId, AttributeKind.Location)) && f.Value.Equals(FactValue.At(order.Site)));
+        // The authority's construction assignee: a known on-duty, uncommitted, qualified
+        // worker with a known origin, nearest the committed site by nominal travel.
+        public static long Worker(IAuthorityView view, ConstructionOrder spec, long excludedActor, Func<KnownPersonnel, DispatchCandidate> gather) =>
+            view.Personnel.Select(gather).Where(c => c.Person.ActorId != excludedActor && !c.Committed && c.KnownOrigin.HasValue && c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && spec.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
+                .Select(c => (Id: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, spec.Site, view.NominalTravelTicks)))
+                .OrderBy(c => c.Cost).ThenBy(c => c.Id).Select(c => c.Id).FirstOrDefault();
+        // A citizen works its earlier construction order first.
+        public static bool YieldsToEarlierOrder(long attemptId, IEnumerable<KnownLocalOrder> ownOrders) =>
+            ownOrders.Any(o => o.Kind == WorkKind.ConstructHabitat && o.Working && o.AttemptId < attemptId);
         public static PlanResult Plan(IActorView view, ConstructionOrder order, int candidates = 3, int depth = 8, int budget = 512)
         {
             if (candidates < 1 || candidates > 30) throw new ArgumentException("Invalid construction candidate bound.");

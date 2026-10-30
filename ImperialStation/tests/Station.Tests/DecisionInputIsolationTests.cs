@@ -1,0 +1,174 @@
+using System.Collections;
+using System.Reflection;
+using System.Text.Json.Nodes;
+using Station.Contracts;
+using Station.Core;
+using Station.Runner;
+using Xunit;
+
+namespace Station.Tests;
+
+// T08 / R-ARC-04: each test runs two identical worlds, changes state the decider cannot know in one
+// of them just before the decision, and requires the same choice in both.
+public sealed class DecisionInputIsolationTests
+{
+    private static LoadedScenario Load(string scenario, Action<JsonObject>? change = null, string catalog = "jobs")
+    {
+        var json = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.Root, "scenarios", scenario + ".json")))!.AsObject(); change?.Invoke(json);
+        json["assertions"] = new JsonArray();
+        return new(json.ToJsonString(), File.ReadAllText(Path.Combine(Fixtures.Root, "content", catalog + ".json")), "isolation-test");
+    }
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+    internal static object Get(object owner, string field) => owner.GetType().GetField(field, Any)!.GetValue(owner)!;
+    internal static void Set(object owner, string member, object? value)
+    {
+        var field = owner.GetType().GetField(member, Any);
+        if (field != null) field.SetValue(owner, value); else owner.GetType().GetProperty(member, Any)!.SetValue(owner, value);
+    }
+    internal static object Entry(World w, string map, object key) => ((IDictionary)Get(w, map))[key]!;
+    internal static object Actor(World w, long id) => ((IDictionary)Get(w, "actors"))[new Id<ActorTag>(id)]!;
+    // Advances both worlds to the same tick, hides a change in the second, then advances both to the same end.
+    private static (World Plain, World Changed) Twin(Func<World> make, long changeAt, Action<World> change, long end)
+    {
+        var plain = make(); var changed = make();
+        if (changeAt >= 0) { plain.AdvanceTo(changeAt); changed.AdvanceTo(changeAt); }
+        change(changed);
+        plain.AdvanceTo(end); changed.AdvanceTo(end); return (plain, changed);
+    }
+    // A forged physical identity: the supervisor's body now claims another role and account. The institution never saw it.
+    private static void Disguise(World w, long actor) { var a = Actor(w, actor); Set(a, "Role", "worker"); Set(a, "Account", new Id<AccountTag>(999)); }
+
+    [Fact]
+    public void T08_DetentionRequestAuthenticationAndReplyUseRegistrationsNotPhysicalActors()
+    {
+        var (plain, changed) = Twin(() => Load("detention_authorization").CreateWorld(42, true), 112, w => Disguise(w, 2), 113);
+        var expected = Assert.Single(plain.InspectDetentionRequests()); var actual = Assert.Single(changed.InspectDetentionRequests());
+        Assert.Equal(DetentionDecisionState.Approved, expected.Decision.State);
+        Assert.Equal(expected.Decision.State, actual.Decision.State); Assert.Equal(expected.Decision.Reason, actual.Decision.Reason);
+        Assert.NotEqual(0, expected.ReplyMessageId); Assert.Equal(expected.ReplyMessageId, actual.ReplyMessageId);
+    }
+
+    [Fact]
+    public void T08_CaseFilingAuthenticationAndReplyUseRegistrationsNotPhysicalActors()
+    {
+        var (plain, changed) = Twin(() => Load("personnel_case").CreateWorld(42, true), 66, w => Disguise(w, 2), 67);
+        string Decided(World w) => Assert.Single(w.Trace, e => e.Type == "CaseSubmissionDecided").Detail;
+        Assert.Equal(Decided(plain), Decided(changed)); Assert.Single(changed.InspectCases());
+        Assert.Equal(plain.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision), changed.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision));
+    }
+
+    [Fact]
+    public void T08_DetentionIntakeChecksThePublishedAuthorizationRecordNotTheAuthorityRegister()
+    {
+        // The register entry changes without a record; only the authority itself could see it.
+        var (plain, changed) = Twin(() => Load("detention_release", catalog: "escort").CreateWorld(42, true), 494, w => Set(Entry(w, "detentionAuthorizations", 1L), "Status", DetentionAuthorizationStatus.Revoked), 495);
+        foreach (var w in new[] { plain, changed })
+        {
+            Assert.Single(w.Trace, e => e.Type == "DetentionSlotReserved" && e.Tick == 495);
+            Assert.DoesNotContain(w.Trace, e => e.Type == "GuardRevocationLearned"); Assert.Empty(w.InspectKnownGuardRevocations());
+        }
+    }
+
+    [Fact]
+    public void T08_SupervisorDetentionRequestUsesThePublishedThresholdNotThePrivatePersonnelConfig()
+    {
+        // The institution privately raises its threshold after publishing 2; the supervisor knows only the publication.
+        var (plain, changed) = Twin(() => Load("detention_authorization").CreateWorld(42, true), 110, w => Set(w, "<Personnel>k__BackingField", new PersonnelConfig("supervisor", 6048000, 5)), 111);
+        Assert.Equal(5, changed.Personnel!.DetentionThreshold);
+        foreach (var w in new[] { plain, changed }) Assert.Equal(DetentionRequestStatus.Queued, Assert.Single(w.InspectLocalDetentionRequests(new(2))).Status);
+    }
+
+    [Fact]
+    public void T08_AuditTerminalComesFromTheCitizensOwnGrantsNotTheAuthorityGrantTable()
+    {
+        // The records office silently drops the supervisor's grants; the supervisor still holds its grant notice.
+        var (plain, changed) = Twin(() => Load("discrepancy_audit").CreateWorld(42, true), 28, w => ((IDictionary)Get(w, "recordAccess")).Clear(), 29);
+        long Terminal(World w) => Assert.Single(w.Trace, e => e.Type == "DiscrepancyAuditOpened").TerminalId;
+        Assert.NotEqual(0, Terminal(plain)); Assert.Equal(Terminal(plain), Terminal(changed));
+        Assert.Equal(plain.InspectAudits(new(2)).Single().TerminalId, changed.InspectAudits(new(2)).Single().TerminalId);
+    }
+
+    [Fact]
+    public void T08_ConversationInitiatorChoosesFromVisiblePartnersNotTheirPrivateGoals()
+    {
+        // Citizen 1 privately loses its roster, so it believes it is on duty and will decline; citizen 2 can see only who is present and still.
+        var (plain, changed) = Twin(() => Load("conversation", catalog: "tiles").CreateWorld(42, true), -1, w => Set(Entry(w, "routines", new Id<ActorTag>(1)), "KnownRoster", null), 0);
+        string Choice(World w) => w.Trace.First(e => e.Type == "PlanSelected" && e.ActorId == 2).Detail;
+        Assert.EndsWith("partner=1", Choice(plain)); Assert.Equal(Choice(plain), Choice(changed));
+        Assert.Contains(changed.Trace, e => e.Type == "ActionFailed" && e.ActorId == 2 && e.Detail.Contains("ConsentDeclined"));
+    }
+
+    [Fact]
+    public void T08_SameTileServiceChoiceUsesWhatTheDinerSawNotTheLiveQueues()
+    {
+        static NeedActivitySnapshot FirstMeal(World w) => w.InspectNeedActivities().First(a => a.ActorId == 2 && a.Kind == ActionKind.Eat);
+        var probe = ServiceEstimateTests.SameTile(689); probe.AdvanceTo(120); long decided = FirstMeal(probe).RequestedTick;
+        // A seat-2 occupancy appears without any visible event, so nobody on the tile saw it.
+        var (plain, changed) = Twin(() => ServiceEstimateTests.SameTile(689), decided - 1, w => ((SortedSet<long>)Get(Entry(w, "needServices", 2L), "Occupants")).Add(999_999), decided);
+        Assert.Equal(2, FirstMeal(plain).ServiceId); Assert.Equal(FirstMeal(plain).ServiceId, FirstMeal(changed).ServiceId);
+        Assert.Equal(plain.InspectServiceEstimates(new(2)).Count, changed.InspectServiceEstimates(new(2)).Count);
+    }
+
+    // Recovery: the first discovery and the first recovery plan, each compared after a registry change only the institution holds.
+    private static TraceEvent FirstEvent(World w, string type, string prefix = "") => w.Trace.First(e => e.Type == type && e.Detail.StartsWith(prefix, StringComparison.Ordinal));
+    private static void RecoveryTwin(string type, string prefix, Action<World> change)
+    {
+        var probe = AutonomousRecoveryTests.Station(); probe.AdvanceTo(100); long at = FirstEvent(probe, type, prefix).Tick;
+        var (plain, changed) = Twin(() => AutonomousRecoveryTests.Station(), at - 1, change, at);
+        string Choice(World w) => w.Trace.FirstOrDefault(e => e.Type == type && e.Detail.StartsWith(prefix, StringComparison.Ordinal))?.Detail ?? "(none)";
+        Assert.NotEqual("(none)", Choice(plain)); Assert.Equal(Choice(plain), Choice(changed));
+    }
+    [Fact]
+    public void T08_MissingCredentialDiscoveryUsesOwnCredentialKnowledgeNotTheRegistry() =>
+        // The registry reassigns the credential; the holder still knows its own card.
+        RecoveryTwin("CredentialRecoveryNeeded", "", w => Set(Entry(w, "credentials", 1L), "Definition", new CredentialSeed(1, new(7), new(7), new(1))));
+    [Fact]
+    public void T08_RecoveryPlanUsesThePublishedDeskDirectoryNotTheDeskRegistry() =>
+        RecoveryTwin("PlanSelected", "restore-credential/v1", w => ((IDictionary)Get(w, "recoveryDesks")).Clear());
+    [Fact]
+    public void T08_RecoveryPlanUsesTheCitizensKnowledgeOfItsAlternateIdentity() =>
+        RecoveryTwin("PlanSelected", "restore-credential/v1", w => ((IDictionary)Get(w, "recoveryCapabilities")).Clear());
+    [Fact]
+    public void T08_RecoveryPlanningReadsNoRegistryOrGlobalMessageStage()
+    {
+        // Inbox completion uses the read action's own result; registries are read only to publish or enrol.
+        string source = File.ReadAllText(Path.Combine(Fixtures.Root, "src", "Station.Core", "World.RecoveryPlanning.cs"));
+        foreach (string word in new[] { "credentials", "recoveryDesks", "recoveryCapabilities", "messages[", "messages." }) Assert.DoesNotContain(word, source);
+    }
+
+    [Fact]
+    public void T08_LateOrderReadUsesTheCitizensOwnSubmissionMemoryNotTheMessageStore()
+    {
+        static LocalWorkOrderSnapshot[] Late(World w) => w.InspectLocalOrders(new(1)).Where(o => o.JobId is 10001 or 10002).OrderBy(o => o.JobId).ToArray();
+        var probe = InstitutionalStation.Create(32).CreateWorld(trace: false); probe.AdvanceTo(2000); long read = Late(probe).Min(o => o.ReadTick);
+        // The store re-attributes the citizen's completion posts; its own memory of posting them is unchanged.
+        var (plain, changed) = Twin(() => InstitutionalStation.Create(32).CreateWorld(trace: false), read - 1, w =>
+        {
+            foreach (var m in ((IDictionary)Get(w, "messages")).Values.Cast<MessageSnapshot>().Where(m => m.PhysicalSender.Value == 1 && m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId is 10001 or 10002))
+                Set(m, "PhysicalSender", new Id<ActorTag>(999));
+        }, Late(probe).Max(o => o.ReadTick));
+        Assert.Equal(2, Late(plain).Length); Assert.All(Late(plain), o => Assert.Equal("OwnCompletionAlreadyPosted", o.Reason));
+        Assert.Equal(Late(plain).Select(o => (o.Status, o.Reason)), Late(changed).Select(o => (o.Status, o.Reason)));
+    }
+
+    [Fact]
+    public void T08_FailedHandoffIsHandledByTheTeamOnTheLeadersListEachOnItsOwnCopy()
+    {
+        // Target 1 walks away during BeginEscort, so the leader's handoff fails at 494 and the team reinspects.
+        // A co-located supervisor privately holds a copy of the same dispatch but is not on the leader's team list.
+        static World Make() { var w = Load("guard_search", catalog: "escort").CreateWorld(42, true); w.Submit(395, new(new(1), ActionKind.Move, new(2, 0, 0))); return w; }
+        var (plain, changed) = Twin(Make, 493, w =>
+        {
+            var orders = (IDictionary)Get(w, "localGuardOrders");
+            var source = orders.Values.Cast<object>().First(o => (long)Get(o, "<ActorId>k__BackingField") == 4);
+            var copy = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(source, null)!;
+            Set(copy, "ActorId", 2L); Set(copy, "OrderMessageId", 999_999L); orders.Add(999_999L, copy);
+            Set(Actor(w, 2), "Position", new Coord(1, 0, 0));
+        }, 494);
+        Assert.Equal(FailureReason.NotAtRequiredTile, plain.InspectActor(new(3)).LastFailure);
+        var leader = (Plain: plain.InspectLocalGuardOrders(new(3)).Single(), Changed: changed.InspectLocalGuardOrders(new(3)).Single());
+        Assert.Equal((leader.Plain.Status, leader.Plain.Reason), (leader.Changed.Status, leader.Changed.Reason));
+        var planted = changed.InspectLocalGuardOrders(new(2)).Single(); var original = changed.InspectLocalGuardOrders(new(4)).Single();
+        Assert.Equal(GuardOrderStatus.TargetLocated, planted.Status); Assert.NotEqual(GuardOrderStatus.TargetLocated, original.Status);
+    }
+}

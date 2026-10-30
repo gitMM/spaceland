@@ -10,6 +10,10 @@ namespace Station.Core
         private readonly RecordLedger records = new RecordLedger();
         private readonly SortedDictionary<Id<ActorTag>, RecordQueryReceipt> recordReceipts = new SortedDictionary<Id<ActorTag>, RecordQueryReceipt>();
         private readonly SortedDictionary<(long Actor, long Terminal, RecordKind Kind), RecordAccessSeed> recordAccess = new SortedDictionary<(long, long, RecordKind), RecordAccessSeed>();
+        // Each holder's own copy of the grant notices it was given; the records office keeps recordAccess.
+        private readonly SortedDictionary<(long Actor, long Terminal, RecordKind Kind), string> knownRecordGrants = new SortedDictionary<(long, long, RecordKind), string>();
+        private IEnumerable<(long Terminal, RecordKind Kind, string Role)> KnownRecordGrants(Id<ActorTag> actor) =>
+            knownRecordGrants.Where(g => g.Key.Actor == actor.Value).Select(g => (g.Key.Terminal, g.Key.Kind, g.Value));
         public IReadOnlyList<RecordEntry> InspectRecordHistory() => records.History.Values.ToArray();
         private static RecordField Number(AttributeKind key, long value) => new RecordField(key, FactValue.Integer(value));
         private static RecordField Text(AttributeKind key, string value) => new RecordField(key, new FactValue(FactValueKind.Text, text: value));
@@ -20,7 +24,7 @@ namespace Station.Core
                 if (!actors.TryGetValue(grant.Actor, out var actor) || actor.Role != grant.RequiredRole || string.IsNullOrWhiteSpace(grant.RequiredRole) ||
                     !terminals.TryGetValue(grant.TerminalId, out var terminal) || (terminal.Definition.Capabilities & TerminalCapability.Records) == 0 || !terminal.Definition.PermittedRoles.Contains(grant.RequiredRole, StringComparer.Ordinal) ||
                     !(grant.Kind is RecordKind.WorkAttempt or RecordKind.WorkReport)) throw new ArgumentException("Audit grant requires an existing actor, assigned records terminal, permitted role and work-record kind.");
-                recordAccess.Add((grant.Actor.Value, grant.TerminalId, grant.Kind), grant);
+                recordAccess.Add((grant.Actor.Value, grant.TerminalId, grant.Kind), grant); knownRecordGrants.Add((grant.Actor.Value, grant.TerminalId, grant.Kind), grant.RequiredRole);
             }
             foreach (var credential in credentials.Values) RecordCredential(credential, "initial/credential/" + credential.Definition.Id);
         }

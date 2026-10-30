@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -49,7 +50,7 @@ namespace Station.Core
         public IReadOnlyList<NeedActivitySnapshot> InspectNeedActivities() => needActivities.Values.Select(a => a.Copy()).ToArray();
         public long MealsConsumed => mealSinks.Values.Sum();
         private static bool IsNeedAction(ActionKind kind) => kind is ActionKind.Eat or ActionKind.UseToilet or ActionKind.Rest or ActionKind.Sleep;
-        private static bool RelievesNeed(ActionKind kind, NeedKind need) => kind == ActionKind.Eat && need == NeedKind.Hunger || kind == ActionKind.UseToilet && need == NeedKind.Bladder || kind == ActionKind.Sleep && (need is NeedKind.SleepPressure or NeedKind.WorkStrain) || kind == ActionKind.Rest && need == NeedKind.WorkStrain;
+        private static bool RelievesNeed(ActionKind kind, NeedKind need) => NeedPriority.Relieves(kind, need);
         private void InitializeNeedServices(IEnumerable<NeedServiceDefinition> definitions)
         {
             foreach (var d in definitions)
@@ -57,7 +58,7 @@ namespace Station.Core
                 if (!Topology.Contains(d.Position) || d.AssignedActorId > 0 && !actors.ContainsKey(new Id<ActorTag>(d.AssignedActorId)) ||
                     d.DetentionFacilityId > 0 && (!detentionFacilities.TryGetValue(d.DetentionFacilityId, out var detention) || detention.Definition.Position != d.Position) ||
                     d.AssignedActorId > 0 && needServices.Values.Any(s => s.Definition.AssignedActorId == d.AssignedActorId)) throw new ArgumentException("Need service requires a completed local site, valid unique berth assignment and declared custody facility.");
-                needServices.Add(d.Id, new NeedService { Definition = d, Enabled = d.Enabled, AssignedActorId = d.AssignedActorId });
+                needServices.Add(d.Id, new NeedService { Definition = d, Enabled = d.Enabled, AssignedActorId = d.AssignedActorId }); IndexNeedService(needServices[d.Id]);
             }
         }
         private bool CustodyNeedAllowed(Actor actor, ActionKind kind, long service)
@@ -106,7 +107,7 @@ namespace Station.Core
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
-            ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
+            ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); ServiceVisiblyChanged(service); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
         }
         // Arriving at a service that visibly has someone ahead, a citizen uses an identical
         // service on the same tile that it may use and that stands free (for example
@@ -114,10 +115,10 @@ namespace Station.Core
         // choice; this decision uses only what is visible here and now.
         private NeedService TakeVisiblyFreeIdentical(Actor actor, ActiveAction action, NeedService chosen)
         {
-            if (VisibleWait(chosen) == 0) return chosen;
+            if (!ServicePreference.SeeksIdentical(SeenWait(actor, chosen)) || !seenServiceWaits.TryGetValue(actor.Id.Value, out var seen)) return chosen;
             var d = chosen.Definition;
-            var free = needServices.Values.FirstOrDefault(s => s != chosen && s.Definition.Position == d.Position && s.Definition.Kind == d.Kind && s.Definition.DetentionFacilityId == d.DetentionFacilityId &&
-                s.Definition.DurationTicks == d.DurationTicks && VisibleWait(s) == 0 && NeedServiceAccess(actor, action, s) == FailureReason.None);
+            var free = seen.Where(p => p.Key != d.Id && ServicePreference.Identical(needServices[p.Key].Definition, d) && ServicePreference.VisiblyFree(p.Value))
+                .Select(p => needServices[p.Key]).FirstOrDefault(s => NeedServiceAccess(actor, action, s) == FailureReason.None);
             if (free == null) return chosen;
             action.ServiceId = free.Definition.Id;
             foreach (var goal in DailyFor(actor.Id.Value).Where(g => g.ActiveActionId == action.Id.Value)) goal.ServiceId = free.Definition.Id;
@@ -153,6 +154,7 @@ namespace Station.Core
                 action.Waiting = false; action.Started = processingTick; action.Completes = checked(processingTick + service.Definition.DurationTicks);
                 Emit("NeedServiceClaimed", actor, action.Id, action.Item, arrival: action.Completes, detail: service.Definition.Kind.ToString()); ScheduleCompletion(actor, action.Completes);
             }
+            ServiceVisiblyChanged(service);
         }
         private void CompleteNeedActivity(Actor actor, ActiveAction action)
         {
@@ -180,7 +182,7 @@ namespace Station.Core
         private void ReleaseNeedActivity(Actor actor, ActiveAction action)
         {
             if (!IsNeedAction(action.Kind) || !needActivities.TryGetValue(action.Id.Value, out var activity)) return;
-            var service = needServices[action.ServiceId]; service.Queue.Remove(action.Id.Value); service.Occupants.Remove(action.Id.Value);
+            var service = needServices[action.ServiceId]; service.Queue.Remove(action.Id.Value); service.Occupants.Remove(action.Id.Value); ServiceVisiblyChanged(service);
             ReleaseMeal(activity);
             if (activity.Status is NeedActivityStatus.Active or NeedActivityStatus.Queued) { activity.Status = NeedActivityStatus.Cancelled; activity.EndedTick = processingTick; activity.Reason = "Cancelled"; }
             Emit("NeedServiceReleased", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
@@ -192,7 +194,7 @@ namespace Station.Core
         }
         private void ChangeNeedService(long id, bool enabled)
         {
-            var service = needServices[id]; service.Enabled = enabled;
+            var service = needServices[id]; service.Enabled = enabled; ServiceVisiblyChanged(service);
             if (!enabled)
             {
                 foreach (var reservation in berthReservations.Where(p => p.Key == id).ToArray()) CancelRunning(actors.Values.Single(a => a.Action?.Id.Value == reservation.Value));

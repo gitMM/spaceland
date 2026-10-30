@@ -14,14 +14,9 @@ namespace Station.Core
         public IReadOnlyList<LocalPatrolSnapshot> InspectLocalPatrols(Id<ActorTag> actor) => localPatrols.Values.Where(p => p.ActorId == actor.Value).Select(p => p.Copy()).ToArray();
         private IReadOnlyList<Coord> PatrolCandidates(MissingReportIncident incident, IAuthorityView view)
         {
-            var person = view.Personnel.Single(p => p.ActorId == incident.ActorId); var result = new List<Coord>();
-            var origin = Candidate(person).KnownOrigin; if (origin.HasValue) result.Add(origin.Value);
-            var job = jobs[incident.JobId];
-            Coord? site = job.Kind == WorkKind.ConstructHabitat ? ConstructionSpecification(job.ProjectId).Site : job.Kind != WorkKind.CleanTile ? view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == job.MachineId)?.Position :
-                view.Publication.Work?.Cleanable.SingleOrDefault(c => c.Tile.Value == job.TileId)?.Position;
-            if (site.HasValue) result.Add(site.Value);
-            if (person.Roster?.RestTile is Coord rest) result.Add(rest);
-            return result.Distinct().Take(8).ToArray();
+            var person = view.Personnel.Single(p => p.ActorId == incident.ActorId);
+            var origin = Candidate(person).KnownOrigin;
+            return PatrolPlanning.SearchSites(origin, IncidentPolicy.JobSite(view, JobTarget(jobs[incident.JobId])), person.Roster?.RestTile);
         }
         private long SelectPatrol(MissingReportIncident incident, IAuthorityView view, IReadOnlyList<Coord> candidates, IEnumerable<DispatchCandidate>? available = null)
         {
@@ -69,8 +64,9 @@ namespace Station.Core
             if (EscortControls(actor.Id) || actor.Action != null || DeferToNeed(actor, true) || !KnownOnDuty(actor.Id) || reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0 ||
                 !needAgents.ContainsKey(actor.Id.Value) && checkIns.TryGetValue(actor.Id, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick)) return;
             var view = ActorView(actor.Id);
-            if (view.Role != order.Payload.RequiredRole) { QueuePatrolResult(order, MessageKind.PatrolBlocked, new FactValue(FactValueKind.Text, text: "NotQualified"), processingTick); return; }
-            if (order.Status == LocalPatrolStatus.Read)
+            var gate = PatrolPlanning.OrderGate(view, order.Payload, order.Status == LocalPatrolStatus.Read);
+            if (gate == PatrolOrderGate.NotQualified) { QueuePatrolResult(order, MessageKind.PatrolBlocked, new FactValue(FactValueKind.Text, text: "NotQualified"), processingTick); return; }
+            if (gate == PatrolOrderGate.Accept)
             {
                 order.Status = LocalPatrolStatus.AcceptancePending;
                 QueuePatrolReport(order, MessageKind.PatrolAccepted, new FactValue(FactValueKind.Text, text: "Accepted"), processingTick); return;
@@ -93,11 +89,11 @@ namespace Station.Core
         {
             if (action.PatrolOrderId == 0 || !localPatrols.TryGetValue(action.PatrolOrderId, out var order) || order.Status != LocalPatrolStatus.Searching ||
                 order.ActorId != actor.Id.Value || action.TargetActor != order.Payload.TargetActor || action.Target != order.Payload.Candidates[order.CandidateIndex]) return;
-            bool found = value.Kind == FactValueKind.Coordinate;
+            bool found = PatrolPlanning.Found(value);
             order.Observations = order.Observations.Concat(new[] { new PatrolObservation(processingTick, action.Id.Value, action.Target, found) }).ToArray();
             order.CandidateIndex++;
             Emit("PatrolCandidateInspected", actor, action.Id, messageId: order.OrderMessageId, target: action.Target, detail: found ? "FoundHere" : "AbsentHere", causeId: action.CauseId);
-            if (found || order.CandidateIndex == order.Payload.Candidates.Count) QueuePatrolResult(order, found ? MessageKind.PatrolFound : MessageKind.PatrolNotLocated, value, processingTick);
+            if (PatrolPlanning.SearchResult(found, order.CandidateIndex, order.Payload.Candidates.Count) is MessageKind result) QueuePatrolResult(order, result, value, processingTick);
         }
         private void QueuePatrolReport(LocalPatrolSnapshot order, MessageKind kind, FactValue claim, long observed)
         {

@@ -148,18 +148,20 @@ Response times in `p32-default` (ticks; targets in brackets):
 | credential detection [1,500] | 6 | 0 | 16,500 | 16,500 | 2 `LossHolderAsleep`, 1 off duty |
 | case detection [4,500] | 4 | 3,084 | 5,996 | 5,996 | 2 institutional review |
 
-Remaining findings and limitations:
+Findings from this increment, with their current status:
 
-- Facility dispatch selects only on-duty, uncommitted qualified responders. Every
-  cleaner holds an initial cleaning assignment, so machine repairs wait until one
-  finishes (up to 71,900 ticks). This is institutional policy, not staffing.
-- Facility acknowledgment is late when the chosen cleaner is off duty; item 2
-  (deadlines and reassignment) is the intended fix.
-- A single assignee cleans a corridor at 300 ticks per unit and only on duty;
-  accumulated spills took up to 217,336 ticks, with overdue replacements in between.
-  The default therefore clears at 288,000, exactly the required clear day. The
-  population run may fail this margin.
-- Card losses discovered by a sleeping or off-duty holder wait until they wake.
+- *Resolved by the [population margin follow-up](acceptance-current.md#follow-up--population-margin-and-unacknowledged-facility-orders-2026-10-30):*
+  repairs waited up to 71,900 ticks because facility dispatch chose only uncommitted
+  responders and every cleaner held a cleaning assignment. Repairs may now take a
+  responder committed only to routine cleanup.
+- *Resolved by the same follow-up:* single assignees cleaned accumulated corridor
+  spills for up to 217,336 ticks, so the default cleared at exactly the required
+  clear day. Cleanup helpers now join large tasks; clear-from is 138,000–150,000.
+- *Partly resolved:* facility acknowledgment was late when the chosen cleaner went
+  off duty. Silent facility orders are now reassigned after two configured hours,
+  but 41 acknowledgments at 256 citizens still miss the target when no eligible
+  replacement is on duty (`ResponderOffDuty`).
+- *Open:* card losses discovered by a sleeping or off-duty holder wait until they wake.
 - `CommittedAction` pre-duty meals: 11 citizens were still asleep when the window
   opened (their sleep started late after relief or a conversation).
 - Response targets are fixture assessments for the shortened day, not calibrated

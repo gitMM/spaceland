@@ -1,50 +1,46 @@
 # Current acceptance matrix
 
-Updated 2026-10-30: current suite **858 passed, zero failed** (`artifacts/pressure-tests/identical-services-all.trx`), snapshot schema 49; the pressure gate passes at 32 and 256 citizens for five seeds ([details](#remaining-daily-life-verification)). The paragraphs below up to the first dated section are the 2026-10-29 baseline. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
-Prior institutional regression: **816 passed, zero failed, zero skipped**;
-`artifacts/institutional-tests/institutional-verified.trx`. All 230 normative requirement
-IDs are present. The two-day station passes its declared participation and causal
-checks; the 2,048-citizen workload completes its work/needs baseline. Open full-gate
-clauses below are not promoted to pass by these narrower results.
-The [recovery follow-up](recovery-station.md) proves the same finite disruption
-gate with 32 and 2,048 citizens, including checkpoint continuation, physical
-recovery, daily meals/sleep, received completion reports and patrol outcomes.
-The [specialized institutional station](institutional-station.md) now proves the
-audit/detention/escort/release chain with daily life at 32 and 2,048 citizens. Eight
-small controls include two real occupants competing for one slot and a replacement
-guard team after interruption. Full release gates remain partial.
+Updated 2026-10-30. This matrix is the current requirement and gate map; it supersedes
+the outstanding-work lists in older increment reports, which describe their own
+verification date. Component evidence is not full handoff acceptance: `pass` names the
+demonstrated scope and `partial` means required variants or integrated clauses remain.
 
-## Active verification — fixed station under pressure
+Current state:
 
-Population scope (user decision, 2026-10-30): population runs and tests use **256
-citizens** (four 64-citizen groups), not 2,048. The 2,048-citizen results below are
-historical evidence and are no longer pursued as a gate.
+- **Suite:** 914 passed, zero failed or skipped, after the T08 decision-input fixes
+  (901 after the decision-boundary move, 858 before it). Snapshot schema 53.
+- **Active milestone:** the [fixed station under sustained pressure](pressure-station.md)
+  passes at 32 and 256 citizens for seeds 42, 7, 91, 1234 and 2026, with exact state
+  and continuation-event replay and the independent assignment audit. It stays open
+  for response-target calibration, roster-aware sleep start, off-duty facility
+  acknowledgments and broader concurrent institutional load.
+- **Population scope** (user decision, 2026-10-30): population runs and tests use
+  **256 citizens** (four 64-citizen groups). 2,048-citizen results are historical.
+- **Scope amendment** (2026-10-29): fixed layout and population; expansion (T11,
+  R-AUT-01..08) is deferred. See [Acceptance gates](#acceptance-gates).
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](architecture.md#decision-boundary-2026-10-30)). The nine decision-input leaks that audit found are closed (T08 pass for the audited inputs; see [T08 decision inputs](#follow-up--t08-decision-inputs-2026-10-30)). R-ARC-04 stays partial: `IInstitutionView` carries only the tick.
 
-The [combined pressure workload](pressure-station.md) now passes at 32 citizens:
-overlapping recovery and disciplinary chains, shared guards, all daily meals/sleep,
-drained work and service queues, conservation and exact state/event continuation.
-Earlier 2,048-citizen trials exposed institutional backlogs and the inline checkpoint
-export limit; those defects are fixed, but population acceptance remains pending. Expansion
-is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`, with
-a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
-The previous complete suite passed **843 tests** in
-`artifacts/pressure-tests/pressure-all-completion.trx`; after the staffing and
-daily-timing step below it passed **849** (`staffing-timing-all.trx`); the current
-count is 858. Authenticated original replies
-now close unposted searches without generating unnecessary patrol work. See the pressure report for
-the current fixture, finite guard searches, audit retry backoff, intake waiting,
-reply handling, and checkpoint fixes. Snapshot schema was 45 then; it is now 49. Explicit evidence-based
-review outcomes are acceptable per the user's clarification; unfinished audits,
-unread decisions, and open escorts remain failures.
-The roster-search population trial reached 59 of 63 required releases; its remaining
-escort histories show stale search priorities and predictable critical needs during
-long journeys. The subsequent `pressure-2048-ready` trial completes every required
-release and exact state/event replay, but leaves only 30,000 clear ticks versus the
-required 36,000. Its last cleaner lost a fresh completion observation when leaving
-for a need break. The subsequent `artifacts/pressure-2048-completion/` primary run
-also completes all 63 required releases, but first clears its backlogs at tick
-318,000, leaving only 6,000 clear ticks. It fails the unchanged 36,000-tick clear-day
-requirement; replay cannot turn that primary failure into a passing population gate.
+## Completed milestones and historical evidence
+
+All 230 normative requirement IDs are inventoried below. Earlier milestones keep their
+reports: the [two-day integrated station and population baseline](integration-baseline.md),
+[finite disruption and recovery](recovery-station.md) and the
+[specialized institutional station](institutional-station.md) (audit, detention,
+escort and release chain with eight declared controls). Their 2,048-citizen results
+were measured before the population gate moved to 256.
+
+Suite history: 785 at initial stabilization (`artifacts/integration-tests/stabilization.trx`),
+816 after the institutional station, 843 after the first pressure completion, 849 after
+staffing and daily timing, 854–858 after the population margin and service fixes, 901 after the
+decision-boundary move (42 Mind policy tests and one structural test).
+
+The 2,048-citizen pressure trials (historical): `pressure-2048-incident-cache`,
+`-local-records` and `-roster-search` left escorts or reprimands open at the horizon;
+`pressure-2048-ready` and `pressure-2048-completion` completed every required release
+and exact replay but cleared their backlogs too late for the required 36,000-tick clear
+day (30,000 and 6,000 clear ticks). Those runs exposed the cleanup-completion, search
+priority and journey-relief fixes recorded in [pressure-station.md](pressure-station.md);
+none is a current gate.
 
 ## Completed step — staffing, daily timing and response times
 
@@ -261,6 +257,48 @@ off duty (`ResponderOffDuty`), when no eligible replacement was on duty. The pre
 test now requires backlogs clear by day six. The suite passes **855 tests**
 (`artifacts/pressure-tests/margin-all.trx`); snapshot schema stays 49.
 
+## Follow-up — T08 decision inputs (2026-10-30)
+
+The decision-boundary audit listed nine places where Core built a decider's inputs from
+world truth or another party's private state. Each is now fixed one commit at a time, with
+a regression in `DecisionInputIsolationTests`. Each regression runs two identical worlds,
+changes only state the decider cannot know in one of them just before the decision, and
+requires the same choice. Every regression failed on the code before its fix.
+
+| # | Decider and leak | Now uses | Regression | Behaviour |
+| --- | --- | --- | --- | --- |
+| 1 | Detention request and case filing authentication and reply choice read `actors[PhysicalSender]` and `actors.Values` | authority `registrations` (personnel now requires the authority) | forged physical role/account | identical |
+| 2 | Detention intake and revoked-at-intake read the `detentionAuthorizations` register | latest `DetentionAuthorization` ledger record | register revoked without record | identical |
+| 3 | Supervisor's request threshold from private `PersonnelConfig` | `PublicKnowledge.Personnel` | private threshold raised | identical |
+| 4 | Audit terminal from the `recordAccess` grant table | citizen's own grant notices (schema 50) | grant table cleared | identical |
+| 5 | Conversation initiator evaluated and woke partners' private consent | visibly idle local candidates; the partner decides once at `StartConversation`; the cursor moves past a refusal | partner's private roster dropped | **changed** |
+| 6 | Same-tile waits and on-arrival switch read live queues | perceived waits, set on arrival and on every visible change (schema 51) | unseen occupant added | identical |
+| 7 | Recovery discovery, desks, capability, inbox completion read registries and global message stage | own credential facts, `PublicKnowledge.RecoveryDesks`, enrolment knowledge (schema 52), the read's own result | registry, desk and capability changes; source check | identical |
+| 8 | Late work-order read scanned the message store for own completions | own completion memory (schema 53) | own posts re-attributed in the store | identical |
+| 9 | Failed custody: leader read co-located guards' needs and copies | guards on the leader's team list, each on its own copy | planted non-team copy | identical |
+
+"Identical" means the pressure continuation trace hash is unchanged; schemas 50–53 still
+change checkpoint bytes. Item 5 is the only behaviour change: initiators now ask partners
+who may refuse. That exposed and fixed a stale need timer on refusal, and the chosen
+partner is now named in the `conversation/v1` plan detail. The pinned 128-citizen
+digest in `StationIntegrationTests` was updated at each schema or behaviour change.
+
+Every gate below completed with checkpoint match, exact continuation-trace replay, zero
+invalid causes or trace gaps, 325 accounting checks and a passing independent audit.
+
+| Run | Continuation trace hash | Clear from | Reprimands / releases | Failed actions (max) | Conversations | Assignments |
+| --- | --- | --- | --- | --- | --- | --- |
+| p32 before | `c6237bbf…bfda95976b` | 144,000 | 4 / 2 | 340 (24) | 528 | 66 |
+| p32 after | `7ad7636e…8d906256` | 150,000 | 4 / 2 | 396 (22) | 530 | 66 |
+| p256 before | `f2defb88…fc58c2c4c` | 138,000 | 16 / 8 | 2,756 (20) | 4,154 | 509 |
+| p256 after | `b0e69ad4…689c1b3a1` | 138,000 | 16 / 8 | 2,868 (21) | 4,196 | 515 |
+
+Per commit, items 1–3 reproduce the "before" hashes, item 4 keeps them with new checkpoint
+bytes, item 5 produces the "after" hashes and items 6–9 keep them. Final checkpoint
+SHA-256: p32 `b92434f5…5ca530`, p256 `440df8b8…f148c35e`. Suite 914 passed. The extra failed
+actions after item 5 are declined invitations (`ConsentDeclined`); the individual bound
+(100) is far off.
+
 ## Remaining daily-life verification
 
 Refreshed 2026-10-30 for the current pressure workload (the 46-window
@@ -361,10 +399,10 @@ family-level audit limits even where these specific tests pass.
 
 | Gate | Evidence | Current result / missing closure |
 | --- | --- | --- |
-| T00 | StructuralTests; banned-API compile probe | partial: dependency checks pass; some goal/dispatcher decisions remain in Core |
+| T00 | StructuralTests (assembly references, banned APIs and compile probe, `T00_SearchAndRankingStayInMind`); Mind policy unit tests | pass: Mind references only Contracts and the base library; goal-priority, dispatch and institutional decisions run in Mind and Core only applies them (2026-10-30, behaviour-identical) |
 | T01–T06 | FoundationTests | pass: family connectivity, weighted movement, locality, estimates, frozen segments |
 | T07 | InformationTests; RunnerTests generated terminal variants | pass: false delivery and delayed correction |
-| T08 | PlanningTests and feature isolation tests | partial: tested citizen/authority boundaries pass; complete decision-code audit open |
+| T08 | PlanningTests, feature isolation tests, decision-code audit (2026-10-30), `DecisionInputIsolationTests` (12 twin-world regressions and one source check) | pass for the audited decision inputs (2026-10-30): the nine input leaks found by the audit are closed. Each regression changes only hidden state just before a decision and requires the same choice: physical actor role/account (detention and case authentication and reply), the authority's authorization register (intake), private `PersonnelConfig` (supervisor threshold), the grant table (audit terminal), a partner's private goals (conversation), unperceived service queues (same-tile choice), the credential, desk and capability registries (recovery), the message store (late order read) and other guards' order copies (failed handoff). All 13 fail on the pre-fix code; the inbox-stage part of recovery cannot diverge observably and is guarded by the source check. See [T08 decision inputs](#follow-up--t08-decision-inputs-2026-10-30). Not re-audited: physical admission checks still run on live service state (`NeedServiceAccess` when switching to a free identical service; the handoff handshake) |
 | T09 | WorkTests; StackTests; arbitration tests | partial: physical claims/accounting covered; full acceptance inventory audit open |
 | T10 | RepairPlanningTests | partial: existing component/fabrication alternatives pass; nested production domains open |
 | T11 | Historical construction tests and reports | deferred: expansion removed from first-release scope |
@@ -387,16 +425,16 @@ family-level audit limits even where these specific tests pass.
 
 | Requirement | Implementation (under src unless specified) | Existing evidence | Current status |
 | --- | --- | --- | --- |
-| R-ARC-01 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-02 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-03 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-04 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-05 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-06 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-07 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-08 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-09 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-10 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
+| R-ARC-01 | src/Station.Mind; src/Station.Core | StructuralTests | pass: project layout matches; all decision code is in Mind (2026-10-30) |
+| R-ARC-02 | src/Station.Mind; src/Station.Core | StructuralTests | pass: no Unity, network or editor references (assembly-reference and banned-API checks) |
+| R-ARC-03 | src/Station.Mind; src/Station.Core | StructuralTests | pass: Mind references only Contracts and the base library; Mind.csproj cannot reference Core |
+| R-ARC-04 | src/Station.Mind; src/Station.Core | StructuralTests; DecisionInputIsolationTests | partial: views and Contracts inputs are passed to Mind, and the decision inputs the T08 audit found built from world truth now come from publications, received records, registrations or the decider's own memory (2026-10-30); `IInstitutionView` still carries only the tick |
+| R-ARC-05 | src/Station.Mind; src/Station.Core | StructuralTests | pass: Mind returns choices and intents; Core validates and applies them (2026-10-30) |
+| R-ARC-06 | src/Station.Mind; src/Station.Core | StructuralTests | partial: shared assemblies target netstandard2.1; Runner and Tests target .NET 8 because the pinned SDK is 9.0.311, although .NET 10 LTS now exists |
+| R-ARC-07 | src/Station.Mind; src/Station.Core | StructuralTests | pass: LangVersion 9 for shared assemblies; no `record` or `init` |
+| R-ARC-08 | src/Station.Mind; src/Station.Core | StructuralTests | partial: compact typed state and indices are in place; no complete data-orientation audit |
+| R-ARC-09 | src/Station.Mind; src/Station.Core | StructuralTests | pass: each world runs single-threaded; parallelism only across worlds in Runner batches |
+| R-ARC-10 | src/Station.Mind; src/Station.Core | StructuralTests | pass: wall-clock APIs are banned by the analyzer; file and console access is rejected by the structural source check |
 | R-DET-01 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |
 | R-DET-02 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |
 | R-DET-03 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |

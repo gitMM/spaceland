@@ -68,16 +68,12 @@ namespace Station.Core
         private void RecheckFailedCustody(Actor leader, ActiveAction action, FailureReason failure)
         {
             if (!localGuardOrders.TryGetValue(action.GuardOrderId, out var order)) return;
-            foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
-                actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position))
-            {
-                var guard = actors[new Id<ActorTag>(local.ActorId)];
-                if (!GuardJourneyNeedsRelief(guard.Id)) continue;
-                local.Reason = "PreparingForEscort";
-                RequestNeedDecision(needAgents[local.ActorId], processingTick);
-            }
-            if (order.Reason == "PreparingForEscort") return;
-            if (failure == FailureReason.UnknownRequiredFact && order.Status == GuardOrderStatus.TargetLocated)
+            // Guards on the leader's own team list who stand here took part in the failed
+            // handoff; each reacts on its own order copy with its own journey readiness.
+            var participants = HandoffParticipants(leader, order);
+            foreach (var local in participants) PrepareAfterFailedHandoff(local);
+            var retry = GuardOutcomePolicy.AfterFailedHandoff(failure, order.Reason == "PreparingForEscort", order.Status == GuardOrderStatus.TargetLocated);
+            if (retry == CustodyRetry.AwaitLocalHandoff)
             {
                 // A failed local handshake reports only that a precondition is
                 // unmet. Retain the leader's own observation and wait without
@@ -86,11 +82,17 @@ namespace Station.Core
                 RequestGuardDecision(order, Math.Min(checked(processingTick + order.Backoff), GuardTargetWaitDeadline(order)));
                 order.Backoff = NextWorkBackoff(order.Backoff); return;
             }
-            if (failure != FailureReason.NotAtRequiredTile) return;
-            // The co-located team took part in this failed local handoff. Each
-            // guard must inspect again; no remote member or authority is updated.
-            foreach (var local in localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
-                actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position)) ReinspectGuardTarget(local);
+            if (retry != CustodyRetry.Reinspect) return;
+            // Each participant inspects again; no remote member or authority is updated.
+            foreach (var local in participants) ReinspectGuardTarget(local);
+        }
+        private LocalGuardOrderSnapshot[] HandoffParticipants(Actor leader, LocalGuardOrderSnapshot order) => localGuardOrders.Values.Where(l => l.Payload.DispatchId == order.Payload.DispatchId &&
+            order.Payload.Guards.Contains(l.ActorId) && actors[new Id<ActorTag>(l.ActorId)].Position == leader.Position).ToArray();
+        // A participant's own reaction to the failed handoff: only its own needs decide whether it prepares first.
+        private void PrepareAfterFailedHandoff(LocalGuardOrderSnapshot own)
+        {
+            if (!GuardJourneyNeedsRelief(new Id<ActorTag>(own.ActorId))) return;
+            own.Reason = "PreparingForEscort"; RequestNeedDecision(needAgents[own.ActorId], processingTick);
         }
         private void StartBeginEscort(Actor actor, ActiveAction action)
         {

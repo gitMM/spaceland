@@ -1,75 +1,58 @@
 # Imperial Station
 
-First-release scope now uses a **fixed layout and population**. Expansion and
-construction acceptance are deferred; existing beds, allocation and occupancy stay
-in scope. The active milestone is [a fixed station under sustained pressure](docs/pressure-station.md).
-Run it with `dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32`;
-use `--count 256` for the population workload (the population gate since 2026-10-30;
-2,048-citizen runs are no longer used). Its acceptance result is
-`pressure-result.json`, including exact state and event continuation checks.
+Independent headless station simulation, based on build specification **1.2.2**
+(fixed-station scope amendment). This folder is a standalone .NET solution: it has no
+dependency on spaceland, DeathStar assets, Unity, an editor process, rendering, or
+network services at runtime, and can be copied out of this repository and built on its own.
 
-Independent headless station simulation, based on build specification **1.2.2** (fixed-station scope amendment).
-Current requirement status: [acceptance matrix](docs/acceptance-current.md).
-Current integration work and measurements: [daily/population baseline](docs/integration-baseline.md).
-Current institutional milestone: [specialized station and recovery controls](docs/institutional-station.md).
-Completed recovery milestone and evidence: [finite disruption and recovery](docs/recovery-station.md).
+## Status (2026-10-30)
 
-Run `dotnet run --project src/Station.Runner -c Release -- benchmark recovery --count 32 --out artifacts/recovery-32`
-for the small recovery gate; use `--count 256` for the same population workload.
-Use the small gate for frequent behavior edits and the population gate for scale
-checks. A [bounded performance probe](tools/Station.Profile/README.md) can continue
-an existing checkpoint when investigating a particular slow phase.
-For audit, detention and escort changes, run `benchmark institutional --count 32`;
-its `--variant` controls and population command are documented in the institutional report.
-The measured complete small institutional command takes **3.309 seconds**
-(the historical 2,048-citizen command took 213.815 seconds; population runs now use 256),
-excluding compilation. Use the small command for iteration and population runs at
-verification boundaries. Missed routine windows, check-in priority and unread rosters now have integrated
-evidence ([remaining daily-life verification](docs/acceptance-current.md#remaining-daily-life-verification)).
-Next: calibration of response targets, roster-aware sleep start and broader
-concurrent institutional load.
-Older increment reports describe their verification date, not the current backlog.
-This folder is a standalone .NET solution: it has no dependency on spaceland,
-DeathStar assets, Unity, an editor process, rendering, or network services at runtime.
-It can be copied out of this repository and built on its own.
+**914 tests pass; the first release is still incomplete.** First-release scope uses a
+**fixed layout and population**; expansion and construction acceptance are deferred,
+while existing beds, allocation and occupancy stay in scope.
 
-Current status (2026-10-30): **858 tests passed; first release still incomplete**. All six staffing/timing/response steps are in: guard shifts are staggered (a declared redistribution of five cleaners per 64-citizen group), sleep is budgeted against meals and toilet use, citizens remember terminal outages and cafeteria waits, silent escort teams are reassigned after a deadline, and `pressure-result.json` reports response times per stage with the cause of every missed target; see [staffing, daily timing and response times](docs/pressure-station.md#staffing-daily-timing-and-response-times-2026-10-30). Pressure controls: `--variant single-cohort-guards|daytime|overnight|roster-change`. Every missed routine window is now classified (the gate fails on an unexplained one), check-in gaps are bounded under sustained work, and unread roster changes are checked against the roster each citizen knew. The gate passes at 32 and 256 citizens for five seeds, with exact replay and the independent audit; see [remaining daily-life verification](docs/acceptance-current.md#remaining-daily-life-verification). Population runs and tests use 256 citizens; 2,048-citizen results are historical. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
+- **Active milestone:** [a fixed station under sustained pressure](docs/pressure-station.md)
+  passes at 32 and 256 citizens for five seeds, with exact state/event replay and the
+  independent assignment audit. Still open: calibration of response targets and the
+  check-in bound, roster-aware sleep start, off-duty facility acknowledgments and
+  broader concurrent institutional load.
+- **Population gate:** 256 citizens since 2026-10-30; 2,048-citizen results are historical.
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](docs/architecture.md#decision-boundary-2026-10-30)). The decision-input leaks that audit found are closed (T08 pass for the audited inputs); R-ARC-04 stays partial because `IInstitutionView` carries only the tick.
+- **Requirements and gates:** the [acceptance matrix](docs/acceptance-current.md) is the
+  current map of all 230 requirement IDs and T00–T27. Delivered systems are summarised
+  in the [build specification's implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-30>).
+- The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
 
-**Implemented:** the H1 foundation plus parts of H2, H3 and H4: bounded GOAP search, knowledge,
-local sensing, physical terminal sessions, delayed messages, authority beliefs and
-autonomous reporting and repair planning with existing-part/fabrication alternatives.
-Physical work includes fabrication, installation, equipment
-inspection/testing, atomic claims and recipe accounting. State and replay cover these
-additions. Jobs now retain distinct attempts, offline order copies, posted acknowledgments,
-suspension/resumption and delayed outcome reports. Autonomous periodic and work-result
-check-ins use the worker's own clock and knowledge. Finite record queries capture versioned,
-permission-filtered credential/session/work records, with bounded learned facts and history.
-Resource operations now include finite stack split/merge, physical project stashes,
-declared source/sink recipes and autonomous separation of stacked repair cartridges.
-Content controls passive versus inspection-only local facts. Scoped wired sensors
-capture machine status and deliver delayed, explicitly sourced authority evidence.
-The first H3 routine increment adds a configured station day, versioned cohort rosters,
-staggered check-ins, and physical travel to a known rest tile after duty. Citizens adopt
-roster changes only after reading them; unfinished work remains retained across shifts.
-Authority report expectations now start on received acceptance, estimate from published
-information, extend across known off-duty time and learn from received results. Separate
-acknowledgment watches and persistent overdue incidents retain uncertainty about work.
-Overdue repair incidents can now dispatch qualified replacements through ordinary orders,
-with fixed-hour cohort admission budgets, FIFO deferral and bounded replacement depth.
-Patrol guards read and acknowledge orders, inspect recorded search locations, and report
-worker status through terminals. Patrol and replacement share one admission token while
-retaining separate result evidence, including when one branch becomes available later.
-Cleanable tiles now accumulate deterministic soiling and spills. Finite cleaning checks
-local dirt at arrival and completion, preserves tools, and handles concurrent cleaners
-without negative dirt or duplicate effects. Autonomous cleaners read and accept typed
-tile orders, collect known tools, inspect on arrival, clean and report through terminals.
-The missing-cleanup scenario now runs without scripted actors: a slow original triggers
-independent replacement/patrol responses, then reports NoWorkNeeded on its own attempt.
-Facility duties now turn local dirt/fault observations into terminal reports, deduplicated authority tasks and qualified worker assignments. Completion and follow-up work depend on received evidence. Machines now fail through explicit disturbances and deterministic wear timers. Failed cartridges enter an accounted sink; local observation and normal reports drive replacement work. Sampled repair QA now dispatches supervisors through typed verification orders. Supervisors inspect locally and report captured results; discrepancies now open bounded audits at assigned Records Terminals. Completed, permitted queries can establish assigned-account responsibility; missing or ambiguous evidence produces NeedsReview. With personnel enabled, supervisors post cases through terminals; validated cases append one reprimand and return a count through an ordinary mailbox reply. Canonical keys prevent duplicate reprimands. Supervisors now request detention after reading a qualifying count. The authority separately approves, rejects or records a wait, retaining unique expiring authorizations. Optional escort dispatch now reserves a complete team from known eligible guards and sends individual orders with the roster, justification, destinations and expiry. Each guard reads and acknowledges through a terminal. Guards now collect real known equipment, complete a finite equip action and travel to the rendezvous on their read copies, including offline. Each guard now completes a local join; the physically assembled team searches copied locations through finite target inspections. A finite local handoff now establishes cooperative custody, suspends target work and closes ordinary sessions. Guards and target move with shared frozen edge timing, stop together on cancellation or known expiry, and wait at the copied destination. Declared detention services now reserve finite bed and operation capacity, perform local intake and release, and issue delayed authority receipts and release notices. Successful intake starts the sentence; release frees the slot. Current orders must be read before retained work resumes. Completed detention resets qualifying counts through received evidence while preserving historical decisions. Revocations now reach individual guards through inbox reads or connected intake checks. Negative searches, blocked preparation, expiry and interrupted custody produce terminal reports; received outcomes explain authority NeedsAttention states. Optional needs now retain exact fractional accumulators and schedule private thresholds. Critical guards stop escorts at safe boundaries and report through terminals. Physical meals, toilets, rest and assigned sleep now require real local services, capacity queues and finite activity. Food is conserved; cancellation keeps only elapsed sleep/rest benefit. Autonomous urgent/critical relief now plans known travel and service use, learns local failures, retries alternatives and respects custody. Known rosters now generate retained meal, sleep and mandatory rest goals. Due goals share time/sequence ordering with reports and check-ins, and execution rechecks priority at safe boundaries. Vacant berths now require finite local allocation. Sleep pressure can select bounded physical rest fallback while retaining an unmet-sleep reason. Due toilet use and optional off-duty strain rest share the priority policy. Local conversation now claims both consenting participants, relieves social need and shares only bounded permitted facts with speaker provenance. HQ recovery identity checks now create finite, terminal-bound restricted sessions; normal inbox, query and post access remains separately authorized. Formal lost-card reports now create idempotent account-scoped recovery cases, revoke old credentials, and return delayed replies through a separate recovery mailbox. Explicit reading authorizes finite physical issuance from real blank stock to a printer output, followed by pickup and normal login/read. Retries reuse the issued card, and historical receipts preserve newer local evidence. Autonomous card-loss discovery now retains work and chooses known-card retrieval or finite HQ replacement. Recovery requires normal login and a current-order read before work resumes; work services can explicitly require credentials at start and completion. The runner now audits declared response roles using explicit command origins and causal transitions. Canonical and generated recovery cases must pass this audit even in compact runs. Finite construction now consumes held materials at completion, adds connected topology and real housing berths, and preserves claims/materials across interruption. Authority capacity planning now uses bounded GOAP over known layout and material budgets, reserves identified projects and pending capacity, and avoids duplicate expansion while commitments cover the target. Typed construction jobs now dispatch through ordinary orders; workers read, acknowledge, collect material, travel, build and report autonomously. The first accepted project report converts pending capacity to believed completed capacity exactly once and extends the believed layout. Construction now has 20 generated seeds each for expansion, delayed reports, need interruption/resumption, shortages and vacant capacity, plus concurrency and checkpoint controls. Finite local construction surveys now queue ordinary return reports; receipt revises the identified project capacity without changing physical beds, spent materials or the original completion record. Duplicate evidence cannot roll back a correction. Initial capacity identification, blocked-work follow-up and other priority/release gates remain unfinished. The viewer still needs work-specific presentation.
-**Outstanding:** remaining planning/work domains and H2 gate verification, H3 authority and
-institutions, and H4 daily life/population/tuning. This is not the complete first release.
-See [current construction survey progress](docs/h3-construction-surveys-progress.md), [generated construction verification](docs/h3-construction-generated-progress.md), [construction-order progress](docs/h3-construction-orders-progress.md), [capacity commitment progress](docs/h3-growth-commitments-progress.md), [physical construction progress](docs/h3-physical-construction-progress.md), [response-chain verification](docs/response-chain-progress.md), [autonomous recovery progress](docs/h3-autonomous-recovery-progress.md), [recovery protocol progress](docs/h3-recovery-protocol-progress.md), [recovery identity progress](docs/h3-recovery-identity-progress.md), [conversation progress](docs/h4-conversations-progress.md), [personal-need progress](docs/h4-personal-needs-progress.md), [sleep fallback progress](docs/h4-sleep-fallback-progress.md), [berth allocation progress](docs/h4-berth-allocation-progress.md), [daily-goal progress](docs/h4-daily-goals-progress.md), [autonomous relief progress](docs/h4-need-planning-progress.md), [physical relief service progress](docs/h4-need-services-progress.md), [exact needs progress](docs/h4-needs-progress.md), [guard revocation and reporting progress](docs/h3-guard-outcomes-progress.md), [detention service progress](docs/h3-detention-services-progress.md), [custody and escort progress](docs/h3-escorts-progress.md), [local guard search progress](docs/h3-guard-search-progress.md), [guard preparation progress](docs/h3-guard-preparation-progress.md), [escort dispatch progress](docs/h3-escort-dispatch-progress.md), [detention approval progress](docs/h3-detention-approval-progress.md), [personnel progress](docs/h3-personnel-progress.md), [audit progress](docs/h3-audit-progress.md), [QA verification progress](docs/h3-qa-progress.md), [machine fault progress](docs/h3-wear-progress.md), [facility workflow progress](docs/h3-facility-progress.md), [cleanup workflow progress](docs/h3-cleanup-orders-progress.md), [cleanup physics progress](docs/h3-cleanliness-progress.md), [patrol progress](docs/h3-patrol-progress.md), [replacement-response progress](docs/h3-response-progress.md), [expectation progress](docs/h3-expectations-progress.md), [routine progress](docs/h3-routines-progress.md), [sensor progress](docs/h2-sensors-progress.md), [resource progress](docs/h2-resources-progress.md), [record-query progress](docs/h2-records-progress.md), [job-system progress](docs/h2-jobs-progress.md), [autonomous-repair progress](docs/h2-repair-progress.md), [physical work progress](docs/h2-work-progress.md) and [information-system progress](docs/h2-progress.md); the [H1 report](docs/h1-report.md)
-and [H1 traceability](docs/traceability-h1.md) preserve the earlier milestone evidence.
+## Main gates
+
+```powershell
+dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32
+dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 256 --out artifacts/pressure-256
+```
+
+The acceptance result is `pressure-result.json`, including exact state and event
+continuation checks. Controls: `--variant single-cohort-guards|daytime|overnight|roster-change`.
+Use 32 citizens for behaviour edits and 256 at verification boundaries.
+
+- `benchmark recovery --count 32` is the [finite disruption and recovery](docs/recovery-station.md) gate.
+- `benchmark institutional --count 32` covers audit, detention and escort changes; its
+  `--variant` controls are documented in the [institutional report](docs/institutional-station.md).
+  The complete small command takes about 3.3 seconds excluding compilation.
+- A [bounded performance probe](tools/Station.Profile/README.md) can continue an
+  existing checkpoint when investigating a slow phase.
+
+## Documentation
+
+- [Architecture](docs/architecture.md), [decision log](docs/decisions.md) and [data formats](docs/formats.md).
+- Milestone reports: [pressure station](docs/pressure-station.md),
+  [institutional station](docs/institutional-station.md),
+  [recovery station](docs/recovery-station.md),
+  [daily/population baseline](docs/integration-baseline.md).
+- Increment reports. These describe their verification date, not the current backlog:
+  - H1: [H1 implementation report — 2026-10-28](docs/h1-report.md), [H1 traceability](docs/traceability-h1.md).
+  - H2: [H2 jobs and check-ins: verified increment](docs/h2-jobs-progress.md), [H2 implementation progress](docs/h2-progress.md), [H2 scoped records: verified increment](docs/h2-records-progress.md), [H2 autonomous repair progress](docs/h2-repair-progress.md), [H2 resource flows: verified increment](docs/h2-resources-progress.md), [H2 perception and sensors: verified increment](docs/h2-sensors-progress.md), [H2 physical work progress](docs/h2-work-progress.md).
+  - H3: [Discrepancy records audit — H3 progress](docs/h3-audit-progress.md), [Autonomous credential recovery — H3 progress](docs/h3-autonomous-recovery-progress.md), [H3 cleanup physical foundation: verified increment](docs/h3-cleanliness-progress.md), [H3 autonomous cleanup orders and missing-cleanup workflow](docs/h3-cleanup-orders-progress.md), [H3 generated construction verification](docs/h3-construction-generated-progress.md), [H3 construction orders and received capacity](docs/h3-construction-orders-progress.md), [H3 construction capacity correction](docs/h3-construction-surveys-progress.md), [Detention requests and separate approval — H3 progress](docs/h3-detention-approval-progress.md), [Detention services, finite release and completed-sentence history — H3 progress](docs/h3-detention-services-progress.md), [Guard assignment and individual order reading — H3 progress](docs/h3-escort-dispatch-progress.md), [Physical custody and coupled escort movement — H3 progress](docs/h3-escorts-progress.md), [H3 authority report expectations: verified increment](docs/h3-expectations-progress.md), [Facility reporting and generated tasks — H3 progress](docs/h3-facility-progress.md), [H3 authority capacity commitments](docs/h3-growth-commitments-progress.md), [Guard revocation and outcome reporting — H3 progress](docs/h3-guard-outcomes-progress.md), [Physical equipment and guard rendezvous — H3 progress](docs/h3-guard-preparation-progress.md), [Local guard formation and target search — H3 progress](docs/h3-guard-search-progress.md), [H3 patrol and independent incident branches: verified increment](docs/h3-patrol-progress.md), [Case filing and personnel service — H3 progress](docs/h3-personnel-progress.md), [Physical construction — H3 progress](docs/h3-physical-construction-progress.md), [Supervisor QA verification — H3 progress](docs/h3-qa-progress.md), [Restricted recovery identity — H3 progress](docs/h3-recovery-identity-progress.md), [Physical credential recovery protocol — H3 progress](docs/h3-recovery-protocol-progress.md), [H3 bounded replacement response: verified increment](docs/h3-response-progress.md), [H3 roster routines: verified increment](docs/h3-routines-progress.md), [Machine faults and wear — H3 progress](docs/h3-wear-progress.md), [Response-chain verification — release progress](docs/response-chain-progress.md).
+  - H4: [Finite berth allocation — H4 progress](docs/h4-berth-allocation-progress.md), [Finite local conversation — H4 progress](docs/h4-conversations-progress.md), [Retained daily opportunities and due-time ordering — H4 progress](docs/h4-daily-goals-progress.md), [Autonomous urgent relief — H4 progress](docs/h4-need-planning-progress.md), [Physical relief services — H4 progress](docs/h4-need-services-progress.md), [Exact needs and critical interruption — H4 progress](docs/h4-needs-progress.md), [Seek toilet and additional rest — H4 progress](docs/h4-personal-needs-progress.md), [Explained sleep fallback — H4 progress](docs/h4-sleep-fallback-progress.md).
 
 ## Build and test
 
@@ -219,8 +202,8 @@ history; replay with `--trace detailed` first.
 
 ```text
 src/Station.Contracts  Typed IDs, intents, immutable knowledge, planning contracts
-src/Station.Mind       Bounded symbolic search, known navigation, report/repair planning
-src/Station.Core       Physical execution, knowledge, terminals, scheduler, snapshots
+src/Station.Mind       All decision code: goal priority, planning, dispatch, institutional policies
+src/Station.Core       World state, input gathering, execution, terminals, scheduler, snapshots
 src/Station.Runner     Strict JSON loading, CLI, assertions, batches, replay/artifacts
 tests/Station.Tests   Structural, exact, generated, continuation and isolation checks
 content/              Versioned twelve-family tile catalog

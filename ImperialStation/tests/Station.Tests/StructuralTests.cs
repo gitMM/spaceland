@@ -34,6 +34,18 @@ public sealed class StructuralTests
         }
     }
     [Fact]
+    public void T00_SearchAndRankingStayInMind()
+    {
+        // Core gathers inputs and applies choices; planning search, symbolic actions,
+        // known-route costs and travel-cost ranking are decision code (R-ARC-01/05).
+        var decisionOnly = new[] { "GoapPlanner.", "SymbolicAction(", "PlanningProblem(", "TravelEstimates.", "KnownNavigation." };
+        foreach (string path in Directory.EnumerateFiles(Path.Combine(Fixtures.Root, "src", "Station.Core"), "*.cs", SearchOption.AllDirectories).Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)))
+        {
+            string source = File.ReadAllText(path);
+            foreach (string word in decisionOnly) Assert.False(source.Contains(word, StringComparison.Ordinal), Path.GetFileName(path) + " uses " + word);
+        }
+    }
+    [Fact]
     public async Task T00_DeliberatelyBannedCallFailsCompilation()
     {
         string directory = Path.Combine(Fixtures.Root, "artifacts", "analyzer-probe"); Directory.CreateDirectory(directory);
