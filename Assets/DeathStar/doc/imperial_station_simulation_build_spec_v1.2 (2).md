@@ -33,8 +33,8 @@ replay and an independent audit. Delivered since the entry below: staggered guar
 shifts, sleep budgeted against meals and toilet use, learned terminal outages and
 cafeteria waits, escort and facility acknowledgment deadlines, repair priority with
 an evidence hold, cleanup helpers, per-stage response times, classified missed
-routine windows, bounded check-in gaps and an unread-roster control. Complete suite:
-**856 passed, 0 failed**; snapshot schema 49. Open: calibration, roster-aware sleep
+routine windows, bounded check-in gaps, an unread-roster control and spreading over identical
+services on one tile. Complete suite: **858 passed, 0 failed**; snapshot schema 49. Open: calibration, roster-aware sleep
 start and broader institutional load; see the
 [acceptance matrix](../../../ImperialStation/docs/acceptance-current.md). The rest of
 this section is the 2026-10-29 record.

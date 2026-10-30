@@ -1,6 +1,6 @@
 # Current acceptance matrix
 
-Updated 2026-10-30: current suite **856 passed, zero failed** (`artifacts/pressure-tests/routines-all.trx`), snapshot schema 49; the pressure gate passes at 32 and 256 citizens for five seeds ([details](#remaining-daily-life-verification)). The paragraphs below up to the first dated section are the 2026-10-29 baseline. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
+Updated 2026-10-30: current suite **858 passed, zero failed** (`artifacts/pressure-tests/identical-services-all.trx`), snapshot schema 49; the pressure gate passes at 32 and 256 citizens for five seeds ([details](#remaining-daily-life-verification)). The paragraphs below up to the first dated section are the 2026-10-29 baseline. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
 Prior institutional regression: **816 passed, zero failed, zero skipped**;
 `artifacts/institutional-tests/institutional-verified.trx`. All 230 normative requirement
 IDs are present. The two-day station passes its declared participation and causal
@@ -30,7 +30,7 @@ a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including ex
 The previous complete suite passed **843 tests** in
 `artifacts/pressure-tests/pressure-all-completion.trx`; after the staffing and
 daily-timing step below it passed **849** (`staffing-timing-all.trx`); the current
-count is 856. Authenticated original replies
+count is 858. Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,
 reply handling, and checkpoint fixes. Snapshot schema was 45 then; it is now 49. Explicit evidence-based
@@ -320,7 +320,7 @@ no missed window needing attention:
 | --- | --- | --- | --- | --- |
 | `pressure-256-routines` (seed 42) | 138,000 | 125 | 2,322 | 509 (20) |
 | `pressure-256-roster-change` | 138,000 | 125 | 2,322 | 512 (24) |
-| `seeds/p256-s7` | 144,000 | 122 | 2,162 | 513 (21) |
+| `seeds/p256-s7` | 144,000 | 120 | 2,164 | 509 (22) |
 | `seeds/p256-s91` | 138,000 | 122 | 2,422 | 510 (21) |
 | `seeds/p256-s1234` | 138,000 | 118 | 2,929 | 529 (23) |
 | `seeds/p256-s2026` | 138,000 | 130 | 2,422 | 511 (24) |
@@ -330,8 +330,17 @@ The seed-42 misses are 82 `InitialSleepWindow`, 27 `LateEligibility`, 13 `InCust
 changed cleaners adopted their new roster only by reading it; all 212 of their duty
 boundaries follow the known roster and 8 old-roster-only check-ins occurred before
 the reads. Seed 1234's 2,929-tick gap is close to the 3,000 bound; the bound is a
-declared assessment choice, not a calibrated one. The complete suite passes **856
-tests** (`artifacts/pressure-tests/routines-all.trx`).
+declared assessment choice, not a calibrated one.
+
+Identical services (2026-10-30): in seed 7 two detainees chose the same facility bed
+in the same tick and one waited 12,001 ticks beside three free identical beds. A
+citizen now plans with the queues it sees at identical services on its own tile and,
+on arrival, uses a visibly free identical one instead of queueing
+(`NeedServiceSwitched`; adapted from the parallel `claude/festive-gauss-blwihx`
+branch). The table above is from the final build: only seed 7 changed (one switch),
+and no run has a wait beside a free identical service. All 32-citizen results are
+unchanged. The complete suite passes **858 tests**
+(`artifacts/pressure-tests/identical-services-all.trx`).
 
 T22 still lacks calibration of the declared targets and roster-aware sleep start; the
 missed-window, check-in and unread-roster obligations now have integrated evidence.
