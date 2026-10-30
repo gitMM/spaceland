@@ -26,6 +26,19 @@ continuation. This milestone does not silently close other release gates.
 
 ## Implementation status — 2026-10-29
 
+**Update 2026-10-30.** Population gate amended to 256 citizens. The fixed-station
+[pressure workload](../../../ImperialStation/docs/pressure-station.md) passes at 32
+and 256 citizens for seeds 42, 7, 91, 1234 and 2026, including exact checkpoint
+replay and an independent audit. Delivered since the entry below: staggered guard
+shifts, sleep budgeted against meals and toilet use, learned terminal outages and
+cafeteria waits, escort and facility acknowledgment deadlines, repair priority with
+an evidence hold, cleanup helpers, per-stage response times, classified missed
+routine windows, bounded check-in gaps and an unread-roster control. Complete suite:
+**856 passed, 0 failed**; snapshot schema 49. Open: calibration, roster-aware sleep
+start and broader institutional load; see the
+[acceptance matrix](../../../ImperialStation/docs/acceptance-current.md). The rest of
+this section is the 2026-10-29 record.
+
 This section records delivered work; it does not change the requirements below or
 certify completion of all H1–H4 gates. **The first release is still in progress.**
 

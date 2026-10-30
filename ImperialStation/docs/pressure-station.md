@@ -1,11 +1,16 @@
 # Fixed station under sustained pressure
 
-Requested 2026-10-29. Status: implementation and verification in progress.
+Requested 2026-10-29. Status (2026-10-30): the gate passes at 32 and 256 citizens
+for seeds 42, 7, 91, 1234 and 2026, with exact replay and the independent audit; the
+milestone stays open for calibration (see below).
 
-Next work: [staffing, daily timing and response times](acceptance-current.md#next-step--staffing-daily-timing-and-response-times),
-covering the six issues raised in the user's 32-person log review and their
-recommended fixes. That section defines the implementation order and verification
-requirements; expansion and physical emergency alarms remain deferred.
+Done: the six [staffing, daily timing and response-time](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)
+fixes, the [population margin follow-up](acceptance-current.md#follow-up--population-margin-and-unacknowledged-facility-orders-2026-10-30)
+and [missed-window, check-in and unread-roster verification with seed coverage](acceptance-current.md#remaining-daily-life-verification).
+Remaining: calibrate the declared response targets and the 3,000-tick check-in bound,
+make sleep start weigh the known duty start (a citizen that learns of an earlier shift
+sleeps into it), facility acknowledgments missed when the assignee went off duty, and
+broader concurrent institutional load. Expansion and physical emergency alarms remain deferred.
 
 Completion clarification approved by the user: insufficient evidence is a valid
 explicit outcome. Every initial claim must have a completed verification and either

@@ -1,6 +1,6 @@
 # Current acceptance matrix
 
-Updated 2026-10-29. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
+Updated 2026-10-30: current suite **856 passed, zero failed** (`artifacts/pressure-tests/routines-all.trx`), snapshot schema 49; the pressure gate passes at 32 and 256 citizens for five seeds ([details](#remaining-daily-life-verification)). The paragraphs below up to the first dated section are the 2026-10-29 baseline. Initial stabilization: 785 passed, zero failed; artifacts/integration-tests/stabilization.trx (historical). Component evidence is not full handoff acceptance. This matrix supersedes historical outstanding-work lists. Initial integration results are recorded in integration-baseline.md; current institutional evidence is linked below.
 Prior institutional regression: **816 passed, zero failed, zero skipped**;
 `artifacts/institutional-tests/institutional-verified.trx`. All 230 normative requirement
 IDs are present. The two-day station passes its declared participation and causal
@@ -29,10 +29,11 @@ is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`
 a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
 The previous complete suite passed **843 tests** in
 `artifacts/pressure-tests/pressure-all-completion.trx`; after the staffing and
-daily-timing step below it passes **849** (`staffing-timing-all.trx`). Authenticated original replies
+daily-timing step below it passed **849** (`staffing-timing-all.trx`); the current
+count is 856. Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,
-reply handling, and checkpoint fixes. Snapshot schema is 45. Explicit evidence-based
+reply handling, and checkpoint fixes. Snapshot schema was 45 then; it is now 49. Explicit evidence-based
 review outcomes are acceptable per the user's clarification; unfinished audits,
 unread decisions, and open escorts remain failures.
 The roster-search population trial reached 59 of 63 required releases; its remaining
