@@ -313,7 +313,7 @@ namespace Station.Core
                         // Capacity is checked before disclosure; overflow stays unread instead of silently granting knowledge.
                         bool accepted = message.Draft.Kind == MessageKind.RosterUpdated ? ReadRoster(actor, message) : Learn(actor, message.Draft.Subject, message.Draft.Claim, EvidenceKind.MessageRead, id, message.Draft.ObservedTick, action.CauseId,
                             message.Draft.Kind is MessageKind.Order or MessageKind.PatrolOrder or MessageKind.EscortOrder,preservePin:message.Draft.Kind!=MessageKind.OrderCancelled);
-                        if (!accepted) continue;
+                        if (!accepted) { action.LeftUnread = true; continue; }
                         message.Stage = MessageStage.Read; message.FirstReadTick = processingTick;
                         RemoveUnreadMessage(message);
                         Emit("MessageRead", actor, action.Id, terminalId: session!.Terminal, sessionId: session.Id, messageId: id, causeId: action.CauseId, detail: message.Draft.Kind.ToString());

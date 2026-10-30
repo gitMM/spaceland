@@ -32,6 +32,7 @@ namespace Station.Core
             for (int i = 0; i < count; i++) capabilities[i] = new RecoveryCapabilitySeed(reader.ReadInt64(), reader.ReadInt64(), reader.ReadBoolean());
             if (duration > 0) InitializeCredentialRecovery(new CredentialRecoverySeed(capabilities, duration, autonomousActors: Array.Empty<long>()));
             count = Count(reader); for (int i = 0; i < count; i++) RegisterRecoveryDesk(new RecoveryDeskSeed(reader.ReadInt64(), reader.ReadInt64(), reader.ReadInt64()));
+            if (duration > 0) PublishRecoveryDesks();
             nextRecoveryCase = reader.ReadInt64(); count = Count(reader);
             for (int i = 0; i < count; i++)
             {

@@ -108,4 +108,31 @@ public sealed class DecisionInputIsolationTests
         Assert.Equal(2, FirstMeal(plain).ServiceId); Assert.Equal(FirstMeal(plain).ServiceId, FirstMeal(changed).ServiceId);
         Assert.Equal(plain.InspectServiceEstimates(new(2)).Count, changed.InspectServiceEstimates(new(2)).Count);
     }
+
+    // Recovery: the first discovery and the first recovery plan, each compared after a registry change only the institution holds.
+    private static TraceEvent FirstEvent(World w, string type, string prefix = "") => w.Trace.First(e => e.Type == type && e.Detail.StartsWith(prefix, StringComparison.Ordinal));
+    private static void RecoveryTwin(string type, string prefix, Action<World> change)
+    {
+        var probe = AutonomousRecoveryTests.Station(); probe.AdvanceTo(100); long at = FirstEvent(probe, type, prefix).Tick;
+        var (plain, changed) = Twin(() => AutonomousRecoveryTests.Station(), at - 1, change, at);
+        string Choice(World w) => w.Trace.FirstOrDefault(e => e.Type == type && e.Detail.StartsWith(prefix, StringComparison.Ordinal))?.Detail ?? "(none)";
+        Assert.NotEqual("(none)", Choice(plain)); Assert.Equal(Choice(plain), Choice(changed));
+    }
+    [Fact]
+    public void T08_MissingCredentialDiscoveryUsesOwnCredentialKnowledgeNotTheRegistry() =>
+        // The registry reassigns the credential; the holder still knows its own card.
+        RecoveryTwin("CredentialRecoveryNeeded", "", w => Set(Entry(w, "credentials", 1L), "Definition", new CredentialSeed(1, new(7), new(7), new(1))));
+    [Fact]
+    public void T08_RecoveryPlanUsesThePublishedDeskDirectoryNotTheDeskRegistry() =>
+        RecoveryTwin("PlanSelected", "restore-credential/v1", w => ((IDictionary)Get(w, "recoveryDesks")).Clear());
+    [Fact]
+    public void T08_RecoveryPlanUsesTheCitizensKnowledgeOfItsAlternateIdentity() =>
+        RecoveryTwin("PlanSelected", "restore-credential/v1", w => ((IDictionary)Get(w, "recoveryCapabilities")).Clear());
+    [Fact]
+    public void T08_RecoveryPlanningReadsNoRegistryOrGlobalMessageStage()
+    {
+        // Inbox completion uses the read action's own result; registries are read only to publish or enrol.
+        string source = File.ReadAllText(Path.Combine(Fixtures.Root, "src", "Station.Core", "World.RecoveryPlanning.cs"));
+        foreach (string word in new[] { "credentials", "recoveryDesks", "recoveryCapabilities", "messages[", "messages." }) Assert.DoesNotContain(word, source);
+    }
 }

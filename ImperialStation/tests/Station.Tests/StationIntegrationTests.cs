@@ -57,8 +57,9 @@ public sealed class StationIntegrationTests
         // cafeteria estimates). Workers, rests and the 422 meals are unchanged.
         // Schema 50 saves each citizen's own record-grant notices (T08 decision inputs).
         // Conversation initiators no longer read partners' private consent, so who is asked changes.
-        // Schema 51 saves what each citizen sees of the services on its own tile.
-        Assert.Equal("b29e8e1213ef23de5d01adee46d672eb203b1f98090d0455c777c002546d7397", measured.Digest);
+        // Schema 51 saves what each citizen sees of the services on its own tile; 52 saves its
+        // knowledge of its own alternate identity proof.
+        Assert.Equal("f9af3a9c0470fb772cdc8d3b67da762e2d90e077a06e879a2c6a0be3d1810fc4", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

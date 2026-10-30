@@ -13,7 +13,7 @@ namespace Station.Core
             foreach (var a in recoveryAgents.Values)
             {
                 w.Write(a.ActorId); w.Write(a.Pending); w.Write(a.DiscoveredTick); w.Write(a.OldCredentialId); w.Write(a.OldCardId); w.Write(a.PostedTick); w.Write(a.KnownCaseId); w.Write(a.IssuedCardId);
-                w.Write(a.NextDecision); w.Write(a.RetryAt); w.Write(a.Backoff); w.Write(a.ActiveActionId); w.Write(a.PlannedTick); w.Write(a.PlannedTerminal); w.Write((int)a.PlannedKind); w.Write(a.UrgentCredentialBlocked);
+                w.Write(a.NextDecision); w.Write(a.RetryAt); w.Write(a.Backoff); w.Write(a.ActiveActionId); w.Write(a.PlannedTick); w.Write(a.PlannedTerminal); w.Write((int)a.PlannedKind); w.Write(a.UrgentCredentialBlocked); w.Write(a.RetainsAlternateIdentity);
                 w.Write(a.Completed); w.Write(a.DiscoveryCauseId); w.Write(a.CompletionCauseId); w.Write(a.Reason); w.Write((int)a.LastOutcome); w.Write(a.LastCost); w.Write(a.TerminalRetry.Count);
                 foreach (var pair in a.TerminalRetry) { w.Write(pair.Key); w.Write(pair.Value); }
             }
@@ -25,7 +25,7 @@ namespace Station.Core
             for (int i = 0; i < count; i++)
             {
                 var a = new RecoveryAgentSnapshot { ActorId = r.ReadInt64(), Pending = r.ReadBoolean(), DiscoveredTick = r.ReadInt64(), OldCredentialId = r.ReadInt64(), OldCardId = r.ReadInt64(), PostedTick = r.ReadInt64(), KnownCaseId = r.ReadInt64(), IssuedCardId = r.ReadInt64(),
-                    NextDecision = r.ReadInt64(), RetryAt = r.ReadInt64(), Backoff = r.ReadInt64(), ActiveActionId = r.ReadInt64(), PlannedTick = r.ReadInt64(), PlannedTerminal = r.ReadInt64(), PlannedKind = ReadEnum<ActionKind>(r), UrgentCredentialBlocked = r.ReadBoolean(),
+                    NextDecision = r.ReadInt64(), RetryAt = r.ReadInt64(), Backoff = r.ReadInt64(), ActiveActionId = r.ReadInt64(), PlannedTick = r.ReadInt64(), PlannedTerminal = r.ReadInt64(), PlannedKind = ReadEnum<ActionKind>(r), UrgentCredentialBlocked = r.ReadBoolean(), RetainsAlternateIdentity = r.ReadBoolean(),
                     Completed = r.ReadInt64(), DiscoveryCauseId = r.ReadInt64(), CompletionCauseId = r.ReadInt64(), Reason = r.ReadString(), LastOutcome = ReadEnum<PlanOutcome>(r), LastCost = r.ReadInt64() };
                 int n = Count(r); for (int j = 0; j < n; j++) a.TerminalRetry.Add(r.ReadInt64(), r.ReadInt64()); recoveryAgents.Add(a.ActorId, a);
             }

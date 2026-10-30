@@ -97,6 +97,8 @@ namespace Station.Core
         internal long CauseId;
         internal MessageDraft? Message;
         internal List<long> CapturedMessages = new List<long>();
+        // Set when a completed inbox read could not take in a captured message (knowledge capacity).
+        internal bool LeftUnread;
         internal bool Waiting;
         internal bool CancelAtBoundary;
         internal long RecipeId;

@@ -82,9 +82,15 @@ namespace Station.Contracts
         public IReadOnlyList<PublicService> Services { get; }
         public PublicWorkCatalog? Work { get; }
         public PublicPersonnelPolicy? Personnel { get; }
-        public PublicKnowledge(long version, IEnumerable<KnownTile> layout, IEnumerable<PublicService> services, PublicWorkCatalog? work = null, PublicPersonnelPolicy? personnel = null)
-        { Version = version; Layout = Array.AsReadOnly(layout.OrderBy(x => x.Id).ToArray()); Services = Array.AsReadOnly(services.OrderBy(x => x.Id).ToArray()); Work = work; Personnel = personnel; }
-        public PublicKnowledge WithPersonnel(PublicPersonnelPolicy personnel) => new PublicKnowledge(Version, Layout, Services, Work, personnel);
+        // The credential-recovery desk directory, in terminal order.
+        public IReadOnlyList<PublicRecoveryDesk> RecoveryDesks { get; }
+        public PublicKnowledge(long version, IEnumerable<KnownTile> layout, IEnumerable<PublicService> services, PublicWorkCatalog? work = null, PublicPersonnelPolicy? personnel = null, IEnumerable<PublicRecoveryDesk>? recoveryDesks = null)
+        {
+            Version = version; Layout = Array.AsReadOnly(layout.OrderBy(x => x.Id).ToArray()); Services = Array.AsReadOnly(services.OrderBy(x => x.Id).ToArray()); Work = work; Personnel = personnel;
+            RecoveryDesks = Array.AsReadOnly((recoveryDesks ?? Array.Empty<PublicRecoveryDesk>()).OrderBy(x => x.TerminalId).ToArray());
+        }
+        public PublicKnowledge WithPersonnel(PublicPersonnelPolicy personnel) => new PublicKnowledge(Version, Layout, Services, Work, personnel, RecoveryDesks);
+        public PublicKnowledge WithRecoveryDesks(IEnumerable<PublicRecoveryDesk> desks) => new PublicKnowledge(Version, Layout, Services, Work, Personnel, desks);
     }
     public sealed class MessageDraft
     {
