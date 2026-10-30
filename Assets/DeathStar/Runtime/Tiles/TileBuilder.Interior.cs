@@ -192,6 +192,9 @@ namespace DeathStar
         // and has no room.
         const float MinClear=1.2f;
         readonly Dictionary<Vector3Int,List<(Vector3Int n,(Rect r,float from,float to) w)>> cellWells=new Dictionary<Vector3Int,List<(Vector3Int,(Rect,float,float))>>();
+        // How many cells' recesses are being found, one inside another, and the most there have been (the lab keeps this small).
+        int findingWells;
+        public int DeepestWells {get;private set;}
         List<(Vector3Int n,(Rect r,float from,float to) w)> Wells(Vector3Int cell)
         {
             if(cellWells.TryGetValue(cell,out var list))return list;
@@ -199,12 +202,14 @@ namespace DeathStar
             cellWells[cell]=list=new List<(Vector3Int,(Rect,float,float))>();
             if(SpecialRoom(cell))return list;
             var found=new List<(Vector3Int,(Rect,float,float))>();var p=s.cells[cell];var primary=s.Primary(cell,p);
+            findingWells++;DeepestWells=Mathf.Max(DeepestWells,findingWells);
             foreach(var n in TileStructure.Directions)
             {
                 if(s.Solid(cell+n))continue;
                 var face=Forms(new TileMesh{dry=true},cell,p,n,primary);face.m.Pop();
                 foreach(var w in face.wells)found.Add((n,w));
             }
+            findingWells--;
             list.AddRange(found);
             return list;
         }

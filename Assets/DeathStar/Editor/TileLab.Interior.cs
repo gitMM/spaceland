@@ -137,6 +137,7 @@ namespace DeathStar.EditorTools
             var times=new List<double>();int tris=0,cells=0,empty=0,collected=0;var slowest=new List<(double ms,string what)>();
             // which cells have rooms and which halls they form, found once for the whole station as StationInteriors.Init does
             foreach(var pair in s.cells)if(builder.Interior(pair.Key))builder.Hall(pair.Key);
+            checks.Add((builder.DeepestWells<=2,$"{where}: finding a room's recesses doesn't run through other rooms' (nested {builder.DeepestWells} deep; each level costs dozens of stack frames, so a chain across the station overflows the stack)"));
             // a throwaway builder runs every path once, so the first room to use one doesn't pay for compiling it
             var warm=warp!=null?new TileBuilder(s,warp):new TileBuilder(s);
             foreach(var pair in s.cells){if(!warm.Interior(pair.Key))continue;var m=warm.BuildInterior(pair.Key).ToMesh("warm");if(warp!=null)warp.Bend(m,pair.Key);Object.DestroyImmediate(m);}

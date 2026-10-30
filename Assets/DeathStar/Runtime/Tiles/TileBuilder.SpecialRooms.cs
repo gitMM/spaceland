@@ -281,7 +281,9 @@ namespace DeathStar
         }
         bool ClearHullWindow(Face f,Rect pane)
         {
-            if(curved==null)return true;
+            // A hull's panes make no recesses, and asking what stands behind one would find the recesses of the rooms round
+            // it, and so of theirs, across the whole station.
+            if(curved==null||findingWells>0)return true;
             var frame=new Vector4(f.n.x,f.n.y,f.n.z,Vector3.Dot(TileStructure.Center(f.cell),f.n)+Half);
             foreach(var uv in new[]{pane.center,new Vector2(pane.xMin,pane.yMin),new Vector2(pane.xMax,pane.yMin),new Vector2(pane.xMax,pane.yMax),new Vector2(pane.xMin,pane.yMax)})
             {
