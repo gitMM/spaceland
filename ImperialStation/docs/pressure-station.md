@@ -37,13 +37,116 @@ suite alone does not satisfy this milestone.
 Expansion is deferred by the user's scope decision. Do not add construction to
 this workload or treat outstanding construction gates as required release work.
 
+## Staffing, daily timing and response times (2026-10-30)
+
+This increment implements items 6, 1 and 3 of the
+[next step](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
+Items 5, 4 and 2 are not started. Population acceptance at 2,048 citizens is pending.
+
+Declared workload changes (all in `PressureStation.Generator.cs`):
+
+- **Staffing redistribution.** Five existing cleaners per 64-citizen group
+  (b+21..b+25) become guards. Each group has nine guards rotated through the three
+  cohorts in ID order: a two-guard escort team plus one guard per interval for
+  patrols, breaks or ongoing custody. Subjects and supervisors stay on cohort 0.
+  No citizen is added and no duty length changes. Misconduct and card-loss actors
+  are never converted. At 32 citizens: 2 workers, 1 supervisor, 9 guards, 20 cleaners.
+- **Wave schedule.** Wave 1 starts at 6,000 (day duty), wave 2 at 60,000 (the
+  24,000 shift boundary while cohort 0 sleeps) and wave 3 at 87,000 (evening, after
+  day duty). Each terminal outage still starts 500 ticks after its wave and ends
+  6,000 ticks after it; recovery is measured from the last disturbance (93,000).
+- **Corridor bedrooms.** Assigned beds and published rest tiles moved from x+2 to
+  the maintenance corridor at x+1, where spills land. At x+2 every district but the
+  last slept one tile from its neighbour's cafeteria and toilet, so nearest-service
+  travel stopped crossing the corridor: in the daytime control nobody entered tile
+  x=1 from day 3 to day 7 and a 100-unit spill went unreported for 208,000 ticks.
+  The earlier critical-need detours had been masking this.
+- **Variants** (`--variant`): `single-cohort-guards` (the old four cohort-0 guards on
+  the new schedule; comparison control), `daytime` (staggered guards, the earlier
+  all-daytime waves) and `overnight` (all waves at the shift boundary while the day
+  cohort sleeps). Controls report the workload-exercise checks (overlap, overdue
+  work, shared guard duty) as `controlLimitations` instead of failing on them.
+
+Daily-life changes (core, schema 46): sleep opens one configured hour early with the
+same close; needs forecast from own values and configured sleeping rates to become
+critical during the known bed duration are relieved first (routine or urgent sleep;
+a failed relief backs off and sleep proceeds); a meal below seek is needed when hunger
+would become critical before the next known meal window; missed windows record
+`CommittedAction`, `TravelAcrossBoundary`, a blocked reason or `NeverSelected`.
+Regressions: `PreSleepReliefTests` (relief before bed with no critical need while
+asleep, sleep without a known cafeteria, identical continuation after restore).
+
+New measurements in `pressure-result.json`:
+
+- `responses`: per chain (facility, escort, patrol, case, credential) and stage,
+  completed count, median, p95, maximum, unresolved count, oldest unresolved age,
+  declared target and classified causes of every miss, plus up to 400 exception
+  chains with stage timestamps. Detection and reporting are separate from the
+  institutional stages. Targets are in `PressureStation.ResponseTargets` and are
+  reported, not gated. The report reads only the trace and final snapshots.
+- `guardCoverage`: per 64-citizen group, guards per cohort and the number of
+  100-tick samples in which fewer than two on-duty guards were free, split into
+  roster, needs/breaks and escort/patrol commitments. The gate requires at least
+  three guards per cohort and zero roster gaps when staffing is staggered.
+- `participation.missedDailyGoalReasons`: missed windows by kind and reason.
+
+Evidence at 32 citizens (this host, .NET 8.0.33):
+
+| Run | Gate | Clear from | Missed windows | Critical sleep interruptions | No-team samples (roster/needs/commitments) |
+| --- | --- | --- | --- | --- | --- |
+| `pressure-32-baseline` (previous build) | passes | 258,000 | 189 | 168 | 2,160 / 213 / 0 |
+| `p32-default` | passes, exact replay | 288,000 | 19 | 0 | 0 / 187 / 90 |
+| `p32-single-cohort-guards` | passes, exact replay | 288,000 | 18 | 0 | 2,160 / 44 / 0 |
+| `p32-daytime` | passes, exact replay | 198,000 | 19 | 0 | 0 / 182 / 90 |
+| `p32-overnight` | passes, exact replay | 216,000 | 22 | 0 | 0 / 182 / 48 |
+
+All runs: 4 reprimands, 2 releases, 288 scheduled rests complete, none overdue,
+every citizen eats and sleeps each day, maximum individual failures 20–32.
+
+Response times in `p32-default` (ticks; targets in brackets):
+
+| Stage | n | Median | p95 | Max | Missed: cause |
+| --- | --- | --- | --- | --- | --- |
+| escort dispatch [1,500] | 2 | 0 | 0 | 0 | — (single-cohort control: 23,594, `NoOnDutyEscortTeam`) |
+| escort acknowledgment [3,000] | 2 | 259 | 311 | 311 | — |
+| escort arrival [3,000] | 2 | 424 | 455 | 455 | — |
+| escort resolution [1,500] | 2 | 140 | 7,470 | 7,470 | 1 custody journey |
+| patrol dispatch [1,500] | 4 | 1 | 1 | 1 | — (control: max 14,539, `NoOnDutyGuard`) |
+| patrol acknowledgment [3,000] | 4 | 698 | 1,781 | 1,781 | — |
+| facility detection [3,000] | 7 | 0 | 0 | 0 | — |
+| facility dispatch [1,500] | 13 | 0 | 71,900 | 71,900 | 6 `NoUncommittedOnDutyResponder` |
+| facility acknowledgment [3,000] | 13 | 5,757 | 24,889 | 24,889 | 5 `ResponderOffDuty`, 2 `TerminalOutage` |
+| facility resolution [3,000] | 13 | 1,699 | 217,336 | 217,336 | 5 `ResponderOffDuty`, 1 work duration |
+| credential detection [1,500] | 6 | 0 | 16,500 | 16,500 | 2 `LossHolderAsleep`, 1 off duty |
+| case detection [4,500] | 4 | 3,084 | 5,996 | 5,996 | 2 institutional review |
+
+Remaining findings and limitations:
+
+- Facility dispatch selects only on-duty, uncommitted qualified responders. Every
+  cleaner holds an initial cleaning assignment, so machine repairs wait until one
+  finishes (up to 71,900 ticks). This is institutional policy, not staffing.
+- Facility acknowledgment is late when the chosen cleaner is off duty; item 2
+  (deadlines and reassignment) is the intended fix.
+- A single assignee cleans a corridor at 300 ticks per unit and only on duty;
+  accumulated spills took up to 217,336 ticks, with overdue replacements in between.
+  The default therefore clears at 288,000, exactly the required clear day. The
+  population run may fail this margin.
+- Card losses discovered by a sleeping or off-duty holder wait until they wake.
+- `CommittedAction` pre-duty meals: 11 citizens were still asleep when the window
+  opened (their sleep started late after relief or a conversation).
+- Response targets are fixture assessments for the shortened day, not calibrated
+  real-time limits. Cause classification uses published rosters, recorded need
+  activities and terminal events; `ResponderOccupied` is the residual category.
+- 2,048 citizens: `artifacts/pressure-2048-staggered/` was started on this build
+  and had not finished when this section was written.
+
 ## Workload
 
 The generator uses nine shortened configured days, each 36,000 ticks at 100 ms.
 Needs rates and routine durations inherit the explicitly accelerated daily fixture;
 this is not real-time calibration. Population, geometry, beds and supplies are fixed.
-Each 64-person group has two misconduct subjects, one supervisor and four guards;
-the remaining citizens clean and repair. The 32-person station uses one group.
+Each 64-person group has two misconduct subjects, one supervisor and nine guards
+(four before 2026-10-30; see above); the remaining citizens clean and repair. The 32-person station uses one group.
 There are four bad-installation/false-report cases per group. Only these initial
 actions are scripted. Each subject's two incidents run contiguously so an autonomous
 inbox read cannot start in a gap and interrupt the finite trigger. The population
@@ -63,12 +166,13 @@ machine targeted by three fault waves, and three different credential-loss subje
 An already empty machine consumes no additional cartridge; `MachineFaulted` counts
 declared disturbances and `FaultPartConsumed` counts their actual destructive effects.
 The passing 32-citizen run has six fault events consuming four installed cartridges.
-Waves begin at 6,000, 42,000 and 78,000; public terminals disconnect 500 ticks later
-and reconnect at 12,000, 48,000 and 84,000. Daily services, repair parts, replacement
+Waves begin at 6,000, 60,000 and 87,000 (6,000, 42,000 and 78,000 before
+2026-10-30 and in the `daytime` control); public terminals disconnect 500 ticks later
+and reconnect 6,000 ticks after each wave starts. Daily services, repair parts, replacement
 cards, guard equipment and meals are finite. Terminal and need queues are sampled,
 and conservation is asserted throughout primary and checkpoint execution.
-Assigned bedrooms and their published roster rest locations sit across each
-district's maintenance corridor from meals. Daily travel supplies local observations;
+Assigned bedrooms and their published roster rest locations open onto each
+district's maintenance corridor (x+1; x+2 before 2026-10-30). Daily travel supplies local observations;
 the authority cannot discover an unvisited fault by reading physical truth.
 Overlapping institutional chains are counted from distinct reprimanded accounts
 until release, including the audit/request stages before guards are dispatched.

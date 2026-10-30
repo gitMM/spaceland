@@ -362,3 +362,19 @@ the result, so no snapshot schema change is needed.
 | Keep authorization administrative | Guards must still read, form a team, travel, establish custody and complete intake. |
 | Persist count and record cutoffs as well as ticks | Later events in the same tick must not rewrite a prior institutional decision. |
 | Validate expiry arithmetic before allocating an authorization ID | Overflow cannot leave a partial authorization or corrupt its sequence. |
+
+## Staffing, daily timing and response-time decisions (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Convert five existing cleaners per 64-citizen group (b+21..b+25) into guards and rotate guards through all three cohorts | Three guards per interval keep a two-guard escort team plus one for patrols, breaks or ongoing custody. Population and duty lengths are unchanged; misconduct and card-loss actors are never converted. |
+| Keep the old four-guard, cohort-0 staffing as the `single-cohort-guards` control | The same schedule can then show which delays the staffing change removes. |
+| Use a mixed wave schedule (day duty, the 24,000 shift boundary and the evening) for the acceptance workload | Overnight and shift-boundary incidents are part of the gate; the earlier all-daytime schedule remains the `daytime` control. |
+| Apply workload-exercise gates (overlap, overdue work, shared guard duty) only to the acceptance schedule | Timing controls report these as limitations without being presented as a passing acceptance workload. |
+| Open bedrooms onto each district's maintenance corridor | At x+2 every district except the last slept beside its neighbour's services and stopped crossing the corridor where spills land. |
+| Open the sleep opportunity one configured hour early, keeping its close | Pre-sleep travel, queues, toilet and meals fit before a full sleep, which then ends before the pre-duty meal. |
+| Relieve hunger or bladder forecast to become critical during the known bed duration before sleeping | Uses only own needs, configured sleeping rates and known beds; a failed relief backs off and sleep proceeds, so a citizen is never kept awake indefinitely. |
+| Treat a meal below seek as needed when hunger would become critical before the next known meal window | Prevents skipping the after-duty meal and waking critically hungry. Actual service durations and relief are unchanged. |
+| Record why a routine window was missed | `CommittedAction`, `TravelAcrossBoundary`, a blocked reason or `NeverSelected` distinguish delays from defects; nothing is reset or hidden. |
+| Measure response stages from the recorded trace and final snapshots only | The report cannot influence decisions or replay; declared targets are assessment targets, not gates. |
+| Classify missed targets from published rosters, recorded need activities and terminal state | Separates detection delay from institutional response, and off-duty or asleep responders from occupied ones. |

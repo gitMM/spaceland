@@ -23,8 +23,9 @@ Earlier 2,048-citizen trials exposed institutional backlogs and the inline check
 export limit; those defects are fixed, but population acceptance remains pending. Expansion
 is deferred. Current nine-day evidence is in `artifacts/pressure-32-completion/`, with
 a passing 512-citizen diagnostic in `artifacts/pressure-512-fast/`, including exact replay.
-The latest complete suite passes **843 tests**, zero failures or skips, in
-`artifacts/pressure-tests/pressure-all-completion.trx`. Authenticated original replies
+The previous complete suite passed **843 tests** in
+`artifacts/pressure-tests/pressure-all-completion.trx`; after the staffing and
+daily-timing step below it passes **849** (`staffing-timing-all.trx`). Authenticated original replies
 now close unposted searches without generating unnecessary patrol work. See the pressure report for
 the current fixture, finite guard searches, audit retry backoff, intake waiting,
 reply handling, and checkpoint fixes. Snapshot schema is 45. Explicit evidence-based
@@ -46,12 +47,43 @@ Requested after the user's review of the 32-person logs (2026-10-29). This is th
 next implementation and verification step, not a completed milestone. Keep the
 station layout and population fixed; expansion remains deferred.
 
+**Status 2026-10-30: items 6, 1 and 3 implemented and verified at 32 citizens;
+the 2,048-citizen run is pending (see below); items 5, 4 and 2 are not started.**
+The suite passes **849 tests**, zero failures or skips
+(`artifacts/pressure-tests/staffing-timing-all.trx`). Snapshot schema is 46.
+Details, evidence and limitations are in the
+[pressure report](pressure-station.md#staffing-daily-timing-and-response-times-2026-10-30).
+
+| 32 citizens, 9 days | Before (`pressure-32-baseline`) | Staggered default (`p32-default`) |
+| --- | --- | --- |
+| Gate | passes, clear from 258,000 | passes, clear from 288,000; exact state/event replay |
+| Samples with no rostered escort team | 2,160 of 3,241 | 0 (old-staffing control on the new schedule: 2,160) |
+| Escort authorization to dispatch | max 23,594 (`NoOnDutyEscortTeam`) | max 0 |
+| Critical needs interrupting sleep | 168 | 0 |
+| Missed ordinary routine windows | 189, unclassified | 19, all classified |
+
+The baseline column ran on this host's .NET 8 SDK and reproduced the documented
+`pressure-32-completion` result (same 258,000 clear tick and 189 missed windows).
+The default's later clear tick is not a regression in itself: its last disturbance
+is at 93,000 instead of 84,000, and its corridor cleanup is slow (see item 6). On the
+baseline's own all-daytime schedule the `daytime` control clears at 198,000.
+
 1. **Stagger guard shifts.** The pressure generator currently places every guard
    in cohort 0, leaving predictable gaps in security coverage. Distribute guard
    duty across the day and verify that each interval can supply a complete escort
    team while allowing patrols, breaks and ongoing custody commitments. Merely
    putting one guard on each shift is insufficient. Declare any redistribution of
    existing citizen roles or duty lengths explicitly; do not silently add staff.
+
+   *Done (32).* Five existing cleaners per 64-citizen group (b+21..b+25, never a
+   misconduct or card-loss actor) become guards: nine guards, three per cohort, so
+   each interval has a two-guard team plus one for patrol, breaks or custody. Duty
+   lengths and population are unchanged. The gate now requires three or more guards
+   per cohort and zero roster gaps. Sampled every 100 ticks, on-duty guards lacked a
+   free team in 277 of 3,241 samples: 187 from needs/breaks, 90 from escort/patrol
+   commitments, none from the roster. Before item 3, needs alone caused 542 such
+   samples, mostly on-duty guards still in bed. The `single-cohort-guards` control
+   keeps the old staffing on the same schedule and shows 2,160 roster-gap samples.
 
 2. **Escalate unacknowledged urgent orders; defer emergency alarms.** Add bounded
    acknowledgment deadlines and reassignment when an eligible team does not
@@ -62,6 +94,12 @@ station layout and population fixed; expansion remains deferred.
    an inbox message must not wake a sleeper. Add that mechanism only if the
    staffing and response-time evidence shows it is necessary.
 
+   *Not started.* The response report now separates posting, delivery, reading and
+   acknowledgment, and counts escort re-dispatches. With staggered guards no escort
+   or patrol order waited for a sleeping team at 32 citizens. Facility work orders
+   still wait up to 24,889 ticks for acknowledgment because the assigned cleaner is
+   off duty; that is the evidence item 2 should act on. No alarm was added.
+
 3. **Align sleep and meal opportunities.** Sleep currently overlaps some pre-duty
    meal windows, and critical hunger/bladder needs interrupt sleep. Budget time
    for travel, queues, meals, toilet use and check-in around sleep and duty. Check
@@ -70,6 +108,18 @@ station layout and population fixed; expansion remains deferred.
    delays and travel across a window boundary, and verify that due goals are
    retained according to the routine rules. Do not hide misses or reset needs.
 
+   *Done (32).* The sleep opportunity opens one configured hour early with the same
+   close, so a full 12,000-tick sleep ends 1,500 ticks before the pre-duty meal.
+   Before sleeping (routine window or urgent sleep pressure), a citizen relieves
+   hunger or bladder that its own value and the configured sleeping rate say would
+   become critical during the known bed duration; failed relief backs off and sleep
+   proceeds. A meal below seek counts as needed if hunger would become critical
+   before the next known meal window. Service durations, relief amounts and rates are
+   unchanged. Missed windows now record `CommittedAction` (15 in the default run,
+   mostly a pre-duty meal opening while the citizen is still asleep), `NeverSelected`
+   (4) or travel across the close. Critical sleep interruptions fell from 168 to 0;
+   all 288 scheduled rests complete and every citizen eats and sleeps each day.
+
 4. **Improve cafeteria selection using learned information.** Distance already
    affects selection; extend it with observed or received estimates of queue wait
    and food availability. Retain when and how each estimate was learned, allow it
@@ -77,11 +127,18 @@ station layout and population fixed; expansion remains deferred.
    must not read live remote stock or queues. Verify useful alternatives without
    repeated switching between cafeterias.
 
+   *Not started.* Related finding: with distance-only choice, every district except
+   the last walked to its neighbour's cafeteria, which is why the corridor fix in the
+   pressure report was needed.
+
 5. **Remember terminal outages consistently.** Some retry-delay resets are fixed,
    but reporting, audits and credential recovery need consistent tests for learned
    outages, increasing retry delays and eligible alternative terminals. Travel
    must not erase an observed failure. Respect terminal capabilities and record
    permissions; use bounded rechecks or new observations to discover restoration.
+
+   *Not started.* `TerminalOutage` is now a classified cause of missed reporting and
+   acknowledgment targets (2 in the default run, 4 in the overnight control).
 
 6. **Test response times, including overnight incidents.** Eventual completion is
    insufficient. Measure physical incident to discovery, received report to order,
@@ -91,6 +148,25 @@ station layout and population fixed; expansion remains deferred.
    fixture-specific limits before assessing a fix. Include shift boundaries,
    overnight incidents, occupied/unavailable guards, terminal outages and late
    acknowledgments; show the cause of each missed response target.
+
+   *Done (32).* `pressure-result.json` has a `responses` report and `guardCoverage`.
+   Chains: facility (machine fault/spill), escort, patrol, case and credential.
+   Stages: incident, detection, report received, order, delivery, reading,
+   acknowledgment, arrival and resolution; detection and reporting are kept apart
+   from the institutional stages. Each stage reports completed count, median, p95,
+   maximum, unresolved count and oldest unresolved age. Targets were declared before
+   judging (`PressureStation.ResponseTargets`; one configured hour = 1,500 ticks),
+   for example escort dispatch 1,500, escort acknowledgment 3,000 and facility
+   dispatch 1,500. Every missed or unresolved stage carries a cause such as
+   `NoOnDutyEscortTeam`, `NoOnDutyGuard`, `NoUncommittedOnDutyResponder`,
+   `ResponderOffDuty`, `ResponderAsleep`, `TerminalOutage` or `LossHolderAsleep`,
+   with `/AcrossShiftBoundary` when the stage spans a shift change. The default wave
+   schedule now has waves in day duty, at the 24,000 shift boundary while the day
+   cohort sleeps, and in the evening; `daytime` and `overnight` controls cover the
+   other schedules. Targets are reported, not gates. The default run still misses 25
+   targets; the largest are facility dispatch waits of up to 71,900 ticks
+   (`NoUncommittedOnDutyResponder`: every cleaner already holds a cleaning
+   assignment) and corridor cleanup resolution of up to 217,336 ticks.
 
 Implementation order: establish the measurements and overnight controls in item 6
 alongside staffing and routine changes in items 1 and 3. Then address terminal and
