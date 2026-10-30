@@ -57,6 +57,8 @@ namespace Station.Core
                 RequestGuardDecision(local, checked(processingTick + 1));
             }
         }
+        // The facility admits on the authority's published authorization record, never its private register.
+        private RecordEntry? PublishedAuthorization(long id) => records.Current(RecordKind.DetentionAuthorization, id);
         private FailureReason ValidateIntake(Actor leader, ActiveAction action)
         {
             if (!localGuardOrders.TryGetValue(action.GuardOrderId, out var local) || local.ActorId != leader.Id.Value || local.Payload.Leader != leader.Id.Value ||
@@ -65,8 +67,9 @@ namespace Station.Core
             if (!detentionFacilities.TryGetValue(action.ServiceId, out var facility) || action.ServiceId != p.Dispatch.FacilityId || facility.Definition.Position != leader.Position || leader.Position != p.Dispatch.Destination)
                 return FailureReason.RequiredServiceNotPresent;
             if (!facility.Powered || !facility.Connected) return FailureReason.ServiceBusy;
-            if (!detentionAuthorizations.TryGetValue(p.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Authorized || authorization.Expires <= processingTick ||
-                authorization.ActorId != p.SubjectActorId || authorization.AccountId != p.SubjectAccountId) return FailureReason.UnknownRequiredFact;
+            var authorization = PublishedAuthorization(p.AuthorizationId);
+            if (authorization == null || RecordText(authorization, AttributeKind.DetentionStatus) != nameof(DetentionAuthorizationStatus.Authorized) || RecordNumber(authorization, AttributeKind.Expires) <= processingTick ||
+                RecordNumber(authorization, AttributeKind.ActorId) != p.SubjectActorId || authorization.AccountId != p.SubjectAccountId) return FailureReason.UnknownRequiredFact;
             foreach (var member in group.Members)
             {
                 var actor = actors[new Id<ActorTag>(member.ActorId)];

@@ -12,15 +12,20 @@ namespace Station.Tests;
 // of them just before the decision, and requires the same choice in both.
 public sealed class DecisionInputIsolationTests
 {
-    private static LoadedScenario Load(string scenario, Action<JsonObject>? change = null)
+    private static LoadedScenario Load(string scenario, Action<JsonObject>? change = null, string catalog = "jobs")
     {
         var json = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.Root, "scenarios", scenario + ".json")))!.AsObject(); change?.Invoke(json);
         json["assertions"] = new JsonArray();
-        return new(json.ToJsonString(), File.ReadAllText(Path.Combine(Fixtures.Root, "content", "jobs.json")), "isolation-test");
+        return new(json.ToJsonString(), File.ReadAllText(Path.Combine(Fixtures.Root, "content", catalog + ".json")), "isolation-test");
     }
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
     internal static object Get(object owner, string field) => owner.GetType().GetField(field, Any)!.GetValue(owner)!;
-    internal static void Set(object owner, string field, object? value) => owner.GetType().GetField(field, Any)!.SetValue(owner, value);
+    internal static void Set(object owner, string member, object? value)
+    {
+        var field = owner.GetType().GetField(member, Any);
+        if (field != null) field.SetValue(owner, value); else owner.GetType().GetProperty(member, Any)!.SetValue(owner, value);
+    }
+    internal static object Entry(World w, string map, object key) => ((IDictionary)Get(w, map))[key]!;
     internal static object Actor(World w, long id) => ((IDictionary)Get(w, "actors"))[new Id<ActorTag>(id)]!;
     // Advances both worlds to the same tick, hides a change in the second, then advances both to the same end.
     private static (World Plain, World Changed) Twin(Func<World> make, long changeAt, Action<World> change, long end)
@@ -48,5 +53,17 @@ public sealed class DecisionInputIsolationTests
         string Decided(World w) => Assert.Single(w.Trace, e => e.Type == "CaseSubmissionDecided").Detail;
         Assert.Equal(Decided(plain), Decided(changed)); Assert.Single(changed.InspectCases());
         Assert.Equal(plain.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision), changed.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision));
+    }
+
+    [Fact]
+    public void T08_DetentionIntakeChecksThePublishedAuthorizationRecordNotTheAuthorityRegister()
+    {
+        // The register entry changes without a record; only the authority itself could see it.
+        var (plain, changed) = Twin(() => Load("detention_release", catalog: "escort").CreateWorld(42, true), 494, w => Set(Entry(w, "detentionAuthorizations", 1L), "Status", DetentionAuthorizationStatus.Revoked), 495);
+        foreach (var w in new[] { plain, changed })
+        {
+            Assert.Single(w.Trace, e => e.Type == "DetentionSlotReserved" && e.Tick == 495);
+            Assert.DoesNotContain(w.Trace, e => e.Type == "GuardRevocationLearned"); Assert.Empty(w.InspectKnownGuardRevocations());
+        }
     }
 }

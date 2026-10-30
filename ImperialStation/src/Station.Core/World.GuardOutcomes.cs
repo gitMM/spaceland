@@ -91,7 +91,7 @@ namespace Station.Core
         private void ObserveRevokedIntake(Actor actor, ActiveAction action)
         {
             if (!localGuardOrders.TryGetValue(action.GuardOrderId, out var local) || local.ActorId != actor.Id.Value || local.Payload.Leader != actor.Id.Value || !escorts.TryGetValue(local.Payload.DispatchId, out var escort) || escort.Status != EscortStatus.AwaitingIntake ||
-                !detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Revoked ||
+                !(PublishedAuthorization(local.Payload.AuthorizationId) is RecordEntry authorization) || RecordText(authorization, AttributeKind.DetentionStatus) != nameof(DetentionAuthorizationStatus.Revoked) ||
                 !detentionFacilities.TryGetValue(action.ServiceId, out var facility) || !facility.Powered || !facility.Connected || actor.Position != facility.Definition.Position || action.ServiceId != local.Payload.Dispatch.FacilityId) return;
             LearnGuardRevocation(local, 0, action.Id.Value, action.ServiceId); ApplyLearnedGuardRevocation(actor);
         }

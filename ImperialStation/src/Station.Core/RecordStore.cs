@@ -40,6 +40,7 @@ namespace Station.Core
             versions[key] = entry.Version;
         }
         internal IRecordStore Scope(RecordKind kind, long account) => new ScopedStore(this, kind, account);
+        internal RecordEntry? Current(RecordKind kind, long entity) => current.TryGetValue((kind, 0), out var rows) && rows.TryGetValue(entity, out var entry) ? entry : null;
         internal IEnumerable<RecordEntry> HistoryOf(RecordKind kind) => history.TryGetValue((kind, 0), out var rows)
             ? (IEnumerable<RecordEntry>)rows.Values : Array.Empty<RecordEntry>();
         private sealed class ScopedStore : IRecordStore
