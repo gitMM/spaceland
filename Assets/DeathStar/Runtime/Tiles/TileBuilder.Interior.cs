@@ -22,8 +22,8 @@ namespace DeathStar
     // On the curved grid the inner walls keep their depth in metres from the curved faces (CurvedTileMesh), meet where
     // the sheared faces' inner surfaces cross, hatches, sockets and stairs are true size round their face's centre (fixed
     // parts) and tubes are bent like the corridor's own. Floors lie on the sphere's shells, so they are level, but walls
-    // follow the lattice and lean by up to about 26 degrees near the cube's diagonals; doors lean with them, tall enough
-    // for an upright person. Wedge and apex cells (the ridges and crowns) are too sheared to bend a room into: they build
+    // follow the lattice and lean by up to about 27 degrees near the cube's diagonals; doors stand upright in a block that
+    // takes up the lean (TileBuilder.Portals.cs). Wedge and apex cells (the ridges and crowns) are too sheared to bend a room into: they build
     // their own (TileBuilder.SpecialRooms.cs), with doors to the rooms round them, and tubes that reach one end at a bulkhead.
     public sealed partial class TileBuilder
     {
@@ -325,15 +325,9 @@ namespace DeathStar
                 // station directions in the wall's own frame (the face's, x mirrored)
                 Vector3 lx=TileStructure.Cross(y,n),ly=y;
                 Vector2 L(Vector3 v)=>new Vector2(Vector3.Dot(v,lx),Vector3.Dot(v,ly));
-                var holes=new List<Rect>();float opening=0;var plate=Vector2.zero;Rect door=default;
-                Vector3Int doorAcross=default,doorUp=default;
+                var holes=new List<Rect>();float opening=0;var plate=Vector2.zero;
                 List<(Rect r,float from,float to)> wells=null;
-                if(way==Way.Door)
-                {
-                    DoorFrame(cell,n,out doorAcross,out doorUp,out float sill,out float head,out float half);
-                    Vector2 a=L((Vector3)doorAcross*half+(Vector3)doorUp*sill),b=L(-(Vector3)doorAcross*half+(Vector3)doorUp*head);
-                    door=Rect.MinMaxRect(Mathf.Min(a.x,b.x),Mathf.Min(a.y,b.y),Mathf.Max(a.x,b.x),Mathf.Max(a.y,b.y));holes.Add(door);
-                }
+                if(way==Way.Door)PortalHoles(holes,cell,n,L);
                 else if(way!=Way.None)
                 {
                     opening=s.cells[next].family==TileFamily.Corridor?TubeInner:HatchRadius;
@@ -380,15 +374,6 @@ namespace DeathStar
                 }
                 // flush in a floor, so people walk across it
                 if(opening>0)Opening(m,c+(Vector3)n*Half,opening,plate,t,opening==HatchRadius?InnerTrim:InnerWall,n==down?0.004f:0.03f);
-                if(way==Way.Door)Doorway(m,door,L((Vector3)doorUp),t);
-                if(way==Way.Tube&&!hub)
-                {
-                    // clear of the floor's middle, and of a lift's opening there
-                    var across=TileStructure.Cross(n,-down);var below=WayBetween(cell,cell+down);
-                    float margin=below==Way.Lift||below==Way.Hatch?(s.cells[cell+down].family==TileFamily.Corridor?TubeInner:HatchRadius)+Rim+0.05f:0.4f;
-                    float depth=(Half-t)*(curved!=null?curved.Scale(c,(Vector3)n):1);
-                    if(curved==null)Stairs(m,c+(Vector3)n*Half,L(-(Vector3)down),L((Vector3)across),Reach(cell,n,down)*FaceScale(cell,n,across,-down).y,t,depth-margin);
-                }
                 if(hub?axial:n==-down)Lamps(m,Mirror(room),opening>0?Mathf.Max(plate.x/k.x,plate.y/k.y):0,holes);
                 if(!hub&&n==down&&opening==0)
                 {
@@ -399,42 +384,8 @@ namespace DeathStar
             }
             m.surfaceFrame=Vector4.zero;
             if(!hub)Columns(m,cell,down);
-            if(!hub)foreach(var n in TileStructure.Directions)if(WayBetween(cell,cell+n)==Way.Door&&DoorRise(cell,n)>0.05f)DoorFlight(m,cell,n);
-            if(!hub&&curved!=null)foreach(var n in TileStructure.Directions)
-                if(WayBetween(cell,cell+n)==Way.Tube&&Vector3.Dot(n,down)==0)TubeFlight(m,cell,n);
-        }
-
-        // Curved walls lean; stairs must use the room's gravity, not the wall's tilted frame.
-        void TubeFlight(TileMesh m,Vector3Int cell,Vector3Int n)
-        {
-            var c=TileStructure.Center(cell);var down=Down(cell);var up=-FaceNormal(cell,down);
-            var anchor=c+(Vector3)n*Half;var frame=new Vector4(n.x,n.y,n.z,Vector3.Dot(anchor,n));
-            var rigid=curved.Rigid(new Vector4(anchor.x,anchor.y,anchor.z,1),frame);
-            var sill=rigid.MultiplyPoint3x4(anchor+(Vector3)down*WalkwayDepth);
-            var floorFrame=new Vector4(down.x,down.y,down.z,Vector3.Dot(c,down)+Half);
-            var floor=curved.Position(c+(Vector3)down*(Half-Inset(cell,down)),floorFrame);
-            float rise=Vector3.Dot(sill-floor,up);if(rise<0.05f)return;
-            var into=-Vector3.ProjectOnPlane(FaceNormal(cell,n),up).normalized;
-            float wall=Inset(cell,n)/Mathf.Max(0.5f,Vector3.Dot(into,-FaceNormal(cell,n)));
-            float clear=Mathf.Max(0.4f,Vector3.Dot(curved.Map(c)-sill,into)-wall-0.35f);
-            int steps=Mathf.CeilToInt(rise/Riser);float tread=Mathf.Clamp(clear/Mathf.Max(1,steps-1),MinTread,Tread);
-            float h=rise/steps;var turn=Quaternion.LookRotation(into,up);
-            using(m.BeginWorld("corridor stairs"))
-            {
-                m.PushMatrix(Matrix4x4.Translate(-c));
-                for(int i=0;i<steps;i++)
-                {
-                    float depth=i==0?wall+0.08f:tread;
-                    float along=i==0?(wall-0.08f)*0.5f:wall+(i-0.5f)*tread;
-                    float thick=Mathf.Min(h+0.04f,rise-i*h);
-                    var at=sill+into*along-up*(i*h+thick*0.5f);
-                    m.PushMatrix(Matrix4x4.TRS(at,turn,Vector3.one));
-                    m.Box(InnerFloor,Vector3.zero,new Vector3(2*StairHalf,thick,depth));
-                    m.Box(FloorEdge,new Vector3(0,thick*0.5f+0.003f,depth*0.5f-0.025f),new Vector3(2*StairHalf,0.006f,0.04f));
-                    m.Pop();
-                }
-                m.Pop();
-            }
+            foreach(var n in TileStructure.Directions)if(WayBetween(cell,cell+n)==Way.Door)PortalHalf(m,cell,n);
+            if(!hub)foreach(var n in TileStructure.Directions)DoorFlight(m,cell,n);
         }
 
         // A recess the face's forms cut deeper than the wall (a hangar bay, a pit) stands into the room as a closed
@@ -479,22 +430,6 @@ namespace DeathStar
             }
         }
 
-        // A sliding door's lining through the wall to its face, sill included (the neighbour lines the rest, and
-        // StationInteriors hangs the leaves on the face), and a frame round its jambs and head on the room side. up: the
-        // wall frame's direction up the wall.
-        static void Doorway(TileMesh m,Rect d,Vector2 up,float t)
-        {
-            const float w=0.12f,proud=0.03f;
-            m.Reveal(InnerTrim,d,t);
-            if(up.x<0.5f)m.Box(InnerTrim,new Vector3(d.xMin-w*0.5f,d.center.y,-proud*0.5f),new Vector3(w,d.height+2*w,proud));
-            if(up.x>-0.5f)m.Box(InnerTrim,new Vector3(d.xMax+w*0.5f,d.center.y,-proud*0.5f),new Vector3(w,d.height+2*w,proud));
-            if(up.y<0.5f)m.Box(InnerTrim,new Vector3(d.center.x,d.yMin-w*0.5f,-proud*0.5f),new Vector3(d.width,w,proud));
-            if(up.y>-0.5f)m.Box(InnerTrim,new Vector3(d.center.x,d.yMax+w*0.5f,-proud*0.5f),new Vector3(d.width,w,proud));
-            // A warm sill identifies the bottom of every doorway from either side.
-            var sill=d.center-up*(Mathf.Abs(up.x)*d.width+Mathf.Abs(up.y)*d.height)*0.5f;
-            m.Box(FloorEdge,new Vector3(sill.x,sill.y,-0.003f),new Vector3(Mathf.Abs(up.x)*0.04f+Mathf.Abs(up.y)*d.width,Mathf.Abs(up.y)*0.04f+Mathf.Abs(up.x)*d.height,0.006f));
-        }
-
         // Thin, flush wayfinding paint; clip every strip to the floor's real openings.
         static void FloorBorder(TileMesh m,Rect room,List<Rect> holes,Vector2 scale)
         {
@@ -515,32 +450,6 @@ namespace DeathStar
             var inner=Octagon(r-0.06f);var outer=Octagon(r+0.06f);
             for(int i=0;i<8;i++){inner[i]=new Vector2(inner[i].x/k.x,inner[i].y/k.y);outer[i]=new Vector2(outer[i].x/k.x,outer[i].y/k.y);}
             m.Annulus(Lamp,inner,outer,Vector3.zero,Vector3.right,Vector3.up,Vector3.forward,-0.003f,-1);
-        }
-
-        // From a room's floor up to the walkway of the tube its socket in this wall lets in: a landing through the
-        // socket's lining at the walkway's height and a flight of steps down into the room, true size round the face's
-        // centre (anchor). up and across: the wall frame's directions up the wall and across it; floor: metres from the
-        // face's centre down to the floor; t: the wall's depth; clear: metres the flight may reach into the room (it
-        // steepens to fit).
-        static void Stairs(TileMesh m,Vector3 anchor,Vector2 up,Vector2 across,float floor,float t,float clear)
-        {
-            const float proud=0.03f;
-            Vector3 V(float u,float a,float z)=>new Vector3(up.x*u+across.x*a,up.y*u+across.y*a,z);
-            Vector3 S(float u,float a,float z)=>new Vector3(Mathf.Abs(up.x)*u+Mathf.Abs(across.x)*a,Mathf.Abs(up.y)*u+Mathf.Abs(across.y)*a,z);
-            float rise=floor-WalkwayDepth;if(rise<0.05f)return;
-            int steps=Mathf.CeilToInt(rise/Riser-1e-3f);float tread=Tread;
-            if((steps-1)*tread>clear){steps=Mathf.Max(2,Mathf.CeilToInt(rise/MaxRiser-1e-3f));tread=Mathf.Clamp(clear/(steps-1),MinTread,Tread);}
-            float h=rise/steps;
-            using(m.BeginFixed("stairs",anchor))
-            {
-                m.Box(InnerTrim,V(-WalkwayDepth-0.03f,0,(t-proud)*0.5f),S(0.06f,2*WalkwayHalf,t+proud));
-
-                for(int i=1;i<steps;i++)
-                {
-                    float top=-WalkwayDepth-i*h;
-                    m.Box(InnerTrim,V((top-floor)*0.5f,0,-proud-(i-0.5f)*tread),S(top+floor,2*StairHalf,tread));
-                }
-            }
         }
 
         // A tube's walkway: a plate WalkwayDepth below its spine towards down, from a0 to a1 along its run A, open over the

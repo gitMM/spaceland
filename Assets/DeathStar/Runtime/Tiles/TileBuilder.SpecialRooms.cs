@@ -9,9 +9,10 @@ namespace DeathStar
     // section (BlockConstruction's cross-section at a wedge's end, or at an apex's lower face) decides where the floor
     // crosses it from its four corners alone, so the two cells sharing it agree. Up in these rooms is square to their
     // floor, keel towards crest, which lies between the floors either side.
-    // Doors: through a section to the next wedge or apex, upright in the section; and through a lower face to a room
-    // whose floor is lower down, usually near the keel: the door stands at this floor's height, with a short flight up to
-    // it on that room's side (a hub's room floats, so it takes none). This is what joins a station's six sides.
+    // Doors: through a section to the next wedge or apex; and through a lower face to a room whose floor is lower down,
+    // usually near the keel: the door stands at this floor's height, with a landing and steps up to it on that room's side
+    // (a hub's room floats, so it takes none). This is what joins a station's six sides. DoorBetween decides where a door
+    // fits; it is built as every door is (TileBuilder.Portals.cs).
     public sealed partial class TileBuilder
     {
         // Wall depth below an exposed face (no window rows here), the floor's clear width across the V where the door above
@@ -55,13 +56,6 @@ namespace DeathStar
         public Vector3 SpecialUp(Vector3Int c)=>Shape(c).up;
         // A point in the room, 1 m above the middle of its floor (in curved space).
         public Vector3 SpecialPoint(Vector3Int c)=>Shape(c).point;
-        public bool SpecialDoorCorners(Vector3Int cell,Vector3Int n,out Vector3[] corners)
-        {
-            corners=null;
-            if(!SpecialRoom(cell)&&!SpecialRoom(cell+n))return false;
-            corners=DoorBetween(cell,cell+n).corners;return corners!=null;
-        }
-
         // Where the floor crosses a section: the middle of that line and its direction, and the half-width clear of the
         // walls. As high as gives SpecialFloorWidth, if a door still fits above that up both lower faces.
         static bool SectionFloor(in Section sec,out Vector3 mid,out Vector3 across,out float half)
@@ -266,54 +260,6 @@ namespace DeathStar
         // How far the flight climbs to the door in face n of plain room cell (0 if it has none).
         float DoorRise(Vector3Int cell,Vector3Int n)=>SpecialRoom(cell+n)?DoorBetween(cell,cell+n).rise:0;
 
-        readonly struct InteriorStep
-        {
-            public readonly Vector3 centre,size;public readonly Quaternion rotation;
-            public InteriorStep(Vector3 centre,Quaternion rotation,Vector3 size){this.centre=centre;this.rotation=rotation;this.size=size;}
-        }
-        readonly Dictionary<(Vector3Int,Vector3Int),List<InteriorStep>> doorSteps=new Dictionary<(Vector3Int,Vector3Int),List<InteriorStep>>();
-        // Shared by stair construction and window placement: glazing needs clearance behind it.
-        List<InteriorStep> DoorSteps(Vector3Int cell,Vector3Int n)
-        {
-            if(doorSteps.TryGetValue((cell,n),out var stepsFound))return stepsFound;
-            var result=new List<InteriorStep>();doorSteps[(cell,n)]=result;
-            if(!SpecialRoom(cell+n)||Down(cell)==Vector3Int.zero)return result;
-            var q=DoorBetween(cell,cell+n).corners;if(q==null)return result;
-            var down=Down(cell);var up=-FaceNormal(cell,down);
-            var floorAt=curved.Map(TileStructure.Center(cell)+(Vector3)down*Half)+up*Inset(cell,down);
-            var sill=(q[0]+q[1])*0.5f;float rise=Vector3.Dot(sill-floorAt,up);if(rise<0.05f)return result;
-            var wall=FaceNormal(cell,n);var into=-Vector3.ProjectOnPlane(wall,up).normalized;
-            float t=Inset(cell,n)/Mathf.Max(0.5f,Vector3.Dot(into,-wall));
-            var below=WayBetween(cell,cell+down);
-            float margin=below==Way.Lift||below==Way.Hatch?(s.cells[cell+down].family==TileFamily.Corridor?TubeInner:HatchRadius)+Rim+0.05f:0.4f;
-            float clear=Mathf.Max(Vector3.Dot(curved.Map(TileStructure.Center(cell))-sill,into)-t-margin,0.3f);
-            int steps=Mathf.CeilToInt(rise/Riser-1e-3f);float tread=Tread;
-            if((steps-1)*tread>clear){steps=Mathf.Max(2,Mathf.CeilToInt(rise/MaxRiser-1e-3f));tread=Mathf.Clamp(clear/(steps-1),MinTread,Tread);}
-            float h=rise/steps;var turn=Quaternion.LookRotation(into,up);
-            for(int i=1;i<steps;i++)
-            {
-                float top=rise-i*h,thick=Mathf.Min(h+0.05f,top-0.02f);if(thick<0.02f)continue;
-                var at=sill+into*(t+(i-0.5f)*tread)-up*(i*h+thick*0.5f);
-                result.Add(new InteriorStep(at,turn,new Vector3(2*StairHalf,thick,tread)));
-            }
-            return result;
-        }
-        // Level treads square to the floor, independent of the wall's lean.
-        void DoorFlight(TileMesh m,Vector3Int cell,Vector3Int n)
-        {
-            using(m.BeginWorld("door flight"))
-            {
-                m.PushMatrix(Matrix4x4.Translate(-TileStructure.Center(cell)));
-                foreach(var step in DoorSteps(cell,n))
-                {
-                    m.PushMatrix(Matrix4x4.TRS(step.centre,step.rotation,Vector3.one));
-                    m.Box(InnerTrim,Vector3.zero,step.size);
-                    m.Pop();
-                }
-                m.Pop();
-            }
-        }
-
         readonly Dictionary<(Vector3Int,Vector3Int),Vector3[]> roomWallCorners=new Dictionary<(Vector3Int,Vector3Int),Vector3[]>();
         Vector3[] RoomWallCorners(Vector3Int cell,Vector3Int n)
         {
@@ -342,11 +288,13 @@ namespace DeathStar
                 var at=f.At(uv.x,uv.y);var p=curved.Position(at-(Vector3)f.n*0.5f,frame);var inward=-CurvedNormal(f.n,at);
                 foreach(var d in TileStructure.Directions)
                 {
-                    foreach(var step in DoorSteps(f.cell,d))
+                    bool Blocks(in InteriorStep step)
                     {
                         var inverse=Quaternion.Inverse(step.rotation);var bounds=new Bounds(Vector3.zero,step.size+Vector3.one*0.04f);
-                        if(bounds.IntersectRay(new Ray(inverse*(p-step.centre),inverse*inward),out float distance)&&distance<0.8f)return false;
+                        return bounds.IntersectRay(new Ray(inverse*(p-step.centre),inverse*inward),out float distance)&&distance<0.8f;
                     }
+                    foreach(var step in DoorSteps(f.cell,d))if(Blocks(step))return false;
+                    if(WayBetween(f.cell,f.cell+d)==Way.Door&&Blocks(PortalBlock(f.cell,d)))return false;
                     // A deeply sheared side wall can also cross the view through a floor or
                     // wall pane. Reserve clearance to the neighbouring room faces as well.
                     if(d==f.n||d==-f.n||Joins(f.cell,f.cell+d))continue;
@@ -384,22 +332,20 @@ namespace DeathStar
                     var n=TileStructure.Directions[f];
                     var polygon=SpecialPolygon(shape,f,near);if(polygon.Count<3)continue;
                     var inward=-shape.normals[f];
-                    Vector3[] door=null;
-                    if(WayBetween(cell,cell+n)==Way.Door)door=DoorBetween(cell,cell+n).corners;
-                    if(door!=null)
+                    if(WayBetween(cell,cell+n)==Way.Door)
                     {
-                        // from the face to this wall, along its normal
-                        var hole=new Vector3[4];
-                        for(int i=0;i<4;i++)hole[i]=door[i]+inward*(Vector3.Dot(shape.normals[f],door[i])-shape.depths[f]);
+                        // the opening, carried along its way into this room onto the wall; its block stands in front
+                        var p=Portal(cell,n);var into=PortalInto(cell,n,p);var hole=new Vector3[4];float k=Vector3.Dot(shape.normals[f],into);float w=p.half+0.02f;
+                        var q=new[]{p.Point(-w,0),p.Point(w,0),p.Point(w,p.height),p.Point(-w,p.height)};
+                        for(int i=0;i<4;i++)hole[i]=q[i]+into*(Mathf.Abs(k)>1e-3f?(shape.depths[f]-Vector3.Dot(shape.normals[f],q[i]))/k:0);
                         Pierced(m,polygon,hole,inward);
-                        Lining(m,door,hole,inward);
-                        SillRiser(m,shape,hole,shape.normals[f]);
                     }
                     else Fan(m,InnerWall,polygon,inward);
                     if((sh.roof>>f&1)!=0&&!shape.capped)SpecialLamp(m,polygon,inward);
                 }
                 m.Pop();
             }
+            foreach(var n in TileStructure.Directions)if(WayBetween(cell,cell+n)==Way.Door)PortalHalf(m,cell,n);
         }
         static void Fan(TileMesh m,in Finish f,List<Vector3> polygon,Vector3 normal)
         {
@@ -420,29 +366,6 @@ namespace DeathStar
                 Fan(m,InnerWall,Clip(rest,-e,-d),normal);
                 rest=Clip(rest,e,d);
             }
-        }
-        // The door's lining from the face to the wall, and a frame round its jambs and head on the room side.
-        static void Lining(TileMesh m,Vector3[] face,Vector3[] hole,Vector3 inward)
-        {
-            const float w=0.12f,proud=0.02f;
-            var middle=(hole[0]+hole[1]+hole[2]+hole[3])*0.25f;
-            for(int i=0;i<4;i++)
-            {
-                int j=(i+1)%4;var into=(middle-(hole[i]+hole[j])*0.5f).normalized;
-                m.Triangle(InnerTrim,hole[i],hole[j],face[j],into);m.Triangle(InnerTrim,hole[i],face[j],face[i],into);
-                if(i==0)continue;   // no frame across the sill
-                Vector3 oi=hole[i]-into*w+inward*proud,oj=hole[j]-into*w+inward*proud,ii=hole[i]+inward*proud,ij=hole[j]+inward*proud;
-                m.Triangle(InnerTrim,ii,ij,oj,inward);m.Triangle(InnerTrim,ii,oj,oi,inward);
-            }
-        }
-        // Where the floor stands above the sill (an apex's step): the riser between them, at the wall the floor ends at.
-        static void SillRiser(TileMesh m,SpecialShape shape,Vector3[] door,Vector3 normal)
-        {
-            float a=shape.floorDepth-Vector3.Dot(shape.up,door[0]),b=shape.floorDepth-Vector3.Dot(shape.up,door[1]);
-            if(a<0.01f&&b<0.01f)return;
-            Vector3 upA=door[3]-door[0],upB=door[2]-door[1];
-            Vector3 topA=door[0]+upA*(Mathf.Max(a,0)/Mathf.Max(0.01f,Vector3.Dot(upA,shape.up))),topB=door[1]+upB*(Mathf.Max(b,0)/Mathf.Max(0.01f,Vector3.Dot(upB,shape.up)));
-            m.Triangle(InnerTrim,door[0],door[1],topB,normal);m.Triangle(InnerTrim,door[0],topB,topA,normal);
         }
         // A light bar along the longest edge's direction through the middle of a wall.
         static void SpecialLamp(TileMesh m,List<Vector3> polygon,Vector3 inward)

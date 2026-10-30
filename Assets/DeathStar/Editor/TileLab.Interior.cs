@@ -134,16 +134,25 @@ namespace DeathStar.EditorTools
         // Every interior cell of a structure built, meshed (and bent) on its own: all build, and how long they take.
         static void BuildTimes(string where,TileBuilder builder,CurvedTileMesh warp,TileStructure s,List<(bool ok,string text)> checks,StringBuilder md)
         {
-            var times=new List<double>();int tris=0,cells=0,empty=0,collected=0;
+            var times=new List<double>();int tris=0,cells=0,empty=0,collected=0;var slowest=new List<(double ms,string what)>();
             // which cells have rooms and which halls they form, found once for the whole station as StationInteriors.Init does
             foreach(var pair in s.cells)if(builder.Interior(pair.Key))builder.Hall(pair.Key);
+            // a throwaway builder runs every path once, so the first room to use one doesn't pay for compiling it
+            var warm=warp!=null?new TileBuilder(s,warp):new TileBuilder(s);
+            foreach(var pair in s.cells){if(!warm.Interior(pair.Key))continue;var m=warm.BuildInterior(pair.Key).ToMesh("warm");if(warp!=null)warp.Bend(m,pair.Key);Object.DestroyImmediate(m);}
             foreach(var pair in s.cells)
             {
                 if(!builder.Interior(pair.Key))continue;
                 int gc=System.GC.CollectionCount(0);
-                var sw=Stopwatch.StartNew();var t=builder.BuildInterior(pair.Key);var mesh=t.ToMesh("interior");if(warp!=null)warp.Bend(mesh,pair.Key);
+                var sw=Stopwatch.StartNew();var t=builder.BuildInterior(pair.Key);double built=sw.Elapsed.TotalMilliseconds;
+                var mesh=t.ToMesh("interior");double meshed=sw.Elapsed.TotalMilliseconds;if(warp!=null)warp.Bend(mesh,pair.Key);
                 // a build the garbage collector paused is not timed: the pause is the whole run's allocations, not its own
-                if(System.GC.CollectionCount(0)==gc)times.Add(sw.Elapsed.TotalMilliseconds);else collected++;
+                if(System.GC.CollectionCount(0)==gc)
+                {
+                    times.Add(sw.Elapsed.TotalMilliseconds);
+                    slowest.Add((sw.Elapsed.TotalMilliseconds,$"{pair.Key} #{cells}: {built:0.0} build, {meshed-built:0.0} mesh, {sw.Elapsed.TotalMilliseconds-meshed:0.0} bend, {TileGallery.Triangles(mesh)} triangles"));
+                }
+                else collected++;
                 int n=TileGallery.Triangles(mesh);tris+=n;cells++;if(n==0)empty++;
                 Object.DestroyImmediate(mesh);
             }
@@ -151,7 +160,7 @@ namespace DeathStar.EditorTools
             double median=times.Count>0?times[times.Count/2]:0,max=times.Count>0?times[times.Count-1]:0;
             checks.Add((cells>0&&empty==0,$"{where}: every home and corridor with an interior builds it ({cells} cells, {empty} empty)"));
             checks.Add((max<10,$"{where}: an interior builds and meshes in under 10 ms (median {median:0.00} ms, max {max:0.00} ms; {collected} paused by the garbage collector not timed)"));
-            md.AppendLine($"{where}: {cells} interior cells, {tris/Mathf.Max(1,cells)} triangles each on average; build median {median:0.00} ms, max {max:0.00} ms.");
+            md.AppendLine($"{where}: {cells} interior cells, {tris/Mathf.Max(1,cells)} triangles each on average; build median {median:0.00} ms, max {max:0.00} ms. Slowest: {string.Join("; ",slowest.OrderByDescending(x=>x.ms).Take(4).Select(x=>x.what))}.");
             md.AppendLine();
         }
 
@@ -309,6 +318,23 @@ namespace DeathStar.EditorTools
                     "curved: along the corridor's walkway into the home it enters",false);
                 var back=(Vector3)(tube-entered);
                 shot("socket",Stand(entered,back,W(entered,back*TileBuilder.Half)-Up(entered)*0.6f),"curved: the stair up through the socket to the corridor's walkway",false);
+                // the highest door above a floor among the rooms, up to a wedge's or apex's: its landing and steps
+                var landing=(cell:default(Vector3Int),d:default(Vector3Int),rise:0f);
+                foreach(var pair in s.cells)foreach(var d in TileStructure.Directions)
+                    if(builder.Interior(pair.Key)&&!builder.SpecialRoom(pair.Key)&&!interiors.Hub(pair.Key)&&builder.SpecialRoom(pair.Key+d)&&interiors.Way(pair.Key,pair.Key+d)==TileBuilder.Way.Door)
+                    {
+                        interiors.DoorAt(pair.Key,d,out var mid,out _,out var ud,out _);
+                        float rise=Vector3.Dot(mid-ud*0.5f-interiors.Floor(pair.Key),Up(pair.Key));
+                        if(rise>landing.rise)landing=(pair.Key,d,rise);
+                    }
+                if(landing.rise>0.3f)
+                {
+                    interiors.ShowAround(W(landing.cell,Vector3.zero),12);
+                    interiors.DoorAt(landing.cell,landing.d,out var mid,out _,out _,out _);
+                    // from the open room: a recess can stand into the cell's middle
+                    var lu=Up(landing.cell);var feet=interiors.FloorUnder(landing.cell,interiors.RoomPoint(landing.cell));
+                    shot("landing",new TileGallery.View(feet+lu*Eye,mid-lu*0.6f,lu,80),$"curved: a landing and steps up {landing.rise:0.00} m to a door in {landing.cell}",false);
+                }
                 var hub=s.cells.Keys.Where(c=>interiors.Get(c)!=null&&interiors.Hub(c)).Take(1).ToList();
                 if(hub.Count>0)
                 {

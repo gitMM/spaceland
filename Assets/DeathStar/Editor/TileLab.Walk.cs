@@ -204,6 +204,10 @@ namespace DeathStar.EditorTools
 
                     // across the opening, from one side of it to the other
                     float worst=0;bool fell=false;var across=Vector3.ProjectOnPlane(side,u1).normalized;
+                    // along a line clear at both ends: a door's block or a landing may stand in the way of some
+                    var overlaps=new Collider[4];
+                    bool Clear(Vector3 feet)=>interiors.CellAt(feet+u1*0.9f,out var on)&&on==upper&&rig.PreviewScene.GetPhysicsScene().OverlapCapsule(feet+u1*(w.radius+0.1f),feet+u1*(w.height-w.radius),w.radius,overlaps,w.mask,QueryTriggerInteraction.Ignore)==0;
+                    for(int turn=0;turn<4&&!(Clear(s1-across*1.3f)&&Clear(s1+across*1.3f));turn++)across=Quaternion.AngleAxis(90,u1)*across;
                     w.Place(s1-across*1.3f,u1,across);
                     // how far the feet stand off the floor's real surface carried across the opening, and their largest jump
                     // (from the second frame: the first settles the placed feet onto the curved floor)

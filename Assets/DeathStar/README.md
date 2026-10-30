@@ -516,11 +516,16 @@ core share one lift, rising from the cell that stands for each hall. Corridors n
 Neighbours whose floors face the same way open into each other (`TileBuilder.WayBetween`): side by side through a
 1.3 × 2.2 m sliding door at floor level, stacked out from the core through 1.8 m round openings in floor and ceiling, a
 lift with a lit ring on the floor at its foot; the opening's frame is flush in a floor, which carries on across it.
+A door is a flattened octagon through an upright block that takes up the wall's lean (`TileBuilder.Portals.cs`): its plane
+stands on the two rooms' mean up, each room's half of the block is square to that room's floor, and they meet in a mitre
+where the leaves hang and slide into the block. The plane stands where the two halves come out equally deep, and the door
+moves along the wall away from window rows and towards the wider side.
 Neighbours whose floors face different ways, or turn by more than 35° between them on the curved grid, stay closed. A corridor's tube (2.4 m across its flats) runs on through a
 home's socket into the room and ends at a sealed bulkhead against other tiles or in space; along a floor it carries a
 1.57 m walkway 0.9 m below its spine (2.1 m headroom, open over portholes in the floor, lamps in its upper corners only),
-and a stair of 0.25 m risers takes it down to the home's floor, steepening to 0.3 m risers and 0.2 m treads where a
-lift's opening in the floor leaves it less room; out from the core the tube is a lift shaft. A junction gets a walkway
+and a landing across the wall comes down to the home's floor, in full-width steps for a rise of up to 0.8 m and a central
+flight above that, of 0.25 m risers steepening to 0.3 m risers and 0.2 m treads where a lift's opening in the floor leaves
+it less room. A landing stops short of a neighbouring door's block and of an exposed wall's window rows. Out from the core the tube is a lift shaft. A junction gets a walkway
 across its box.
 
 Wedge and apex cells have rooms of their own (`TileBuilder.SpecialRooms.cs`), which is what joins a station's six sides
@@ -531,7 +536,7 @@ walls inside each face, a flat floor across the V (1.3 m clear where a door stil
 lower face) fixes where the floor crosses it from its own four corners, so both cells sharing it agree; an apex's floor
 stands a 0.28 m step above its sections, as they leave too small a triangle lower down. Doors stand upright through a
 section to the next wedge or apex, and through a lower face to the room beyond at this floor's height, with a flight up
-to it on that room's side (`DoorFlight`, level treads built in curved space); a hub's room floats and takes none. Their
+to it on that room's side (`DoorFlight`, a landing and level treads built in curved space); a hub's room floats and takes none. Their
 walls have no window rows cut yet, and tubes that reach one still end at a bulkhead. Every room with a floor has full
 gravity, however near the core.
 
@@ -543,8 +548,8 @@ stays armoured. Room spawn points also account for the actual curved volume behi
 On the Foundry's curved grid the rooms are bent like the tiles (`CurvedTileMesh.Bend`): each inner wall keeps its
 depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall,
 measured on the bent surfaces near both ends of their edge (bent faces are twisted), plus a few centimetres of overlap. Floors lie on the sphere's shells, so they are level;
-walls follow the lattice, so they lean by up to about 26° near the cube's diagonals, and doors lean with them (2.2 m tall
-along the wall, enough for an upright person). Lift openings, hatches, sockets and stairs are true size round their
+walls follow the lattice, so they lean by up to about 27° near the cube's diagonals and shear sideways by up to about 34°,
+while floors turn by up to about 33° between rooms; door blocks take that up, by as much as 1.7 m of depth, so doors stand upright. Lift openings, hatches, sockets and stairs are true size round their
 face's centre, with a plate sized to cover the wall's bent hole, so they meet the neighbour's half or the corridor's
 true-size tube exactly; a face too small for its opening stays closed and the corridor ends at a bulkhead. Tubes bend
 like the corridor outside. A junction's room is a rigid 2.64 m box (`TileMesh.BeginRigid`: a fixed part with no foot
@@ -559,7 +564,7 @@ controls are suspended while walking; tiles without interiors display a message 
 lights only interiors (rendering layer 1) and, in play, a mesh collider; those tiles' windows switch to
 `DeathStar/Tile Clear Glass`, so the real room shows through them, while further windows keep Tile Glass's fake rooms.
 Each room hangs the sliding doors on its +x, +y and +z faces (two leaves shaped to the opening, with convex colliders)
-and `TickDoors` slides them apart into the wall when someone comes within 2.4 m. It finds the station's lifts at `Init`
+and `TickDoors` slides them apart into the block when someone comes within 2.4 m. It finds the station's lifts at `Init`
 (`Lift`: an axis from the lowest floor, or 2 m into the hub room below its hatch, up through each opening, and the floors
 to stop at), carries each floor's real surface across the opening cut in it (`FloorUnder`) and gives the walker its
 gravity (`Up`, `Gravity`: full in ordinary rooms, zero only in explicitly authored zero-g rooms). To expose

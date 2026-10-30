@@ -206,49 +206,44 @@ namespace DeathStar
 
         // A sliding door between two homes: its two leaves, where they hang shut and the way each slides open (station
         // space), how far, its middle and how open it is.
-        sealed class Door{public Transform[] leaves=new Transform[2];public Vector3[] shut=new Vector3[2],slide=new Vector3[2];public Vector3 centre;public float travel,open;public Mesh mesh;}
+        sealed class Door{public Transform[] leaves=new Transform[2];public Vector3[] shut=new Vector3[2],slide=new Vector3[2];public Vector3 centre;public float travel,open;public Mesh[] meshes=new Mesh[2];}
         // keyed by the face's cell on its -x, -y or -z side and the direction across it (+x, +y or +z)
         readonly Dictionary<(Vector3Int cell,Vector3Int d),Door> doors=new Dictionary<(Vector3Int,Vector3Int),Door>();
         static (Vector3Int cell,Vector3Int d) DoorKey(Vector3Int cell,Vector3Int n)=>n.x+n.y+n.z<0?(cell+n,-n):(cell,n);
         static readonly Finish LeafFinish=new Finish(TileSlot.Trim,TilePattern.Plain,new Color(0.72f,0.74f,0.78f),0f);
         Vector3 Station(Vector3 p)=>warp!=null?warp.Map(p):p;
-        // The door in face d of cell (Way.Door) on the face's plane: its middle, the directions across and up it (their
-        // lengths its width and height) and its normal.
+        // The door in face d of cell (Way.Door) on its own upright plane (TileBuilder.Portal): its middle, the directions
+        // across and up it (their lengths its width and height) and its normal, out of cell.
         public void DoorAt(Vector3Int cell,Vector3Int d,out Vector3 centre,out Vector3 across,out Vector3 up,out Vector3 normal)
         {
-            if(builder.SpecialDoorCorners(cell,d,out var q))
-            {
-                across=(q[1]+q[2]-q[0]-q[3])*0.5f;up=(q[2]+q[3]-q[0]-q[1])*0.5f;centre=(q[0]+q[1]+q[2]+q[3])*0.25f;
-                normal=Vector3.Cross(up,across).normalized;if(Vector3.Dot(normal,FaceNormal(cell,d))<0)normal=-normal;
-                return;
-            }
-            builder.DoorFrame(cell,d,out var a,out var u,out float sill,out float head,out float half);
-            var fc=TileStructure.Center(cell)+(Vector3)d*TileBuilder.Half;float mid=(sill+head)*0.5f;
-            Vector3 W(float x,float y)=>Station(fc+(Vector3)a*x+(Vector3)u*y);
-            across=W(half,mid)-W(-half,mid);up=W(0,head)-W(0,sill);centre=(W(0,head)+W(0,sill))*0.5f;
-            normal=Vector3.Cross(up,across).normalized;if(Vector3.Dot(normal,FaceNormal(cell,d))<0)normal=-normal;
+            var p=builder.Portal(cell,d);
+            centre=p.centre;across=p.across*(2*p.half);up=p.up*p.height;
+            normal=p.normal;if(Vector3.Dot(normal,FaceNormal(cell,d))<0)normal=-normal;
         }
-        // Each leaf is half the opening, shaped to it (on sheared cells it is a parallelogram), 6 cm thick on the face.
+        // Each leaf is half the opening's outline, 6 cm thick on the door's plane, sliding into the block round it.
         void HangDoors(Vector3Int around)
         {
             foreach(var n in TileStructure.Directions)
             {
                 var key=DoorKey(around,n);var (cell,d)=key;
                 if(doors.ContainsKey(key)||builder.WayBetween(cell,cell+d)!=TileBuilder.Way.Door)continue;
-                DoorAt(cell,d,out var centre,out var across,out var up,out var normal);
-                var corners=new Vector3[8];
-                for(int i=0;i<8;i++)corners[i]=across*((i&1)!=0?0.25f:-0.25f)+up*((i&2)!=0?0.5f:-0.5f)+normal*((i&4)!=0?0.03f:-0.03f);
-                var t=new TileMesh();t.Hexa(LeafFinish,corners);
-                var door=new Door{centre=centre,travel=across.magnitude*0.5f,mesh=t.ToMesh("Door leaf")};door.mesh.hideFlags=HideFlags.DontSave;
+                var p=builder.Portal(cell,d);var outline=TileBuilder.DoorOutline(p.half,p.height);
+                var door=new Door{centre=p.centre,travel=p.half+0.02f};
                 for(int i=0;i<2;i++)
                 {
                     float side=i==0?-1:1;
+                    // the outline's half on this side of the middle, from the sill's middle round to the head's
+                    var poly=new List<Vector2>{new Vector2(0,-p.height*0.5f)};
+                    for(int k=0;k<4;k++)poly.Add(new Vector2(side*outline[k].x,outline[k].y-p.height*0.5f));
+                    poly.Add(new Vector2(0,p.height*0.5f));
+                    var t=new TileMesh();t.Prism(LeafFinish,poly,Vector3.zero,p.across,p.up,p.normal,-0.03f,0.03f,true);
+                    door.meshes[i]=t.ToMesh("Door leaf");door.meshes[i].hideFlags=HideFlags.DontSave;
                     var go=new GameObject("Door leaf"){hideFlags=HideFlags.DontSave};go.transform.SetParent(Holder,true);
-                    door.shut[i]=centre+across*(0.25f*side);door.slide[i]=across.normalized*side;
+                    door.shut[i]=p.centre;door.slide[i]=p.across*side;
                     go.transform.SetPositionAndRotation(Holder.TransformPoint(door.shut[i]),Holder.rotation);
-                    go.AddComponent<MeshFilter>().sharedMesh=door.mesh;
+                    go.AddComponent<MeshFilter>().sharedMesh=door.meshes[i];
                     var r=go.AddComponent<MeshRenderer>();r.sharedMaterials=materials;r.renderingLayerMask=1u|InteriorLayer;
-                    if(Application.isPlaying||colliders){var c=go.AddComponent<MeshCollider>();c.sharedMesh=door.mesh;c.convex=true;}
+                    if(Application.isPlaying||colliders){var c=go.AddComponent<MeshCollider>();c.sharedMesh=door.meshes[i];c.convex=true;}
                     door.leaves[i]=go.transform;
                 }
                 doors[key]=door;
@@ -262,7 +257,8 @@ namespace DeathStar
                 var key=DoorKey(cell,n);
                 if(built.ContainsKey(cell+n)||!doors.TryGetValue(key,out var door))continue;
                 foreach(var leaf in door.leaves)if(leaf!=null)Release(leaf.gameObject);
-                Release(door.mesh);doors.Remove(key);
+                foreach(var mesh in door.meshes)Release(mesh);
+                doors.Remove(key);
             }
         }
         // Opens each door whose middle lies within DoorReach of who and shuts the others, over dt.
