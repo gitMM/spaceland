@@ -7,9 +7,9 @@ milestone stays open for calibration (see below).
 Done: the six [staffing, daily timing and response-time](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times)
 fixes, the [population margin follow-up](acceptance-current.md#follow-up--population-margin-and-unacknowledged-facility-orders-2026-10-30)
 and [missed-window, check-in and unread-roster verification with seed coverage](acceptance-current.md#remaining-daily-life-verification).
+Sleep sizing from the known roster and prior sleep is done ([follow-up](acceptance-current.md#follow-up--sleep-sizing-2026-10-30)).
 Remaining: calibrate the declared response targets and the 3,000-tick check-in bound,
-make sleep start weigh the known duty start (a citizen that learns of an earlier shift
-sleeps into it), facility acknowledgments missed when the assignee went off duty, and
+facility acknowledgments missed when the assignee went off duty, and
 broader concurrent institutional load. Expansion and physical emergency alarms remain deferred.
 
 Completion clarification approved by the user: insufficient evidence is a valid

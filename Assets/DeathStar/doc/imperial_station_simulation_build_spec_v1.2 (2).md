@@ -42,19 +42,19 @@ core, CLI runner and tests are separate projects.
 | Area | Delivered behavior |
 | --- | --- |
 | Deterministic foundation | Ordered event phases; 3D weighted pathfinding and frozen movement timing; seeded random streams; finite actions, cancellation and resource accounting; canonical state digests, checkpoints and replay. |
-| Planning and knowledge | Bounded GOAP and the decision policies in the isolated Mind assembly; bounded private knowledge with provenance and eviction; published layout, local sensing and inspection; scoped delayed sensors. Core gathers inputs and applies Mind's choices; the 2026-10-30 move was verified byte-identical. Some decision inputs are still built from world truth (T08). |
+| Planning and knowledge | Bounded GOAP and the decision policies in the isolated Mind assembly; bounded private knowledge with provenance and eviction; published layout, local sensing and inspection; scoped delayed sensors. Core gathers inputs and applies Mind's choices; the 2026-10-30 move was verified byte-identical, and decision inputs no longer read world truth (T08). |
 | Communication and credentials | Physical credential-bound terminal sessions, queues, finite inbox reads/posts, delivery latency and separate authority beliefs; permission-filtered versioned record queries; autonomous known-card retrieval or HQ recovery with real replacement-card stock, pickup and renewed login; learned terminal outages. |
 | Work and resources | Fabrication, installation, functional testing, resource claims, stack operations and stashes; autonomous repair alternatives; distinct jobs, attempts and locally read orders; acknowledgments, suspension/resumption, delayed reports and reassignment of silent orders. |
 | Routines and authority | Staggered cohort rosters and check-ins; receipt-based expectations, off-duty extensions and learned timing correction; overdue incidents, bounded replacement dispatch, patrols with hourly admission accounting, repair priority with an evidence hold and cleanup helpers. |
 | Maintenance and institutions | Soiling, spills, finite cleaning, machine faults and wear; local reports drive facility work; QA, record-based audits and reprimands; detention decisions, guard preparation/search, cooperative custody, escort movement and acknowledgment deadlines, finite intake, sentences, release and delayed receipts/revocations. Recovery from all negative institutional outcomes is not yet complete. |
-| Daily life | Exact fractional need accumulation; threshold interrupts; finite meals, toilets, rest and assigned sleep with queues and food conservation; sleep budgeted against meals and toilet use; learned cafeteria waits; autonomous relief, retained daily goals, berth allocation, sleep fallback and finite consenting conversations. Calibration and roster-aware sleep start remain open. |
+| Daily life | Exact fractional need accumulation; threshold interrupts; finite meals, toilets, rest and assigned sleep with queues and food conservation; sleep budgeted against meals and toilet use; learned cafeteria waits; autonomous relief, retained daily goals, berth allocation, sleep fallback and finite consenting conversations. Sleep is sized from the known roster and sleep already taken. Calibration remains open. |
 | Construction and housing (deferred) | Physical construction, expansion planning, construction orders and capacity surveys exist with historical evidence; expansion is outside first-release scope. |
 | Verification and tools | CLI validation, execution, batch runs, replay and inspection; exported snapshots/traces and a static viewer; per-stage response times, classified missed routine windows, response-chain causal audits and an independent assignment audit; checkpoint, tracing, concurrency and metamorphic checks. Full viewer, observability and calibration gates remain open. |
 
 ### Current evidence
 
-- Complete Release suite: **901 passed, 0 failed, 0 skipped**; zero build warnings;
-  snapshot schema 49.
+- Complete Release suite: **918 passed, 0 failed, 0 skipped**; zero build warnings;
+  snapshot schema 53.
 - The [fixed-station pressure workload](../../../ImperialStation/docs/pressure-station.md)
   (nine shortened days of overlapping faults, card losses, spills, terminal outages
   and disciplinary cases) passes at 32 and 256 citizens for seeds 42, 7, 91, 1234 and
@@ -71,14 +71,13 @@ core, CLI runner and tests are separate projects.
 - Expansion work (R-AUT-01..08 and T11) is deferred by the fixed-station scope
   amendment. Existing bed allocation and occupancy remain required.
 - Close the pressure milestone: calibrate response targets and the check-in bound,
-  make sleep start weigh the known duty start, handle facility acknowledgments when
+  handle facility acknowledgments when
   the assignee goes off duty, and broaden concurrent institutional load (T15/T22/T26).
 - Audit the remaining negative patrol/escort outcomes and reassignment variants (T20).
 - Complete the remaining work domains and nested recipe cases (T10) and blocked-work
   recovery policies (T17).
 - Run the every-fixture × 20-seed checkpoint campaign (T25), tuning sweeps,
   observability and viewer validation.
-- Remove the remaining world-truth reads from decision inputs (T08, R-ARC-04); the list is in the acceptance matrix.
 
 Passing the current suite is evidence for implemented behavior, not a claim that every
 specified test exists. Detailed increment reports are linked from the

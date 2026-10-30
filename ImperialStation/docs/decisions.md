@@ -415,3 +415,10 @@ the result, so no snapshot schema change is needed.
 | Make snapshot restore validators call the same Mind rules as live decisions | Detention, case and survey validation previously re-implemented the reason chains; one rule cannot drift from its copy. |
 | Leave queue iteration order, knowledge eviction and guard-team co-location in Core | They are processing order, a memory-capacity model and a physical handshake, not choices a citizen or institution makes. |
 | Record known world-truth reads under T08 instead of fixing them in the move | Each fix changes what a decider can know and therefore behaviour; they need their own regressions. |
+
+## Sleep sizing (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Size each sleep from the bed's published duration, sleep already taken in the current known window and the next known pre-duty meal | A sleep always ran the full bed duration from its start, so a late or interrupted sleep (for example after release from custody) ran into the next duty; relief stays pro rata by elapsed ticks. |
+| Defer ordinary work while an open duty meal is forecast to become needed before its window closes | Long installs started inside the window otherwise swallowed the meal; the forecast uses only own hunger and the known roster. |

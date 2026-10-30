@@ -7,12 +7,12 @@ demonstrated scope and `partial` means required variants or integrated clauses r
 
 Current state:
 
-- **Suite:** 914 passed, zero failed or skipped, after the T08 decision-input fixes
-  (901 after the decision-boundary move, 858 before it). Snapshot schema 53.
+- **Suite:** 918 passed, zero failed or skipped, after sleep sizing (914 after the T08
+  decision-input fixes, 901 after the decision-boundary move, 858 before it). Snapshot schema 53.
 - **Active milestone:** the [fixed station under sustained pressure](pressure-station.md)
   passes at 32 and 256 citizens for seeds 42, 7, 91, 1234 and 2026, with exact state
   and continuation-event replay and the independent assignment audit. It stays open
-  for response-target calibration, roster-aware sleep start, off-duty facility
+  for response-target calibration, off-duty facility
   acknowledgments and broader concurrent institutional load.
 - **Population scope** (user decision, 2026-10-30): population runs and tests use
   **256 citizens** (four 64-citizen groups). 2,048-citizen results are historical.
@@ -299,6 +299,38 @@ SHA-256: p32 `b92434f5…5ca530`, p256 `440df8b8…f148c35e`. Suite 914 passed. 
 actions after item 5 are declined invitations (`ConsentDeclined`); the individual bound
 (100) is far off.
 
+## Follow-up — sleep sizing (2026-10-30)
+
+A sleep always lasted the bed's full duration from whenever it started, so a late or
+interrupted sleep ran into the next duty. A citizen released from custody mid-sleep
+started a fresh full sleep and slept through the pre-duty meal (`SleepOverran`).
+Every citizen's day-0 pre-duty meal was missed for the same reason (`InitialSleepWindow`).
+
+- **Sleep sizing.** A sleep now lasts the bed's published duration minus sleep already
+  taken in the current known sleep window, and never runs past the next pre-duty meal
+  opening of the citizen's known roster (`DailyPolicy.SleepLength`, in Mind, from own
+  knowledge only). Relief stays pro rata by elapsed ticks; no schema change.
+- **Duty-meal protection.** While an open duty-meal window's own-hunger forecast reaches
+  seek before it closes, repairs, jobs and audits wait for the meal
+  (`DailyPolicy.DutyMealComingDue`). Sleep sizing had exposed two `ContinuousWork`
+  misses where a long install swallowed the meal.
+- Regressions: `SleepTimingTests` (a late sleep ends before the pre-duty meal; a citizen
+  released mid-sleep sleeps only the remainder). Both fail on the previous build.
+
+| Run (seeds 42 / 7 / 91 / 1234 / 2026) | Clear from | Missed windows (needing attention) |
+| --- | --- | --- |
+| pressure 32 | 150,000 / 138,000 / 138,000 / 150,000 / 138,000 | 5 / 7 / 5 / 5 / 7 (0) |
+| pressure 32 `roster-change` (seed 42) | 138,000 | 5 (0) |
+| pressure 256 | 150,000 / 150,000 / 150,000 / 150,000 / 150,000 | 21 / 17 / 19 / 21 / 19 (0) |
+
+Before this fix, seed 42 had 20 missed windows at 32 citizens and 130 at 256. Every run
+above has 4 reprimands and 2 releases per 32 citizens, passes the gate with exact state
+and continuation-event replay, and passes the independent audit. All eight institutional
+variants pass. The remaining misses are custody, escort duty, credential recovery and a
+few `LateEligibility` meals, all allowed. The clear tick moves later by up to 12,000
+ticks; the asserted bound is day six (216,000). The seed tables below predate this
+follow-up.
+
 ## Remaining daily-life verification
 
 Refreshed 2026-10-30 for the current pressure workload (the 46-window
@@ -341,8 +373,8 @@ would not have scheduled. Cleaner 12's new shift had already started while it wa
 unread, so it correctly stayed off duty until it read the change. The shift-cycling
 gate allows one fewer duty period per change. Observed limitation: cleaner 10 read a
 shift that started 4,558 ticks later and began its full 12,000-tick sleep immediately,
-sleeping 7,453 ticks into the new shift (excluded as `Sleeping`). Sleep start does not
-yet weigh the known duty start.
+sleeping 7,453 ticks into the new shift (excluded as `Sleeping`). Fixed by
+[sleep sizing](#follow-up--sleep-sizing-2026-10-30): sleep now ends by the next known pre-duty meal.
 
 **Seed coverage (T25/T26).** Seeds 7, 91, 1234 and 2026 at 32 citizens (`artifacts/seeds/p32-s*`)
 all pass the gate, exact state and continuation replay and the independent audit:
@@ -380,7 +412,7 @@ and no run has a wait beside a free identical service. All 32-citizen results ar
 unchanged. The complete suite passes **858 tests**
 (`artifacts/pressure-tests/identical-services-all.trx`).
 
-T22 still lacks calibration of the declared targets and roster-aware sleep start; the
+T22 still lacks calibration of the declared targets (sleep sizing is fixed); the
 missed-window, check-in and unread-roster obligations now have integrated evidence.
 
 ## Acceptance gates
@@ -414,7 +446,7 @@ family-level audit limits even where these specific tests pass.
 | T19 | CleanupOrderTests; IncidentResponseTests; PatrolTests | partial: autonomous cleanup/patrol/replacement covered; broader recovery/generation open |
 | T20 | QA, Audit, Personnel, Detention, Guard, Escort and InstitutionalStationTests | partial: integrated chain and eight declared controls pass, including full capacity and replacement after interruption; complete variant/requirement audit remains open |
 | T21 | InformationTests; RoutineTests; daily/population terminal use | partial: reads/privacy/queues/offline orders covered; complete contention/security variant audit open |
-| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; every missed window classified (none unexplained), check-in gaps bounded and the `roster-change` control pass at 32 and 256 (2026-10-30); calibration and roster-aware sleep start remain open |
+| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; every missed window classified (none unexplained), check-in gaps bounded and the `roster-change` control pass at 32 and 256 (2026-10-30); sleep sized from the known roster and prior sleep (2026-10-30); calibration remains open |
 | T23 | PlanningTests; RepairPlanningTests | pass: known costs change choices; unknown changes do not |
 | T24 | ConstructionGeneratorTests; RecoveryGeneratorTests | partial: declared transformations covered only for implemented generator families |
 | T25 | ReproducibilityTests; RunnerTests; feature checkpoint tests | partial: broad continuation coverage; pressure workload replays exactly for four extra seeds at 32 and 256 (2026-10-30); every-fixture × 20-seed × five-tick campaign not closed |

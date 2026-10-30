@@ -7,14 +7,14 @@ network services at runtime, and can be copied out of this repository and built 
 
 ## Status (2026-10-30)
 
-**914 tests pass; the first release is still incomplete.** First-release scope uses a
+**918 tests pass; the first release is still incomplete.** First-release scope uses a
 **fixed layout and population**; expansion and construction acceptance are deferred,
 while existing beds, allocation and occupancy stay in scope.
 
 - **Active milestone:** [a fixed station under sustained pressure](docs/pressure-station.md)
   passes at 32 and 256 citizens for five seeds, with exact state/event replay and the
   independent assignment audit. Still open: calibration of response targets and the
-  check-in bound, roster-aware sleep start, off-duty facility acknowledgments and
+  check-in bound, off-duty facility acknowledgments and
   broader concurrent institutional load.
 - **Population gate:** 256 citizens since 2026-10-30; 2,048-citizen results are historical.
 - **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](docs/architecture.md#decision-boundary-2026-10-30)). The decision-input leaks that audit found are closed (T08 pass for the audited inputs); R-ARC-04 stays partial because `IInstitutionView` carries only the tick.
