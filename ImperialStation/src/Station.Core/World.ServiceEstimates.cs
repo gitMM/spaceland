@@ -43,16 +43,19 @@ namespace Station.Core
             if (meals >= 0) { estimate.MealsSeen = meals; estimate.StockObservedTick = processingTick; estimate.StockSource = source; }
             Emit("ServiceEstimateLearned", actor, detail: "service=" + service.Definition.Id + "; " + source + "; wait=" + estimate.WaitTicks + "; meals=" + estimate.MealsSeen);
         }
-        // Queue seen on arrival: whole service rounds needed before this citizen's turn.
-        private void ObserveServiceQueue(Actor actor, NeedService service)
+        // Whole service rounds needed before a newcomer's turn, as seen from the service's tile.
+        private static long VisibleWait(NeedService service)
         {
             long ahead = service.Queue.Count + service.Occupants.Count, capacity = Math.Max(1, service.Definition.Capacity);
-            LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedQueue, wait: checked(ahead < capacity ? 0 : (ahead - capacity) / capacity + 1) * service.Definition.DurationTicks);
+            return checked(ahead < capacity ? 0 : (ahead - capacity) / capacity + 1) * service.Definition.DurationTicks;
         }
+        // Queue seen on arrival.
+        private void ObserveServiceQueue(Actor actor, NeedService service) => LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedQueue, wait: VisibleWait(service));
         private long MealsVisible(NeedService service) => AvailableItemsAt(service.Definition.Position).Where(i => i.Resource == service.Definition.MealResource)
             .Sum(i => Math.Max(0, i.Quantity - (mealReservations.TryGetValue(i.Id.Value, out var claims) ? claims.Count : 0)));
-        // Fresh expected extra waits per cafeteria, for this citizen's planning only. A wait
-        // shorter than one service duration is ignored so small queues cause no switching.
+        // Fresh expected extra waits per service, for this citizen's planning only. A learned
+        // cafeteria wait shorter than one service duration is ignored so small queues cause
+        // no switching.
         private SortedDictionary<long, long> KnownServiceWaits(Id<ActorTag> actor)
         {
             var waits = new SortedDictionary<long, long>();
@@ -63,6 +66,16 @@ namespace Station.Core
                 // still chosen when nothing else is known, so restocking can be discovered.
                 long extra = (freshStock && e.MealsSeen == 0 ? EstimateStaleTicks : 0) + (freshWait ? Math.Max(0, e.WaitTicks - needServices[e.ServiceId].Definition.DurationTicks) : 0);
                 if (extra > 0) waits[e.ServiceId] = extra;
+            }
+            // Identical services this citizen may use on its own tile (for example a
+            // detention facility's beds) are compared by the queues it can see there now,
+            // so it does not queue at one while another stands free.
+            var position = actors[actor].Position;
+            var here = needServices.Values.Where(s => s.Definition.Position == position && s.Enabled && (s.Definition.Kind != NeedServiceKind.Bed || s.AssignedActorId == 0 || s.AssignedActorId == actor.Value)).ToArray();
+            foreach (var s in here.Where(s => here.Count(o => o.Definition.Kind == s.Definition.Kind && o.Definition.DetentionFacilityId == s.Definition.DetentionFacilityId) > 1))
+            {
+                long visible = VisibleWait(s);
+                if (visible > 0) waits[s.Definition.Id] = visible; else waits.Remove(s.Definition.Id);
             }
             return waits;
         }

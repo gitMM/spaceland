@@ -44,4 +44,28 @@ public sealed class ServiceEstimateTests
         Assert.All(estimates.Keys.Where(a => a != delayed), a => Assert.Equal(1, Meals(w, a)[1].ServiceId));
         Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
     }
+
+    // Two identical one-seat cafeterias share the diners' tile. The second diner gets
+    // hungry while the lower-numbered one is occupied and takes the free one it can see.
+    [Fact]
+    public void DinerTakesAVisiblyFreeIdenticalServiceOnTheSameTile()
+    {
+        var tiles = new[] { new Tile(new(1), "Habitat", new Coord(0, 0, 0)) };
+        var actors = Enumerable.Range(1, 2).Select(i => new ActorSeed(new(i), "Diner " + i, "worker", new Coord(0, 0, 0))).ToArray();
+        var items = new List<Item> { new(new(10), "meal", 20, new(LocationKind.TileContainer, 1)) };
+        items.AddRange(actors.Select(a => new Item(new(a.Id.Value), "card", 1, new(LocationKind.ActorInventory, a.Id.Value))));
+        var w = new World("identical-services", 42, new WorldConfig(tickDurationMs: 60000, itemActionTicks: 1), Fixtures.Catalog, tiles, actors, items, true,
+            information: new InformationSeed(TerminalFixtures.Tiny(), new[] { new TerminalSeed(1, new Coord(0, 0, 0), new[] { "worker" }) },
+                credentials: actors.Select(a => new CredentialSeed(a.Id.Value, a.Id, a.Account, new(a.Id.Value)))),
+            needs: new NeedSeed(initial: new[] { new NeedInitialValue(new(1), NeedKind.Hunger, 699 * H), new NeedInitialValue(new(2), NeedKind.Hunger, 689 * H) },
+                services: new[] { new NeedServiceDefinition(1, NeedServiceKind.Cafeteria, new Coord(0, 0, 0), capacity: 1, durationTicks: 60),
+                    new NeedServiceDefinition(2, NeedServiceKind.Cafeteria, new Coord(0, 0, 0), capacity: 1, durationTicks: 60) }));
+        w.AdvanceTo(120);
+        var first = Meals(w, 1)[0]; var second = Meals(w, 2)[0];
+        Assert.Equal(1, first.ServiceId);
+        Assert.True(second.RequestedTick > first.StartedTick && second.RequestedTick < first.EndedTick, "The second diner decides while the first seat is taken.");
+        Assert.Equal(2, second.ServiceId);
+        Assert.True(second.StartedTick <= second.RequestedTick + 1, "No wait beyond the ordinary one-tick grant.");
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
 }

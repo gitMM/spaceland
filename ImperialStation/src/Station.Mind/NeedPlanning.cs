@@ -15,7 +15,8 @@ namespace Station.Mind
 
         // Live stock, occupancy and availability are deliberately absent. The service
         // executor checks them locally; a failed attempt informs retries. expectedWaits
-        // holds only the citizen's own fresh learned estimates (extra ticks per service).
+        // holds only the citizen's own fresh learned estimates and the queues it sees on
+        // its own tile (extra ticks per service).
         public static PlanResult Plan(IActorView view, NeedKind need, IEnumerable<long>? avoidedServices = null, int candidates = 3, int depth = 8, int budget = 512, SortedDictionary<long, long>? expectedWaits = null)
         {
             long Wait(long service) => expectedWaits != null && expectedWaits.TryGetValue(service, out long wait) ? wait : 0;
