@@ -7,7 +7,7 @@ network services at runtime, and can be copied out of this repository and built 
 
 ## Status (2026-10-30)
 
-**858 tests pass; the first release is still incomplete.** First-release scope uses a
+**901 tests pass; the first release is still incomplete.** First-release scope uses a
 **fixed layout and population**; expansion and construction acceptance are deferred,
 while existing beds, allocation and occupancy stay in scope.
 
@@ -17,7 +17,7 @@ while existing beds, allocation and occupancy stay in scope.
   check-in bound, roster-aware sleep start, off-duty facility acknowledgments and
   broader concurrent institutional load.
 - **Population gate:** 256 citizens since 2026-10-30; 2,048-citizen results are historical.
-- **Architecture:** Mind/Core separation is partial: assembly isolation is enforced, but some goal-priority, dispatch and institutional decisions still run in Core (T00/T08, R-ARC-01..10).
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](docs/architecture.md#decision-boundary-2026-10-30)). T08 stays partial: Core still builds some decision inputs from world truth.
 - **Requirements and gates:** the [acceptance matrix](docs/acceptance-current.md) is the
   current map of all 230 requirement IDs and T00–T27. Delivered systems are summarised
   in the [build specification's implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-30>).
@@ -202,8 +202,8 @@ history; replay with `--trace detailed` first.
 
 ```text
 src/Station.Contracts  Typed IDs, intents, immutable knowledge, planning contracts
-src/Station.Mind       Bounded symbolic search, known navigation, report/repair planning
-src/Station.Core       Physical execution, knowledge, terminals, scheduler, snapshots
+src/Station.Mind       All decision code: goal priority, planning, dispatch, institutional policies
+src/Station.Core       World state, input gathering, execution, terminals, scheduler, snapshots
 src/Station.Runner     Strict JSON loading, CLI, assertions, batches, replay/artifacts
 tests/Station.Tests   Structural, exact, generated, continuation and isolation checks
 content/              Versioned twelve-family tile catalog

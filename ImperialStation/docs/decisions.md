@@ -403,3 +403,15 @@ the result, so no snapshot schema change is needed.
 | Add a `roster-change` control instead of changing the acceptance schedule | Three cleaners per group get a new cohort at tick 42,000; each boundary and roster check-in is checked against the roster the citizen knew. The acceptance workload and its digests are unchanged. |
 | Allow one fewer duty period per roster change in the shift-cycling gate | A citizen that reads its new roster while off duty correctly skips the new shift already in progress. |
 | Compare identical services on the citizen's own tile by their visible queues, and switch to a free one on arrival | Same-cost choices broke ties by service ID, so detainees queued at one facility bed beside free identical beds. Only local, present-tense perception is used; plans made in the same tick are resolved at the service. |
+
+## Decision code moved into Mind (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Move every goal-priority, dispatch and institutional decision from Core into `Station.Mind`, with Core gathering inputs and applying choices | R-ARC-01/03/05 require all decision code in Mind behind the Contracts-only reference; the compile-time boundary is what makes hidden-state isolation (T08) checkable. |
+| Keep the move behaviour-identical and prove it by byte comparison | Checkpoints and traces of the 32-citizen pressure, recovery and institutional benchmarks match the pre-move build exactly. Behaviour changes, including leak fixes, stay separate and reviewable. |
+| Express short-circuiting priority checks as ordered gate lists in Mind, evaluated one at a time by Core | Several checks wake the goal that wins; evaluating them eagerly would add wakes and change event order. Mind owns the order, Core performs each check's side effect only when asked. |
+| Pass Core status enums to Mind as Contracts mirrors or booleans | Mind cannot reference Core; mirrors are mapped by explicit switches or ordinal checks with a test asserting the names match. |
+| Make snapshot restore validators call the same Mind rules as live decisions | Detention, case and survey validation previously re-implemented the reason chains; one rule cannot drift from its copy. |
+| Leave queue iteration order, knowledge eviction and guard-team co-location in Core | They are processing order, a memory-capacity model and a physical handshake, not choices a citizen or institution makes. |
+| Record known world-truth reads under T08 instead of fixing them in the move | Each fix changes what a decider can know and therefore behaviour; they need their own regressions. |

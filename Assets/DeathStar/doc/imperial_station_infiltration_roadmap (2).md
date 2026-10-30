@@ -17,7 +17,7 @@ rosters and overdue responses, maintenance/QA/audits, detention and escorts, nee
 daily routines, and credential recovery. Station expansion has been removed from the
 first release (fixed layout and population). The fixed-station
 [pressure workload](../../../ImperialStation/docs/pressure-station.md) passes at 32 and
-256 citizens across five seeds with exact replay; the complete suite passes 858 tests.
+256 citizens across five seeds with exact replay; the complete suite passes 901 tests.
 
 Remaining first-release work (calibration, broader institutional load, the T20/T25
 variant campaigns, work domains, observability and the viewer) is tracked in the

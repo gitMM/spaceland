@@ -42,7 +42,7 @@ core, CLI runner and tests are separate projects.
 | Area | Delivered behavior |
 | --- | --- |
 | Deterministic foundation | Ordered event phases; 3D weighted pathfinding and frozen movement timing; seeded random streams; finite actions, cancellation and resource accounting; canonical state digests, checkpoints and replay. |
-| Planning and knowledge | Bounded GOAP and the decision policies in the isolated Mind assembly; bounded private knowledge with provenance and eviction; published layout, local sensing and inspection; scoped delayed sensors. Some goal-priority, dispatch and institutional decisions still run in Core; moving them is the open T00/T08 architecture item. |
+| Planning and knowledge | Bounded GOAP and the decision policies in the isolated Mind assembly; bounded private knowledge with provenance and eviction; published layout, local sensing and inspection; scoped delayed sensors. Core gathers inputs and applies Mind's choices; the 2026-10-30 move was verified byte-identical. Some decision inputs are still built from world truth (T08). |
 | Communication and credentials | Physical credential-bound terminal sessions, queues, finite inbox reads/posts, delivery latency and separate authority beliefs; permission-filtered versioned record queries; autonomous known-card retrieval or HQ recovery with real replacement-card stock, pickup and renewed login; learned terminal outages. |
 | Work and resources | Fabrication, installation, functional testing, resource claims, stack operations and stashes; autonomous repair alternatives; distinct jobs, attempts and locally read orders; acknowledgments, suspension/resumption, delayed reports and reassignment of silent orders. |
 | Routines and authority | Staggered cohort rosters and check-ins; receipt-based expectations, off-duty extensions and learned timing correction; overdue incidents, bounded replacement dispatch, patrols with hourly admission accounting, repair priority with an evidence hold and cleanup helpers. |
@@ -53,7 +53,7 @@ core, CLI runner and tests are separate projects.
 
 ### Current evidence
 
-- Complete Release suite: **858 passed, 0 failed, 0 skipped**; zero build warnings;
+- Complete Release suite: **901 passed, 0 failed, 0 skipped**; zero build warnings;
   snapshot schema 49.
 - The [fixed-station pressure workload](../../../ImperialStation/docs/pressure-station.md)
   (nine shortened days of overlapping faults, card losses, spills, terminal outages
@@ -78,7 +78,7 @@ core, CLI runner and tests are separate projects.
   recovery policies (T17).
 - Run the every-fixture × 20-seed checkpoint campaign (T25), tuning sweeps,
   observability and viewer validation.
-- Move the remaining goal-priority, dispatch and institutional decisions from Core into Mind (T00/T08, R-ARC-01..10).
+- Remove the remaining world-truth reads from decision inputs (T08, R-ARC-04); the list is in the acceptance matrix.
 
 Passing the current suite is evidence for implemented behavior, not a claim that every
 specified test exists. Detailed increment reports are linked from the

@@ -7,8 +7,8 @@ demonstrated scope and `partial` means required variants or integrated clauses r
 
 Current state:
 
-- **Suite:** 858 passed, zero failed or skipped
-  (`artifacts/pressure-tests/identical-services-all.trx`). Snapshot schema 49.
+- **Suite:** 901 passed, zero failed or skipped, after the decision-boundary move
+  (858 before it, `artifacts/pressure-tests/identical-services-all.trx`). Snapshot schema 49.
 - **Active milestone:** the [fixed station under sustained pressure](pressure-station.md)
   passes at 32 and 256 citizens for seeds 42, 7, 91, 1234 and 2026, with exact state
   and continuation-event replay and the independent assignment audit. It stays open
@@ -18,7 +18,7 @@ Current state:
   **256 citizens** (four 64-citizen groups). 2,048-citizen results are historical.
 - **Scope amendment** (2026-10-29): fixed layout and population; expansion (T11,
   R-AUT-01..08) is deferred. See [Acceptance gates](#acceptance-gates).
-- **Architecture:** Mind/Core separation is partial: assembly isolation is enforced, but some goal-priority, dispatch and institutional decisions still run in Core (T00/T08, R-ARC-01..10).
+- **Architecture:** All goal-priority, dispatch and institutional decisions run in `Station.Mind`; Core gathers inputs and applies choices (T00 pass, behaviour-identical move on 2026-10-30; see [architecture](architecture.md#decision-boundary-2026-10-30)). T08 stays partial: Core still builds some decision inputs from world truth.
 
 ## Completed milestones and historical evidence
 
@@ -31,7 +31,8 @@ were measured before the population gate moved to 256.
 
 Suite history: 785 at initial stabilization (`artifacts/integration-tests/stabilization.trx`),
 816 after the institutional station, 843 after the first pressure completion, 849 after
-staffing and daily timing, 854–858 after the population margin and service fixes.
+staffing and daily timing, 854–858 after the population margin and service fixes, 901 after the
+decision-boundary move (42 Mind policy tests and one structural test).
 
 The 2,048-citizen pressure trials (historical): `pressure-2048-incident-cache`,
 `-local-records` and `-roster-search` left escorts or reprimands open at the horizon;
@@ -356,10 +357,10 @@ family-level audit limits even where these specific tests pass.
 
 | Gate | Evidence | Current result / missing closure |
 | --- | --- | --- |
-| T00 | StructuralTests; banned-API compile probe | partial: dependency checks pass; some goal/dispatcher decisions remain in Core |
+| T00 | StructuralTests (assembly references, banned APIs and compile probe, `T00_SearchAndRankingStayInMind`); Mind policy unit tests | pass: Mind references only Contracts and the base library; goal-priority, dispatch and institutional decisions run in Mind and Core only applies them (2026-10-30, behaviour-identical) |
 | T01–T06 | FoundationTests | pass: family connectivity, weighted movement, locality, estimates, frozen segments |
 | T07 | InformationTests; RunnerTests generated terminal variants | pass: false delivery and delayed correction |
-| T08 | PlanningTests and feature isolation tests | partial: tested citizen/authority boundaries pass; complete decision-code audit open |
+| T08 | PlanningTests, feature isolation tests, decision-code audit (2026-10-30) | partial: the decision-code audit is complete and all decisions run in Mind, but Core still builds some decision inputs from world truth: requester authentication and reply choice read physical actors (`actors[PhysicalSender]`, `actors.Values.Any(...)`) for detention requests and case filings; detention intake and revocation-at-intake read the authority's authorization register; the supervisor's detention threshold comes from private `PersonnelConfig`; audit terminal choice reads the authority grant table; a conversation initiator evaluates (and wakes) the partner's private goals; cafeteria same-tile waits and on-arrival switching read live queues; credential discovery, recovery desks and recovery capability read world registries, and inbox completion reads global message stage; a work-order read scans the global store for the citizen's own completion posts; failed-custody rechecks read co-located teammates' needs |
 | T09 | WorkTests; StackTests; arbitration tests | partial: physical claims/accounting covered; full acceptance inventory audit open |
 | T10 | RepairPlanningTests | partial: existing component/fabrication alternatives pass; nested production domains open |
 | T11 | Historical construction tests and reports | deferred: expansion removed from first-release scope |
@@ -382,16 +383,16 @@ family-level audit limits even where these specific tests pass.
 
 | Requirement | Implementation (under src unless specified) | Existing evidence | Current status |
 | --- | --- | --- | --- |
-| R-ARC-01 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-02 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-03 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-04 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-05 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-06 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-07 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-08 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-09 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
-| R-ARC-10 | src/Station.Mind; src/Station.Core | StructuralTests | partial: assembly isolation passes; goal and dispatch selection still partly in Core |
+| R-ARC-01 | src/Station.Mind; src/Station.Core | StructuralTests | pass: project layout matches; all decision code is in Mind (2026-10-30) |
+| R-ARC-02 | src/Station.Mind; src/Station.Core | StructuralTests | pass: no Unity, network or editor references (assembly-reference and banned-API checks) |
+| R-ARC-03 | src/Station.Mind; src/Station.Core | StructuralTests | pass: Mind references only Contracts and the base library; Mind.csproj cannot reference Core |
+| R-ARC-04 | src/Station.Mind; src/Station.Core | StructuralTests | partial: views and Contracts inputs are passed to Mind, but some inputs are still built from world truth (see T08); `IInstitutionView` carries only the tick |
+| R-ARC-05 | src/Station.Mind; src/Station.Core | StructuralTests | pass: Mind returns choices and intents; Core validates and applies them (2026-10-30) |
+| R-ARC-06 | src/Station.Mind; src/Station.Core | StructuralTests | partial: shared assemblies target netstandard2.1; Runner and Tests target .NET 8 because the pinned SDK is 9.0.311, although .NET 10 LTS now exists |
+| R-ARC-07 | src/Station.Mind; src/Station.Core | StructuralTests | pass: LangVersion 9 for shared assemblies; no `record` or `init` |
+| R-ARC-08 | src/Station.Mind; src/Station.Core | StructuralTests | partial: compact typed state and indices are in place; no complete data-orientation audit |
+| R-ARC-09 | src/Station.Mind; src/Station.Core | StructuralTests | pass: each world runs single-threaded; parallelism only across worlds in Runner batches |
+| R-ARC-10 | src/Station.Mind; src/Station.Core | StructuralTests | pass: wall-clock APIs are banned by the analyzer; file and console access is rejected by the structural source check |
 | R-DET-01 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |
 | R-DET-02 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |
 | R-DET-03 | Pcg32; BannedSymbols; Snapshots | ReproducibilityTests; StructuralTests | pass: implemented deterministic mechanisms and regression suite |
