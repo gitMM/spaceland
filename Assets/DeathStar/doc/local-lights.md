@@ -26,6 +26,14 @@ do not create duplicate lights. Gallery and interior meshes use the same source.
 Replacing or destroying geometry updates sources through their component lifetime;
 call `StationLocalLights.Invalidate(mesh)` after an in-place mesh edit.
 
+Each source also caches its world-space lamps by mesh, transform, material slot,
+emission and mounting plane. A gather reads each shared material once and checks
+camera scene, layer and distance immediately. The kit reuses the nearby lamp
+indices collected during its per-camera draw, preserving original placement
+order. Per-lamp filtering compacts the list without repeated shifting.
+`tools/tile-lab.sh lightingcache` compares complete cached/reference lamp data
+under mutations and reports alternating full-stage gather timings.
+
 Tile and interior builders author each lens's emitting direction with
 `Finish.Mounted(direction)`. Cylindrical beacons default to emitting away from
 their base. Sparse CPU metadata follows vertices through mesh assembly, LOD

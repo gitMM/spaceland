@@ -39,15 +39,17 @@ namespace DeathStar
             lights.Clear();StationLocalLights.Gather(camera.camera,lights);
             GeometryUtility.CalculateFrustumPlanes(camera.camera,planes);
             var eye=camera.camera.transform.position;float reach=Mathf.Max(1,settings.localLightDistance);
-            for(int i=lights.Count-1;i>=0;i--) {
+            int kept=0;
+            for(int i=0;i<lights.Count;i++) {
                 var l=lights[i];Vector3 a=l.a,b=l.b,centre=(a+b)*.5f;
                 float radius=l.a.w*settings.localLightRange;
                 var bounds=new Bounds(centre,new Vector3(Mathf.Abs(a.x-b.x),Mathf.Abs(a.y-b.y),Mathf.Abs(a.z-b.z))+Vector3.one*radius*2);
                 float distance=Vector3.Distance(eye,centre);
-                if(distance>reach+radius||!GeometryUtility.TestPlanesAABB(planes,bounds)){lights.RemoveAt(i);continue;}
+                if(distance>reach+radius||!GeometryUtility.TestPlanesAABB(planes,bounds))continue;
                 l.a.w=radius;l.b.w*=settings.localLightStrength*settings.emission*Mathf.Clamp01((reach+radius-distance)/Mathf.Max(1,reach*.2f));
-                lights[i]=l;
+                lights[kept++]=l;
             }
+            if(kept<lights.Count)lights.RemoveRange(kept,lights.Count-kept);
             lights.Sort((x,y)=>(((Vector3)x.a-eye).sqrMagnitude).CompareTo(((Vector3)y.a-eye).sqrMagnitude));
             int count=Mathf.Min(lights.Count,Mathf.Clamp(settings.localLightBudget,16,2048));
             if(count==0)return;

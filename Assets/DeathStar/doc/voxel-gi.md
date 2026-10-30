@@ -78,14 +78,36 @@ retained cache.
 Foundry placement/removal/undo and gallery generation invalidate the volume.
 Camera motion does not. Invalidation requests a signature check; an unchanged
 scene, or a layer-mask change affecting no sources, reuses the volume. A
-half-second scene/material signature check catches
-transform, enable, lighting and material changes. Code modifying vertices or
+scene/material signature scan catches transform, enable and material changes.
+Live Game cameras, in edit and play mode, check shared materials once per scan
+and spread renderer checks over nominal 0.75 ms slices. Idle scans wait a quarter
+second after completion before starting again; changed
+snapshots publish at most once per half-second. Streaming and doors request a
+coalesced refresh. Settings, scene/mask changes and explicit invalidation refresh
+synchronously. The previous volume remains available during a compatible scan;
+a failed replacement retries without consuming its revisions. Disabling GI or
+resuming after a long rendering gap discards unfinished snapshots. A long-gap
+resume completes a fresh scan synchronously, so infrequently rendered cameras
+cannot keep restarting without publishing geometry. Gap detection uses the time
+since the previous call, not the age of the scan. Continuous scans retain their
+progress regardless of age. Notifications arriving during a scan remain pending
+after its snapshot is published. Lab preview scenes still refresh synchronously.
+
+The slice budget is soft: native hierarchy queries, extraction of one changed
+mesh, and GPU build/submission cannot be interrupted. There is no deadline drain. Initial
+builds and streaming can still spike. Code modifying vertices or
 colors in an existing mesh must call `StationVoxelGi.Invalidate(true)`; code
 replacing meshes can use `Invalidate()`. Relighting and edits reuse unchanged
 CPU source arrays, although the GPU volume is rebuilt as a whole.
 With the second bounce disabled, adjusting reach only changes the final gather
 and does not rebuild the radiance cache. Resource allocation and solve failures
-release the temporary resources and leave the screen-space pass available.
+release temporary resources and retain a compatible previous volume. A volume
+from another scene or culling mask is never used while replacement is pending.
+
+`tools/tile-lab.sh lightingcache` checks cache invalidation, scan cancellation,
+failure/retry, moving-source snapshot publication, and lighting-rig reconciliation.
+Profiler markers distinguish `Station voxel source scan` from
+`Station voxel build and submit`.
 
 ## Controls and validation
 

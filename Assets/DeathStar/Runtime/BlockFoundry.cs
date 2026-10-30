@@ -64,6 +64,12 @@ namespace DeathStar
         bool autoPan;
         // Fly: the camera moves itself (WASD, Q/E along its own axes) instead of orbiting the focus, to go inside rooms.
         bool fly;Vector3 eye;float flySpeed=2.5f;
+        StationWalker walker;
+        public bool IsWalking=>walker!=null;
+        Vector3 returnPosition;Quaternion returnRotation;Vector2 returnLensShift;
+        float returnFov,returnNear,returnFar;
+        CursorLockMode returnCursor;bool returnCursorVisible;
+        Transform returnRingCentre;
         bool showHud=true,removeMode,hasHover;
         BlockFace hovered;
         string message="Click a face to attach a block.", failure;
@@ -131,6 +137,7 @@ namespace DeathStar
         }
         void RebuildAll()
         {
+            ExitWalk();
             groups.Clear(); foreach(var cell in Model.Cells)AddGroup(cell);
             var keys=new HashSet<Vector3Int>(chunks.Keys); keys.UnionWith(groups.Keys);
             foreach(var key in keys)RebuildChunk(key);
@@ -140,6 +147,7 @@ namespace DeathStar
         // Corners never move while their cell exists, so only the chunks and tiles around the changed cells differ.
         void Rebuild(HashSet<Vector3Int> changed)
         {
+            ExitWalk();
             groups.Clear();foreach(var cell in Model.Cells)AddGroup(cell);
             var keys=new HashSet<Vector3Int>();foreach(var cell in changed)keys.Add(ChunkKey(cell));
             foreach(var key in keys)RebuildChunk(key);
@@ -293,6 +301,7 @@ namespace DeathStar
         }
         public void FrameBuild(bool snap=false)
         {
+            ExitWalk();
             Bounds bounds=BuildBounds;targetFocus=bounds.center;autoPan=false;
             targetDistance=Mathf.Max(4,bounds.extents.magnitude/Mathf.Sin(viewer.fieldOfView*Mathf.Deg2Rad*0.5f)*1.25f);
             if(snap){focus=targetFocus;distance=targetDistance;UpdateCamera(true);}
@@ -301,6 +310,13 @@ namespace DeathStar
         {
             if(Model==null||failure!=null)return;
             var mouse=Mouse.current;var keys=Keyboard.current;
+            if(IsWalking)
+            {
+                if(keys!=null&&keys.escapeKey.wasPressedThisFrame){ExitWalk();return;}
+                if(mouse!=null&&mouse.leftButton.wasPressedThisFrame)
+                {Cursor.lockState=CursorLockMode.Locked;Cursor.visible=false;}
+                return;
+            }
             bool shift=keys!=null&&(keys.leftShiftKey.isPressed||keys.rightShiftKey.isPressed);
             if(keys!=null)
             {
@@ -343,6 +359,8 @@ namespace DeathStar
                     else targetDistance=Mathf.Clamp(targetDistance*Mathf.Exp(-scroll*0.07f),1,500);
                     if(!mouse.rightButton.isPressed&&!mouse.middleButton.isPressed&&Pick(viewer.ScreenPointToRay(position),out hovered,out _))
                     {
+                        if(keys!=null&&keys.iKey.wasPressedThisFrame)
+                        {EnterWalk(hovered.cell);return;}
                         bool remove=removeMode||shift;
                         hasHover=true;ShowPreview(hovered,remove);
                         if(mouse.leftButton.wasPressedThisFrame&&EditFace(hovered,remove)&&!remove)
@@ -354,6 +372,46 @@ namespace DeathStar
                 }
             }
             UpdateCamera(false);
+        }
+        // Keep the construction camera's orbit/fly state untouched while the walker owns its pose.
+        public bool EnterWalk(Vector3Int cell)
+        {
+            if(IsWalking||Settlement==null||viewer==null)return false;
+            var interiors=Settlement.Interiors;
+            if(!interiors.SpawnInCell(cell,out var feet,out var up,out var forward))
+            {Notice("This tile has no walkable interior. Point at a room or corridor and press I.");return false;}
+            returnPosition=viewer.transform.position;returnRotation=viewer.transform.rotation;
+            returnFov=viewer.fieldOfView;returnLensShift=viewer.lensShift;
+            returnNear=viewer.nearClipPlane;returnFar=viewer.farClipPlane;
+            returnCursor=Cursor.lockState;returnCursorVisible=Cursor.visible;
+            returnRingCentre=interiors.ringCentre;
+            // These closed cell meshes exist only for picking; rooms provide the real collision surfaces.
+            foreach(var chunk in chunks.Values)chunk.collider.enabled=false;
+            var go=new GameObject("Foundry walker");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go,gameObject.scene);
+            walker=go.AddComponent<StationWalker>();walker.eye=viewer;walker.interiors=interiors;
+            walker.Place(feet,up,forward);interiors.ringCentre=walker.transform;
+            interiors.ShowAround(feet,interiors.radius);Physics.SyncTransforms();
+            viewer.fieldOfView=75;viewer.lensShift=Vector2.zero;viewer.nearClipPlane=0.03f;
+            viewer.transform.SetPositionAndRotation(walker.ViewPosition,walker.ViewRotation);
+            hasHover=false;HidePreview();
+            Cursor.lockState=CursorLockMode.Locked;Cursor.visible=false;
+            return true;
+        }
+        public void ExitWalk()
+        {
+            if(!IsWalking)return;
+            // Disable immediately: Destroy is deferred and LateUpdate must not overwrite the restored camera.
+            walker.enabled=false;walker.gameObject.SetActive(false);Release(walker.gameObject);walker=null;
+            foreach(var chunk in chunks.Values)chunk.collider.enabled=true;
+            if(Settlement!=null)Settlement.Interiors.ringCentre=returnRingCentre;
+            if(viewer!=null)
+            {
+                viewer.transform.SetPositionAndRotation(returnPosition,returnRotation);
+                viewer.fieldOfView=returnFov;viewer.lensShift=returnLensShift;
+                viewer.nearClipPlane=returnNear;viewer.farClipPlane=returnFar;
+            }
+            Cursor.lockState=returnCursor;Cursor.visible=returnCursorVisible;
         }
         void UpdateCamera(bool snap)
         {
@@ -409,6 +467,13 @@ namespace DeathStar
         static void Panel(Rect rect,Color color){Color old=GUI.color;GUI.color=color;GUI.DrawTexture(rect,Texture2D.whiteTexture);GUI.color=old;}
         void OnGUI()
         {
+            if(IsWalking)
+            {
+                Styles();var matrix=GUI.matrix;GUI.matrix=Matrix4x4.Scale(Vector3.one*UiScale);
+                Panel(new Rect(18,18,510,78),new Color(0.025f,0.04f,0.055f,0.9f));
+                GUI.Label(new Rect(30,26,486,64),"WALK IN TILE · Esc: return to building\nWASD: walk · Mouse: look · Shift: run · Click: capture mouse\nSpace: ride lift toward your gaze",body);
+                GUI.matrix=matrix;return;
+            }
             if(!showHud)return;Styles();var previous=GUI.matrix;GUI.matrix=Matrix4x4.Scale(Vector3.one*UiScale);
             Panel(new Rect(18,18,286,716),new Color(0.025f,0.04f,0.055f,0.97f));
             Panel(new Rect(18,18,3,716),new Color(0.22f,0.7f,0.76f));
@@ -443,7 +508,7 @@ namespace DeathStar
             if(GUI.Button(new Rect(36,595,78,27),"New build",button))NewBuild();
             if(GUI.Button(new Rect(120,595,78,27),"Save build",button))SaveBuild();
             if(GUI.Button(new Rect(204,595,78,27),"Load build",button))LoadBuild();
-            GUI.Label(new Rect(36,632,246,52),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel · F: fly (WASD, Q/E)",small);
+            GUI.Label(new Rect(36,628,246,62),"Click: build · Shift + click: remove\nRight drag: orbit · Middle drag: pan\nScroll: zoom · Home: frame · C: colours\nTab: hide panel · F: fly (WASD, Q/E)\nPoint at a tile + I: walk inside · Esc: exit",small);
             GUI.Label(new Rect(36,690,246,36),$"{Model.Count:N0} blocks  /  {ExposedFaces:N0} exposed faces\nCtrl Z / Y: undo / redo · Ctrl S: save",kicker);
             float width=Screen.width/UiScale;
             string status=Time.unscaledTime<messageUntil?message:hasHover?previewText??"Click to attach a block · Shift + click to remove":"Choose a face to begin · Right drag to orbit";
@@ -465,6 +530,7 @@ namespace DeathStar
         }
         void OnDisable()
         {
+            ExitWalk();
             if(Settlement!=null){Settlement.Dispose();Settlement=null;TileLook.Restore(savedEnvironment);}
             if(settlementLights!=null)Release(settlementLights);
             if(generatedMaterials!=null){foreach(var m in generatedMaterials)Release(m);generatedMaterials=null;}

@@ -178,6 +178,8 @@ namespace DeathStar.EditorTools
             int panes=0,hidden=0;
             foreach(var cell in mine.Keys)
             {
+                // a wedge's or apex's walls have no window rows cut in them yet
+                if(interiors.SpecialRoom(cell))continue;
                 var r=interiors.Tile(cell);if(r==null||r.Length==0)continue;
                 var near=r[0];var tile=near.GetComponent<MeshFilter>().sharedMesh;var v=tile.vertices;var nv=tile.normals;var g=tile.GetIndices((int)TileSlot.Glass);
                 // each pane is a quad of six indices; their mean is its centre

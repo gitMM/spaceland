@@ -242,6 +242,7 @@ namespace DeathStar
             mesh.vertices=vertices;mesh.normals=normals;mesh.tangents=tangents;mesh.RecalculateBounds();
             mesh.SetUVs(4,new List<Vector4>());mesh.SetUVs(5,new List<Vector4>());
             StationLocalLights.Invalidate(mesh);
+            StationVoxelGi.MeshChanged(mesh);
         }
     }
 }

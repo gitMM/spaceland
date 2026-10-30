@@ -7,6 +7,17 @@ voxel cone tracing (40 m reach, two diffuse bounces). Controls are under
 **Death Star → Lighting settings**. See [voxel GI](doc/voxel-gi.md) for the scale,
 update model, limits and red-habitat checks (`tools/tile-lab.sh voxelgi`).
 
+Scene view skips the custom station lighting feature (GI, AO, contact shadows,
+local lamps and shadow-range passes) to keep editing responsive. Use Game view
+for the complete lighting preview. Its voxel checks are sliced in edit mode too;
+headless lab preview scenes retain synchronous updates for deterministic captures.
+
+`tools/tile-lab.sh lightingcache` validates lighting cache mutations, suspended
+voxel scans and retry/publication behavior, and measures paired local-lamp CPU
+gather costs. The lighting rig applies changed settings immediately and reconciles
+external light/volume changes every half-second instead of rewriting them every
+frame. Run the full headless tile review with `tools/tile-lab.sh report`.
+
 ## Block Foundry — original sphere mapping
 
 Open **Death Star → Open Block Foundry**, then press Play. There is one block type,
@@ -482,7 +493,10 @@ solid family's cell (all but Conduit and Truss) is one open room, and a Corridor
 face towards the core (`TileBuilder.Down`), with light bars on its ceiling. On the Foundry's sphere grid that is the face whose normal points most nearly at the guide's centre; the flat
 review stage's core lies far below it, so its floors are all -y faces. Cells whose centre lies within 4.5 m of the core
 are the zero-g hub (`TileBuilder.Hub`): no floor, light bars across the tile's axis and round 1.8 m hatches to every
-neighbour. The inner wall stands 0.4 m in from an exposed face (the window rows' depth, so their glass sits in it) and
+neighbour whose floor opens onto it or who is another hub room (with a narrower plate than a lift's, so the seed's 2.9 m
+faces still take one), and a sliding door to one whose wall meets it. People float there (`StationWalker`: thrust where
+they look, Space and C up and down; the body is only a capsule round the head, so it goes through any opening whichever way
+it's turned), and stand up on the floor beyond. Foundry visits float in the hub too. The inner wall stands 0.4 m in from an exposed face (the window rows' depth, so their glass sits in it) and
 0.1 m from a face shared with a solid neighbour, so a home is about 4.2-4.8 m across and the 0.2 m wall between two
 rooms hides behind the mullion on the tile boundary. Window rows and corridor portholes are real openings in the same
 places as outside; a tile's axis only shapes its outside, so a home turned across the core gets a skylight, a floor
@@ -508,6 +522,18 @@ and a stair of 0.25 m risers takes it down to the home's floor, steepening to 0.
 lift's opening in the floor leaves it less room; out from the core the tube is a lift shaft. A junction gets a walkway
 across its box.
 
+Wedge and apex cells have rooms of their own (`TileBuilder.SpecialRooms.cs`), which is what joins a station's six sides
+and fills small builds, where these cells are most of what there is. They are too sheared to bend a room into, and their
+lower faces meet in a V at the keel, so each is a convex room built in curved space from the cell's real corners: flat
+walls inside each face, a flat floor across the V (1.3 m clear where a door still fits above it), up square to that floor
+(keel to crest), and a ceiling stopping short of a crest or crown under an open roof. A section (a wedge's end, an apex's
+lower face) fixes where the floor crosses it from its own four corners, so both cells sharing it agree; an apex's floor
+stands a 0.28 m step above its sections, as they leave too small a triangle lower down. Doors stand upright through a
+section to the next wedge or apex, and through a lower face to the room beyond at this floor's height, with a flight up
+to it on that room's side (`DoorFlight`, level treads built in curved space); a hub's room floats and takes none. Their
+walls have no window rows cut yet, and tubes that reach one still end at a bulkhead. Every room with a floor has at least
+35% gravity, however near the core.
+
 On the Foundry's curved grid the rooms are bent like the tiles (`CurvedTileMesh.Bend`): each inner wall keeps its
 depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall,
 measured on the bent surfaces near both ends of their edge (bent faces are twisted), plus a few centimetres of overlap. Floors lie on the sphere's shells, so they are level;
@@ -518,8 +544,10 @@ true-size tube exactly; a face too small for its opening stays closed and the co
 like the corridor outside. A junction's room is a rigid 2.64 m box (`TileMesh.BeginRigid`: a fixed part with no foot
 dropped onto the surface), with a short rigid throat and a trim ring at each branch that cover the joint with the bent
 lining. To keep the outside out of it, the junction's box outside is rigid too, its faces where branches leave stay
-uncarved, and its branch tubes and ribs are placed by true distance from the centre. Wedge and apex cells (ridges and
-crowns) have no interiors yet. In the Block Foundry, **F** toggles a fly camera (WASD, Q/E, Shift, scroll for speed).
+uncarved, and its branch tubes and ribs are placed by true distance from the centre. In the Block Foundry, **F** toggles a fly camera (WASD, Q/E, Shift, scroll for speed).
+Point at a tile and press **I** to walk inside that tile: mouse look, WASD walk, Shift run, and Space to ride a lift
+toward your gaze. Foundry visits use full walking gravity, including in the seed and hub. **Esc** returns to the previous construction view. Building
+controls are suspended while walking; tiles without interiors display a message instead of moving you elsewhere.
 
 `StationInteriors` builds the rooms within 15 m of the camera (nearest first, kept to 19 m), with a lamp each that
 lights only interiors (rendering layer 1) and, in play, a mesh collider; those tiles' windows switch to

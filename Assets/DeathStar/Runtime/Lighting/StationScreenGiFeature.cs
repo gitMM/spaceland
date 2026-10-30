@@ -83,7 +83,9 @@ namespace DeathStar
             var settings=StationLightingSettings.Current;
 
 
-            if(!material || !settings || data.cameraData.isPreviewCamera) return;
+            // Scene view is the editing viewport. Full station lighting is previewed
+            // by the Game camera; don't repeat its gathers, scans and GPU passes here.
+            if(!material || !settings || data.cameraData.isPreviewCamera || data.cameraData.isSceneViewCamera) return;
             settings.ApplyGlobals();
             bool supported=!data.cameraData.camera.stereoEnabled && data.cameraData.cameraType!=CameraType.Reflection &&
                 data.cameraData.renderType==CameraRenderType.Base && data.cameraData.cameraTargetDescriptor.msaaSamples<=1;

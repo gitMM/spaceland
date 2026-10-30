@@ -2,6 +2,7 @@
 # Tile lab: render the settlement tile exemplars headless and write pictures and a report to DeathStarRuns/Tiles/.
 #   tools/tile-lab.sh report
 #   tools/tile-lab.sh locallights # stable local lamps, camera motion, off-screen sources and emission/GI separation
+#   tools/tile-lab.sh lightingcache # source-cache mutations, scan scheduling, rig invalidation and paired CPU timings
 #   tools/tile-lab.sh emissiongi # caged lamps lighting nearby surfaces through screen GI, without bloom or direct light
 #   tools/tile-lab.sh screengi # temporal convergence, denoising, disocclusion and independent AO/GI sampling
 #   tools/tile-lab.sh voxelgi   # red habitat, off-screen 20 m transport, second bounce, occlusion and cache/timing checks

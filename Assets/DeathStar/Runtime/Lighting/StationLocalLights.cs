@@ -13,6 +13,20 @@ namespace DeathStar
         public struct LightData { public Vector4 a,b,color,plane; }
         public static event Action<Camera,List<LightData>> Collect;
         public static int VisibleCount {get;internal set;}
+        internal static int GeometryRevision {get;private set;}
+        internal struct Query {
+            public Vector3 eye;
+            public float distance,range;
+            public int mask;
+            public UnityEngine.SceneManagement.Scene scene;
+            public bool sceneValid;
+        }
+        static Camera queryCamera;
+        static Query query;
+        struct Emission {public bool valid;public Color color;}
+        static readonly Dictionary<Material,Emission> emissions=new();
+        static readonly int EmissionId=Shader.PropertyToID("_Emission");
+        static readonly Unity.Profiling.ProfilerMarker gatherMarker=new("Station local light collection");
         sealed class Cache { public readonly Dictionary<int,Lamp[]> slots=new Dictionary<int,Lamp[]>(); }
         static readonly ConditionalWeakTable<Mesh,Cache> cache=new ConditionalWeakTable<Mesh,Cache>();
         // Sparse vertex metadata, like TileMesh.KitSlots. CurvedTileMesh transforms these
@@ -27,21 +41,45 @@ namespace DeathStar
             #endif
             return true;
         }
-        public static void Gather(Camera camera,List<LightData> lights) => Collect?.Invoke(camera,lights);
+        internal static Query CameraQuery(Camera camera)
+        {
+            if(queryCamera==camera)return query;
+            var settings=StationLightingSettings.Current;var scene=camera.scene;
+            return new Query{eye=camera.transform.position,distance=settings.localLightDistance,range=settings.localLightRange,
+                mask=camera.cullingMask,scene=scene,sceneValid=scene.IsValid()};
+        }
+        internal static bool ReadEmission(Material material,out Color color)
+        {
+            color=default;if(!material)return false;
+            if(!emissions.TryGetValue(material,out var value)) {
+                value.valid=material.HasProperty(EmissionId);if(value.valid)value.color=material.GetVector(EmissionId);
+                emissions.Add(material,value);
+            }
+            color=value.color;return value.valid;
+        }
+        public static void Gather(Camera camera,List<LightData> lights)
+        {
+            using var sample=gatherMarker.Auto();
+            // A query belongs to this camera, not to a frame: the kit has just recomputed its growth for this view.
+            queryCamera=null;query=CameraQuery(camera);queryCamera=camera;emissions.Clear();
+            try {Collect?.Invoke(camera,lights);}
+            finally {queryCamera=null;emissions.Clear();}
+        }
         // Call after modifying an existing mesh in place; replacing a mesh needs no invalidation.
-        public static void Invalidate(Mesh mesh){if(mesh)cache.Remove(mesh);}
+        public static void Invalidate(Mesh mesh){if(mesh&&cache.Remove(mesh))GeometryRevision++;}
 
         public static void Append(List<LightData> output,Mesh mesh,int slot,Matrix4x4 matrix,Color emission,
             float strength=1,Vector4 plane=default)
         {
             if(!mesh||strength<=0)return;
             float scale=Mathf.Max(matrix.GetColumn(0).magnitude,Mathf.Max(matrix.GetColumn(1).magnitude,matrix.GetColumn(2).magnitude));
+            var normalMatrix=matrix.inverse.transpose;
             foreach(var lamp in Extract(mesh,slot)) {
                 Vector3 a=matrix.MultiplyPoint3x4(lamp.a),b=matrix.MultiplyPoint3x4(lamp.b);
                 Color c=lamp.color*emission;
                 var mount=plane;
                 if(((Vector3)mount).sqrMagnitude<.5f&&((Vector3)lamp.plane).sqrMagnitude>.5f) {
-                    mount=matrix.inverse.transpose*lamp.plane;
+                    mount=normalMatrix*lamp.plane;
                     mount/=Mathf.Max(1e-8f,((Vector3)mount).magnitude);
                 }
                 output.Add(new LightData{a=new Vector4(a.x,a.y,a.z,lamp.radius*scale),

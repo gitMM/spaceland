@@ -158,6 +158,21 @@ namespace DeathStar
             UnityEditor.EditorApplication.QueuePlayerLoopUpdate();UnityEditor.SceneView.RepaintAll();
             #endif
         }
+        // Only fields the lighting rig publishes. Computed from values, rather than an
+        // OnValidate counter, so scripted edits and JsonUtility updates are visible too.
+        internal int RigSignature()
+        {
+            var h=new System.HashCode();
+            h.Add(sunFrom);h.Add(sunColor);h.Add(sunIntensity);h.Add(planetFrom);h.Add(planetColor);h.Add(planetIntensity);
+            h.Add(ambientColor);h.Add(reflections);h.Add(ambientLight);h.Add(emission);
+            h.Add(receivedShadowStrength);h.Add(shadowSoftness);h.Add(screenSpaceAmbientOcclusion);h.Add(ssaoStrength);h.Add(ssaoDirectStrength);
+            h.Add(localLampScreenGi);h.Add(closeUpSurface);h.Add(edgeWear);h.Add(edgeHighlight);h.Add(creaseDarkness);
+            h.Add(edgeWearWidth);h.Add(bevelWidth);h.Add(bevelRoundness);h.Add(reliefTrace);h.Add(reliefLowerNear);h.Add(reliefLowerFar);h.Add(reliefDebug);
+            h.Add(greebleTrace);h.Add(greebleLowerNear);h.Add(greebleLowerFar);h.Add(fineDetail);h.Add(detailDensity);h.Add(paintedMetal);
+            h.Add(defaultTileTint);h.Add(habitatTint);h.Add(habitatTintEnabled);
+            h.Add(exposure);h.Add(contrast);h.Add(saturation);h.Add(bloom);h.Add(bloomThreshold);h.Add(bloomScatter);
+            return h.ToHashCode();
+        }
         public void ApplyGlobals() {
             Shader.SetGlobalFloat("_StationLightingControlled",1);
             Shader.SetGlobalVector("_StationDirectLighting",new Vector4(1,1,receivedShadowStrength,shadowSoftness));

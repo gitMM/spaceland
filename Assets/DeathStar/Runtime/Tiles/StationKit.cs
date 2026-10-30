@@ -23,6 +23,7 @@ namespace DeathStar
         readonly List<KitRoutes.Placement> placements=new List<KitRoutes.Placement>();
         List<KitRoutes.Route> routes=new List<KitRoutes.Route>();
         float[] grows=new float[0];
+        readonly List<int> activeLamps=new();
         readonly Dictionary<Vector3Int,List<int>> grid=new Dictionary<Vector3Int,List<int>>();
         const float GridCell=10;
         bool dirty=true;float density=-1;
@@ -124,7 +125,9 @@ namespace DeathStar
             if(!StationLightingSettings.Current.kitProps||materials==null||!StationLocalLights.VisibleTo(camera,gameObject))return;
             var lampMaterial=materials[(int)TileSlot.Light];if(!lampMaterial)return;
             Color emission=lampMaterial.GetVector("_Emission");
-            for(int i=0;i<placements.Count;i++) {
+            // Draw has already visited the nearby grid cells for this camera. Keep the
+            // original placement ordering, including ties at the global lamp budget.
+            foreach(int i in activeLamps) {
                 float grow=grows[i];if(grow<=0)continue;
                 var p=placements[i];if(p.prop!=5&&p.prop!=9)continue;
                 var rotation=Quaternion.LookRotation(Vector3.Cross(p.along,p.normal),p.normal);
@@ -144,6 +147,7 @@ namespace DeathStar
         public void Draw(Camera camera,Vector3 centre)
         {
             var s=StationLightingSettings.Current;
+            activeLamps.Clear();
             if(!s.kitProps){Shader.SetGlobalVector(CentreId,Vector4.zero);Drawn=0;return;}
             if(dirty||density!=s.kitDensity){density=s.kitDensity;Rescan();}
             var clock=System.Diagnostics.Stopwatch.StartNew();
@@ -164,6 +168,7 @@ namespace DeathStar
                     float grow=Mathf.Clamp01((outer-Vector3.Distance(pl.position,centre))/(outer-inner));
                     grows[i]=grow;
                     if(grow<=0)continue;
+                    if(pl.prop==5||pl.prop==9)activeLamps.Add(i);
                     float d=Vector3.Distance(pl.position,eye);
                     int level=d<level1?0:d<level2?1:2;
                     var rotation=Quaternion.LookRotation(Vector3.Cross(pl.along,pl.normal),pl.normal);
@@ -171,6 +176,7 @@ namespace DeathStar
                     drawn++;
                 }
             }
+            activeLamps.Sort();
             for(int p=0;p<KitProps.Count;p++)for(int l=0;l<KitProps.Levels;l++)
             {
                 var list=buckets[p,l];if(list.Count==0)continue;

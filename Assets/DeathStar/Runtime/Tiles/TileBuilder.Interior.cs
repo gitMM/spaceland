@@ -23,8 +23,8 @@ namespace DeathStar
     // the sheared faces' inner surfaces cross, hatches, sockets and stairs are true size round their face's centre (fixed
     // parts) and tubes are bent like the corridor's own. Floors lie on the sphere's shells, so they are level, but walls
     // follow the lattice and lean by up to about 26 degrees near the cube's diagonals; doors lean with them, tall enough
-    // for an upright person. Wedge and apex cells (the ridges and crowns) have no interiors yet: they are too sheared for
-    // a true-size room, so tubes that reach one end at a bulkhead.
+    // for an upright person. Wedge and apex cells (the ridges and crowns) are too sheared to bend a room into: they build
+    // their own (TileBuilder.SpecialRooms.cs), with doors to the rooms round them, and tubes that reach one end at a bulkhead.
     public sealed partial class TileBuilder
     {
         public const float Shell=0.4f,Partition=0.1f,TubeInner=1.2f,HatchRadius=0.9f;
@@ -48,7 +48,7 @@ namespace DeathStar
         // through each face keeps a frame round it; its rigid throats reach Throat from the centre.
         const float JunctionBox=1.32f,Throat=1.38f;
         // Width of the plate round a hatch or socket on the room side.
-        const float Rim=0.22f;
+        const float Rim=0.22f,HatchRim=0.1f;
         const float PortholeHalf=0.24f;
         // Edges of Octagon() facing +pu and -pu: a corridor tube's sides, where its portholes sit.
         const int PortholeEdges=1<<0|1<<4;
@@ -60,7 +60,7 @@ namespace DeathStar
 
         // Every solid family has rooms; a conduit's pipes and a truss's open frame have none.
         public static bool HasInterior(TileFamily f)=>f!=TileFamily.Conduit&&f!=TileFamily.Truss;
-        public bool Interior(Vector3Int c)=>s.TryGet(c,out var p)&&HasInterior(p.family)&&!(curved!=null&&s.special.ContainsKey(c))&&(p.family==TileFamily.Corridor||Roomy(c));
+        public bool Interior(Vector3Int c)=>s.TryGet(c,out var p)&&HasInterior(p.family)&&(curved!=null&&s.special.ContainsKey(c)?SpecialRoom(c):p.family==TileFamily.Corridor||Roomy(c));
 
         // The cell's interior, centred on the cell like its tile (bend it like the tile on curved stages); empty for
         // families without one.
@@ -69,7 +69,7 @@ namespace DeathStar
             var m=new TileMesh{stationOffset=TileStructure.Center(cell),cellHalf=Half,retainWarpData=curved!=null};
             if(!Interior(cell))return m;
             var p=s.cells[cell];m.seed=Rand(Hash(cell),1);
-            if(p.family==TileFamily.Corridor)CorridorInterior(m,cell,p);else Room(m,cell,p);
+            if(SpecialRoom(cell))SpecialInterior(m,cell);else if(p.family==TileFamily.Corridor)CorridorInterior(m,cell,p);else Room(m,cell,p);
             return m;
         }
 
@@ -100,9 +100,17 @@ namespace DeathStar
             var pa=s.cells[a];var pb=s.cells[b];var d=b-a;
             bool ca=pa.family==TileFamily.Corridor,cb=pb.family==TileFamily.Corridor,tube=ca||cb;
             if(ca&&!s.CorridorLinks(a,pa).Contains(d)||cb&&!s.CorridorLinks(b,pb).Contains(-d))return Way.None;
+            if(SpecialRoom(a)||SpecialRoom(b))return !tube&&DoorBetween(a,b).open?Way.Door:Way.None;
             float r=tube?TubeInner:HatchRadius;
             bool round=ca&&cb||(ca||Fits(a,d,r))&&(cb||Fits(b,-d,r));
-            if(Hub(a)||Hub(b))return !round?Way.None:tube?Way.Tube:Way.Hatch;
+            // a hub's hatch takes a narrower plate, so the cells round the core, the smallest there are, still open
+            if(Hub(a)||Hub(b))
+            {
+                if(tube)return round?Way.Tube:Way.None;
+                // a room whose wall, not whose floor, meets the hub is left on foot, through a door at its floor
+                if(Hub(a)!=Hub(b)&&AxisOf(Down(Hub(a)?b:a))!=AxisOf(d)&&DoorFits(a,d)&&DoorFits(b,-d))return Way.Door;
+                return HatchFits(a,d)&&HatchFits(b,-d)?Way.Hatch:Way.None;
+            }
             var down=Down(a);if(Down(b)!=down)return Way.None;
             // a hall's lift rises from the cell that stands for it, so stacked halls of one plan share one column
             if(d==down||d==-down)return round&&Hall(a)==a&&Hall(b)==b?Way.Lift:Way.None;
@@ -115,6 +123,7 @@ namespace DeathStar
         // Whether people pass between neighbouring cells a and b at all.
         public bool Opens(Vector3Int a,Vector3Int b)=>WayBetween(a,b)!=Way.None;
         bool Fits(Vector3Int c,Vector3Int n,float r)=>FaceRoom(c,n)*0.5f-Shell>=r+Rim;
+        bool HatchFits(Vector3Int c,Vector3Int n)=>FaceRoom(c,n)*0.5f-Shell>=HatchRadius+HatchRim;
         bool DoorFits(Vector3Int c,Vector3Int n)=>FaceRoom(c,n)-2*Shell>=Mathf.Max(DoorWidth+2*Rim,DoorHeight+Rim);
 
         // The sliding door in face n of cell (Way.Door), on the face's plane round its centre: the lattice directions
@@ -123,6 +132,13 @@ namespace DeathStar
         // one opening.
         public void DoorFrame(Vector3Int cell,Vector3Int n,out Vector3Int across,out Vector3Int up,out float sill,out float head,out float half)
         {
+            if(SpecialRoom(cell)||SpecialRoom(cell+n))
+            {
+                var door=DoorBetween(cell,cell+n);
+                across=door.across;up=door.up;sill=door.sill;head=door.head;half=door.half;return;
+            }
+            // a door into the hub goes by the floor of the room on the other side
+            if(Hub(cell)){cell+=n;n=-n;}
             var down=Down(cell);up=-down;across=TileStructure.Cross(n,up);
             var k=FaceScale(cell,n,across,up);
             sill=Mathf.Max(-Reach(cell,n,down),-Reach(cell+n,-n,down));
@@ -136,7 +152,7 @@ namespace DeathStar
         const float HallFold=25,DoorFold=35;
         bool Joins(Vector3Int a,Vector3Int b)
         {
-            if(!Interior(a)||!Interior(b))return false;
+            if(!Interior(a)||!Interior(b)||SpecialRoom(a)||SpecialRoom(b))return false;
             var fa=s.cells[a].family;if(fa!=s.cells[b].family||fa==TileFamily.Corridor)return false;
             var down=Down(a);var d=b-a;
             if(down==Vector3Int.zero||Down(b)!=down||d==down||d==-down)return false;
@@ -178,6 +194,7 @@ namespace DeathStar
             if(cellWells.TryGetValue(cell,out var list))return list;
             // empty while the forms run: a socket asks whether its tube opens into this cell's room
             cellWells[cell]=list=new List<(Vector3Int,(Rect,float,float))>();
+            if(SpecialRoom(cell))return list;
             var found=new List<(Vector3Int,(Rect,float,float))>();var p=s.cells[cell];var primary=s.Primary(cell,p);
             foreach(var n in TileStructure.Directions)
             {
@@ -268,11 +285,12 @@ namespace DeathStar
                 Vector3 lx=TileStructure.Cross(y,n),ly=y;
                 Vector2 L(Vector3 v)=>new Vector2(Vector3.Dot(v,lx),Vector3.Dot(v,ly));
                 var holes=new List<Rect>();float opening=0;var plate=Vector2.zero;Rect door=default;
+                Vector3Int doorAcross=default,doorUp=default;
                 List<(Rect r,float from,float to)> wells=null;
                 if(way==Way.Door)
                 {
-                    DoorFrame(cell,n,out var across,out var up,out float sill,out float head,out float half);
-                    Vector2 a=L((Vector3)across*half+(Vector3)up*sill),b=L(-(Vector3)across*half+(Vector3)up*head);
+                    DoorFrame(cell,n,out doorAcross,out doorUp,out float sill,out float head,out float half);
+                    Vector2 a=L((Vector3)doorAcross*half+(Vector3)doorUp*sill),b=L(-(Vector3)doorAcross*half+(Vector3)doorUp*head);
                     door=Rect.MinMaxRect(Mathf.Min(a.x,b.x),Mathf.Min(a.y,b.y),Mathf.Max(a.x,b.x),Mathf.Max(a.y,b.y));holes.Add(door);
                 }
                 else if(way!=Way.None)
@@ -317,7 +335,7 @@ namespace DeathStar
                 }
                 // flush in a floor, so people walk across it
                 if(opening>0)Opening(m,c+(Vector3)n*Half,opening,plate,t,opening==HatchRadius?InnerTrim:InnerWall,n==down?0.004f:0.03f);
-                if(way==Way.Door)Doorway(m,door,L(-(Vector3)down),t);
+                if(way==Way.Door)Doorway(m,door,L((Vector3)doorUp),t);
                 if(way==Way.Tube&&!hub)
                 {
                     // clear of the floor's middle, and of a lift's opening there
@@ -336,6 +354,7 @@ namespace DeathStar
             }
             m.surfaceFrame=Vector4.zero;
             if(!hub)Columns(m,cell,down);
+            if(!hub)foreach(var n in TileStructure.Directions)if(WayBetween(cell,cell+n)==Way.Door&&DoorRise(cell,n)>0.05f)DoorFlight(m,cell,n);
         }
 
         // A recess the face's forms cut deeper than the wall (a hangar bay, a pit) stands into the room as a closed

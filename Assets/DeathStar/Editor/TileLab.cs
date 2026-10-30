@@ -79,6 +79,7 @@ namespace DeathStar.EditorTools
             if(mode=="emissiongi")return EmissionGiCheck(rig);
             if(mode=="locallights")return LocalLightCheck(rig);
             if(mode=="screengi")return ScreenGiCheck(rig);
+            if(mode=="lightingcache")return LightingCacheCheck(rig);
             if(mode=="voxelbench")return VoxelPerformance(rig);
             int only=Array.FindIndex(Examples,e=>e.name.ToLowerInvariant()==mode);
             if(only>=0)

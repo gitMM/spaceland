@@ -31,7 +31,7 @@ namespace DeathStar
         public Color lampColor=new Color(1f,0.9f,0.78f);
         public const uint InteriorLayer=1u<<1;
         // Gravity is full from FullGravity metres out from the core and fades to nothing at HubRadius.
-        public const float HubRadius=3f,FullGravity=15f;
+        public const float HubRadius=3f,FullGravity=15f,RoomGravity=0.35f;
         // A door opens when someone comes within DoorReach metres of its middle, taking DoorTime seconds.
         public const float DoorReach=2.4f,DoorTime=0.35f;
 
@@ -58,7 +58,12 @@ namespace DeathStar
         // The cell that stands for the hall c belongs to (TileBuilder.Hall; itself if it stands alone).
         public Vector3Int Hall(Vector3Int c)=>builder.Hall(c);
         public bool Hub(Vector3Int c)=>builder.Hub(c);
-        public Vector3 Floor(Vector3Int c){var d=builder.Down(c);return FaceCentre(c,d)-FaceNormal(c,d)*builder.Inset(c,d);}
+        public bool SpecialRoom(Vector3Int c)=>builder.SpecialRoom(c);
+        public Vector3 Floor(Vector3Int c)
+        {
+            if(builder.SpecialRoom(c))return builder.SpecialPoint(c)-builder.SpecialUp(c);
+            var d=builder.Down(c);return FaceCentre(c,d)-FaceNormal(c,d)*builder.Inset(c,d);
+        }
         // The point of cell c's floor under p: its real surface (bent on the curved grid, as the room's mesh is), even
         // where an opening is cut in it, found where p lies across the floor; for a corridor, its walkway's plane.
         public Vector3 FloorUnder(Vector3Int c,Vector3 p)
@@ -86,7 +91,8 @@ namespace DeathStar
         // ---------------------------------------------------------------- gravity
 
         // Up at a point: the floors' own up (their faces towards the core, so out from it), blended between the rooms
-        // round p by nearness (a 1.5 m Gaussian of the distance to each room's middle), so it is level on every floor
+        // round p by nearness (a 1.5 m Gaussian of the distance to each room's middle; a tighter one for a wedge or apex,
+        // whose floor turns further and whose middle lies closer to its neighbours), so it is level on every floor
         // and turns smoothly from room to room across a door; where no floor is near, out from the core square to its
         // shells (CurvedTileMesh.Out; zero right at the core). Near the core, and on a guide of unequal extents, the bent
         // cells' floors stand well off the shells, so their own normals rather than the shells' keep them level. The
@@ -95,17 +101,20 @@ namespace DeathStar
         {
             if(warp==null)return Vector3.up;
             var sum=Vector3.zero;
-            foreach(var (centre,up) in floors){float d2=(centre-p).sqrMagnitude;if(d2<36)sum+=up*Mathf.Exp(-d2/(1.5f*1.5f));}
+            foreach(var (centre,up,reach) in floors){float d2=(centre-p).sqrMagnitude;if(d2<36)sum+=up*Mathf.Exp(-d2/(reach*reach));}
             return sum.sqrMagnitude>1e-8f?sum.normalized:warp.Out(p);
         }
-        readonly List<(Vector3 centre,Vector3 up)> floors=new List<(Vector3,Vector3)>();
+        readonly List<(Vector3 centre,Vector3 up,float reach)> floors=new List<(Vector3,Vector3,float)>();
         // Gravity at a point, as a share of full: none in the hub's rooms, fading in from HubRadius to full at
-        // FullGravity out from the core. Full everywhere on the flat review stage.
+        // FullGravity out from the core, but enough to walk by in any room with a floor, however near the core. Full
+        // everywhere on the flat review stage.
         public float Gravity(Vector3 p)
         {
             if(warp==null)return 1;
-            if(CellAt(p,out var c)&&builder.Hub(c))return 0;
-            return Mathf.SmoothStep(0,1,Mathf.InverseLerp(HubRadius,FullGravity,(p-warp.Core).magnitude));
+            bool room=CellAt(p,out var c);
+            if(room&&builder.Hub(c))return 0;
+            float g=Mathf.SmoothStep(0,1,Mathf.InverseLerp(HubRadius,FullGravity,(p-warp.Core).magnitude));
+            return room?Mathf.Max(g,RoomGravity):g;
         }
 
         // ---------------------------------------------------------------- lifts
@@ -162,7 +171,7 @@ namespace DeathStar
             lifts.Clear();
             foreach(var c in centres.Keys)
             {
-                var d=builder.Down(c);if(d==Vector3Int.zero)continue;
+                var d=builder.Down(c);if(d==Vector3Int.zero||builder.SpecialRoom(c))continue;
                 var below=builder.WayBetween(c,c+d);
                 bool hub=below!=TileBuilder.Way.None&&builder.Hub(c+d);
                 if(below==TileBuilder.Way.Lift||!hub&&builder.WayBetween(c,c-d)!=TileBuilder.Way.Lift)continue;   // not a lift's foot
@@ -203,6 +212,12 @@ namespace DeathStar
         // lengths its width and height) and its normal.
         public void DoorAt(Vector3Int cell,Vector3Int d,out Vector3 centre,out Vector3 across,out Vector3 up,out Vector3 normal)
         {
+            if(builder.SpecialDoorCorners(cell,d,out var q))
+            {
+                across=(q[1]+q[2]-q[0]-q[3])*0.5f;up=(q[2]+q[3]-q[0]-q[1])*0.5f;centre=(q[0]+q[1]+q[2]+q[3])*0.25f;
+                normal=Vector3.Cross(up,across).normalized;if(Vector3.Dot(normal,FaceNormal(cell,d))<0)normal=-normal;
+                return;
+            }
             builder.DoorFrame(cell,d,out var a,out var u,out float sill,out float head,out float half);
             var fc=TileStructure.Center(cell)+(Vector3)d*TileBuilder.Half;float mid=(sill+head)*0.5f;
             Vector3 W(float x,float y)=>Station(fc+(Vector3)a*x+(Vector3)u*y);
@@ -256,7 +271,7 @@ namespace DeathStar
                 d.open=Mathf.MoveTowards(d.open,target,dt/DoorTime);float e=d.open*d.open*(3-2*d.open);moved=true;
                 for(int i=0;i<2;i++)if(d.leaves[i]!=null)d.leaves[i].position=Holder.TransformPoint(d.shut[i]+d.slide[i]*(d.travel*e));
             }
-            if(moved)Physics.SyncTransforms();
+            if(moved){Physics.SyncTransforms();StationVoxelGi.NotifyChanged();}
         }
         // The opening from cell into cell+d on their face, as a rectangle: its middle, the directions across and up it
         // and its half-sizes along them (a round way's square). False where it doesn't open.
@@ -284,7 +299,7 @@ namespace DeathStar
         // A cell's centre and the centre and outward normal of its face n, where they are (bent on the curved grid).
         public Vector3 Centre(Vector3Int c)=>warp!=null?warp.Map(TileStructure.Center(c)):TileStructure.Center(c);
         // A point in a cell's open room (TileBuilder.RoomPoint: its centre, unless a hangar bay or pit stands into it).
-        public Vector3 RoomPoint(Vector3Int c)=>Station(builder.RoomPoint(c));
+        public Vector3 RoomPoint(Vector3Int c)=>builder.SpecialRoom(c)?builder.SpecialPoint(c):Station(builder.RoomPoint(c));
         public Vector3 FaceCentre(Vector3Int c,Vector3Int n)=>warp!=null?warp.Map(TileStructure.Center(c)+(Vector3)n*TileBuilder.Half):TileStructure.Center(c)+(Vector3)n*TileBuilder.Half;
         public Vector3 FaceNormal(Vector3Int c,Vector3Int n)=>builder.FaceNormal(c,n);
         // The interior cell whose centre is nearest p (within 4 m), or false.
@@ -324,13 +339,13 @@ namespace DeathStar
             for(int pass=0;pass<2&&!found;pass++)
             foreach(var pair in centres)
             {
-                var c=pair.Key;var p=structure.cells[c];if(p.family!=TileFamily.Habitat||builder.Hub(c))continue;
+                var c=pair.Key;var p=structure.cells[c];if(p.family!=TileFamily.Habitat||builder.Hub(c)||builder.SpecialRoom(c))continue;
                 var down=builder.Down(c);
                 Vector3Int w=default,h=default;bool hasW=false,hasH=false;
                 foreach(var d in TileStructure.Directions)
                 {
                     if(!hasW&&d!=down&&d!=-down&&!structure.TryGet(c+d,out _)){w=d;hasW=true;}
-                    if(!hasH&&builder.WayBetween(c,c+d)==TileBuilder.Way.Door&&(pass>0||structure.cells[c+d].family==TileFamily.Habitat)){h=d;hasH=true;}
+                    if(!hasH&&builder.WayBetween(c,c+d)==TileBuilder.Way.Door&&!builder.SpecialRoom(c+d)&&(pass>0||structure.cells[c+d].family==TileFamily.Habitat)){h=d;hasH=true;}
                 }
                 float dist=(pair.Value-near).sqrMagnitude;
                 if(!hasH||windows&&!hasW||dist>=best&&hasW==windows)continue;
@@ -342,6 +357,27 @@ namespace DeathStar
             // upright in the station's up where it stands, which blends in the rooms open to this one
             if(found){var u=Up(feet+up*0.9f);if(u!=Vector3.zero){up=u;forward=Vector3.ProjectOnPlane(forward,up);}}
             return found;
+        }
+        // Enter exactly the pointed-at cell, including isolated rooms: on its floor, or floating in the middle of a hub's
+        // room. Spawn above deliberately searches for a home with a door, which would silently send a Foundry visitor elsewhere.
+        public bool SpawnInCell(Vector3Int cell,out Vector3 feet,out Vector3 up,out Vector3 forward)
+        {
+            feet=up=forward=default;
+            if(!centres.ContainsKey(cell))return false;
+            var point=RoomPoint(cell);var down=Down(cell);bool hub=down==Vector3Int.zero,special=builder.SpecialRoom(cell);
+            up=special?builder.SpecialUp(cell):-FaceNormal(cell,hub?Vector3Int.down:down);
+            forward=Vector3.ProjectOnPlane(Vector3.forward,up).normalized;
+            if(forward.sqrMagnitude<0.5f)forward=Vector3.ProjectOnPlane(Vector3.right,up).normalized;
+            feet=hub?point-up*1.65f:special?Floor(cell):FloorUnder(cell,point);
+            // Recesses and corridor stairs can stand above the nominal floor. Probe this room's actual surface,
+            // leaving lift openings on their virtual floor (the walker also treats those as solid).
+            ShowAround(point,radius);Physics.SyncTransforms();
+            if(hub)return true;
+            var room=Get(cell);var floor=room!=null?room.GetComponent<MeshCollider>():null;
+            if(floor!=null&&floor.Raycast(new Ray(point,-up),out var hit,TileBuilder.Cell*2)
+                &&Vector3.Dot(hit.normal,up)>0.5f)feet=hit.point;
+            feet+=up*0.03f;
+            return true;
         }
         // Last ShowAround's build time (ms) and the interiors it built.
         public double BuildMs {get;private set;}
@@ -360,7 +396,12 @@ namespace DeathStar
             this.clear=clear!=null?clear:materials[(int)TileSlot.Glass];
             inside=(Material[])materials.Clone();inside[(int)TileSlot.Glass]=this.clear;
             floors.Clear();
-            foreach(var c in centres.Keys)if(!builder.Hub(c))floors.Add((centres[c],-FaceNormal(c,builder.Down(c))));
+            foreach(var c in centres.Keys)
+            {
+                if(builder.Hub(c))continue;
+                if(builder.SpecialRoom(c))floors.Add((builder.SpecialPoint(c),builder.SpecialUp(c),0.8f));
+                else floors.Add((centres[c],-FaceNormal(c,builder.Down(c)),1.5f));
+            }
             FindLifts();
         }
 
@@ -424,10 +465,11 @@ namespace DeathStar
                 go.AddComponent<MeshCollider>().sharedMesh=mesh;
                 glass=GlassMesh(cell,go.transform);if(glass!=null)go.AddComponent<MeshCollider>().sharedMesh=glass;
             }
-            if(people)People(cell,go.transform,mesh);
+            if(people&&!builder.SpecialRoom(cell))People(cell,go.transform,mesh);
             HangDoors(cell);
             var family=structure.cells[cell].family;
             if(family!=TileFamily.Command&&family!=TileFamily.Industrial)SetGlass(cell,clear);
+            StationVoxelGi.NotifyChanged();
             built[cell]=(go,mesh,glass);
         }
 
@@ -439,6 +481,7 @@ namespace DeathStar
             if(b.go==null)return;
             SetGlass(cell,materials[(int)TileSlot.Glass]);
             Release(b.go);Release(b.mesh);Release(b.glass);
+            StationVoxelGi.NotifyChanged();
         }
 
         // The panes of a cell's tile (its near level), in to's space, both ways round (they face out, and colliders are

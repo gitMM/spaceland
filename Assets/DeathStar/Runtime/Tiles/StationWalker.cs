@@ -35,6 +35,10 @@ namespace DeathStar
         public Quaternion EyeRotation=>transform.rotation*Quaternion.Euler(pitch,0,0);
 
         const float Skin=0.02f,Snap=0.3f,Lip=0.08f,FloorCos=0.6f,Probe=0.25f;
+        // The ends of the capsule's axis above the feet: the whole body on foot, the head alone when floating, so a body
+        // that can't turn to the way out of a zero-g room still goes through any door or hatch in it.
+        float Low=>State==Mode.Float?eyeHeight-0.2f:Lip+radius;
+        float High=>State==Mode.Float?eyeHeight+0.2f:height-radius;
         const QueryTriggerInteraction Triggers=QueryTriggerInteraction.Ignore;
         Vector3 velocity;float pitch;
         CapsuleCollider body;
@@ -129,7 +133,15 @@ namespace DeathStar
             Ensure();previous=transform.position;blend=1;
             Look(look);
             var mid=transform.position+transform.up*(height*0.5f);
+            // floating, what counts is where the head is (the body is only that, Low and High); on foot it floats again
+            // only once head and middle are both out of gravity, so it doesn't flicker in a doorway
+            bool floating=State==Mode.Float;
+            if(floating)mid=EyePosition;
             float g=interiors!=null?interiors.Gravity(mid):1;
+            if(interiors!=null&&!floating&&g<=0.01f)g=interiors.Gravity(EyePosition);
+            // ... and it lands once the head is well past the way out, where there's floor under it
+            if(interiors!=null&&floating&&g>0.01f&&velocity.sqrMagnitude>0.01f)g=Mathf.Min(g,interiors.Gravity(mid-velocity.normalized*0.8f));
+            if(floating&&g>0.01f){Land();mid=transform.position+transform.up*(height*0.5f);}
             if(g>0.01f)Right(interiors!=null?interiors.Up(mid):Vector3.up,dt);
             if(ride!=null){Ride(dt);return;}
             var lift=interiors!=null?interiors.LiftAt(mid):null;
@@ -204,7 +216,7 @@ namespace DeathStar
             for(int i=0;i<3&&delta.sqrMagnitude>1e-10f;i++)
             {
                 float len=delta.magnitude;var dir=delta/len;var p=transform.position;
-                if(World.CapsuleCast(p+up*(radius+Lip),p+up*(height-radius),radius-Skin,dir,out var hit,len+Skin,mask,Triggers))
+                if(World.CapsuleCast(p+up*Low,p+up*High,radius-Skin,dir,out var hit,len+Skin,mask,Triggers))
                 {
                     float go=Mathf.Max(0,hit.distance-Skin);transform.position+=dir*go;
                     delta=Vector3.ProjectOnPlane(dir*(len-go),hit.normal);if(level)delta=Vector3.ProjectOnPlane(delta,up);
@@ -283,15 +295,33 @@ namespace DeathStar
             Depenetrate();
         }
 
+        // Gravity again after floating: upright where the head is, with the head left where it was and the feet on what's
+        // under it, if that's nearer than they'd reach (the legs may have trailed through a floor).
+        void Land()
+        {
+            var eyeAt=EyePosition;
+            var up=interiors!=null?interiors.Up(eyeAt):transform.up;
+            if(up.sqrMagnitude<0.5f)up=transform.up;
+            var forward=Vector3.ProjectOnPlane(transform.forward,up);
+            if(forward.sqrMagnitude<1e-4f)forward=Vector3.ProjectOnPlane(transform.up,up);
+            transform.rotation=Quaternion.LookRotation(forward.normalized,up);
+            transform.position=eyeAt-up*eyeHeight;
+            if(World.Raycast(eyeAt,-up,out var floor,eyeHeight,mask,Triggers))
+            {
+                var feet=floor.point;offset+=transform.position-feet;transform.position=feet;
+            }
+            State=Mode.Fall;velocity=Vector3.ProjectOnPlane(velocity,up);
+        }
+
         // Out of anything the body overlaps, leaving out its lowest Lip, so it stands on lips rather than being pushed
-        // off them sideways.
+        // off them sideways. Floating, the body is just round the head.
         void Depenetrate()
         {
-            float h=height-Lip;body.height=h;body.center=new Vector3(0,Lip+h*0.5f,0);
+            float h=High-Low+2*radius;body.height=h;body.center=new Vector3(0,(Low+High)*0.5f,0);
             for(int pass=0;pass<3;pass++)
             {
                 var up=transform.up;var p=transform.position;bool moved=false;
-                int n=World.OverlapCapsule(p+up*(Lip+radius),p+up*(height-radius),radius,overlaps,mask,Triggers);
+                int n=World.OverlapCapsule(p+up*Low,p+up*High,radius,overlaps,mask,Triggers);
                 for(int i=0;i<n;i++)
                 {
                     var c=overlaps[i];if(c==body)continue;

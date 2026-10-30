@@ -75,7 +75,7 @@ MonoBehaviour:
   localLightStrength: 0.8
   localLightRange: 1.57
   localLightDistance: 45
-  localLightBudget: 512
+  localLightBudget: 477
   localLampScreenGi: 0
   emission: 1
   reflections: 1
