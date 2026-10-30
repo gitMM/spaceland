@@ -237,14 +237,15 @@ namespace DeathStar
             for(int j=0;j<ys.Count-1;j++)
             {
                 float y0=ys[j],y1=ys[j+1];if(y1-y0<1e-4f)continue;
-                int i=0;
-                while(i<xs.Count-1)
+                for(int i=0;i<xs.Count-1;i++)
                 {
-                    if(xs[i+1]-xs[i]<1e-4f||InHole(holes,(xs[i]+xs[i+1])*0.5f,(y0+y1)*0.5f)){i++;continue;}
-                    int e=i+1;
-                    while(e<xs.Count-1&&(xs[e+1]-xs[e]<1e-4f||!InHole(holes,(xs[e]+xs[e+1])*0.5f,(y0+y1)*0.5f)))e++;
-                    Quad(f,new Vector3(xs[i],y0,0),new Vector3(xs[e],y0,0),new Vector3(xs[e],y1,0),new Vector3(xs[i],y1,0),Vector3.back,Vector3.right);
-                    i=e;
+                    if(xs[i+1]-xs[i]<1e-4f||InHole(holes,(xs[i]+xs[i+1])*0.5f,(y0+y1)*0.5f))continue;
+                    int end=i+1;
+                    if(!retainWarpData)while(end<xs.Count-1&&(xs[end+1]-xs[end]<1e-4f||!InHole(holes,(xs[end]+xs[end+1])*0.5f,(y0+y1)*0.5f)))end++;
+                    // Keep the same vertices on both sides of every row boundary. Merging
+                    // strips creates T-junctions that split apart when the wall is bent.
+                    Quad(f,new Vector3(xs[i],y0,0),new Vector3(xs[end],y0,0),new Vector3(xs[end],y1,0),new Vector3(xs[i],y1,0),Vector3.back,Vector3.right);
+                    i=end-1;
                 }
             }
         }

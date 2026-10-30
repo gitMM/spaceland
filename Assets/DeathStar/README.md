@@ -491,12 +491,13 @@ than its radius.
 Inside, up is always out from the station's core, whatever way a tile is turned (`TileBuilder.Interior.cs`): every
 solid family's cell (all but Conduit and Truss) is one open room, and a Corridor cell its tube; a room's floor is the
 face towards the core (`TileBuilder.Down`), with light bars on its ceiling. On the Foundry's sphere grid that is the face whose normal points most nearly at the guide's centre; the flat
-review stage's core lies far below it, so its floors are all -y faces. Cells whose centre lies within 4.5 m of the core
-are the zero-g hub (`TileBuilder.Hub`): no floor, light bars across the tile's axis and round 1.8 m hatches to every
+review stage's core lies far below it, so its floors are all -y faces. Ordinary rooms have floors and full gravity,
+including at the core. Only explicitly authored cells are zero-g (`BlockConstruction.SetZeroGravity`, saved in v7;
+older saves default to walking gravity). These rooms have no floor, light bars across the tile's axis and round 1.8 m hatches to every
 neighbour whose floor opens onto it or who is another hub room (with a narrower plate than a lift's, so the seed's 2.9 m
 faces still take one), and a sliding door to one whose wall meets it. People float there (`StationWalker`: thrust where
 they look, Space and C up and down; the body is only a capsule round the head, so it goes through any opening whichever way
-it's turned), and stand up on the floor beyond. Foundry visits float in the hub too. The inner wall stands 0.4 m in from an exposed face (the window rows' depth, so their glass sits in it) and
+it's turned), and stand up on the floor beyond once the full body fits. The Settlement example contains no automatic zero-g rooms. The inner wall stands 0.4 m in from an exposed face (the window rows' depth, so their glass sits in it) and
 0.1 m from a face shared with a solid neighbour, so a home is about 4.2-4.8 m across and the 0.2 m wall between two
 rooms hides behind the mullion on the tile boundary. Window rows and corridor portholes are real openings in the same
 places as outside; a tile's axis only shapes its outside, so a home turned across the core gets a skylight, a floor
@@ -531,8 +532,13 @@ lower face) fixes where the floor crosses it from its own four corners, so both 
 stands a 0.28 m step above its sections, as they leave too small a triangle lower down. Doors stand upright through a
 section to the next wedge or apex, and through a lower face to the room beyond at this floor's height, with a flight up
 to it on that room's side (`DoorFlight`, level treads built in curved space); a hub's room floats and takes none. Their
-walls have no window rows cut yet, and tubes that reach one still end at a bulkhead. Every room with a floor has at least
-35% gravity, however near the core.
+walls have no window rows cut yet, and tubes that reach one still end at a bulkhead. Every room with a floor has full
+gravity, however near the core.
+
+Curved walls retain matching subdivisions around openings; interior window cuts follow each pane rather than the
+whole window band, keeping the wall joined to the glass and mullions after bending. Hull panes have an interior
+lining and move to the opposite band when stairs or leaning side walls obstruct them; a bay with neither band clear
+stays armoured. Room spawn points also account for the actual curved volume behind deep machinery recesses.
 
 On the Foundry's curved grid the rooms are bent like the tiles (`CurvedTileMesh.Bend`): each inner wall keeps its
 depth in metres below its curved face, so window glass still sits in it, and runs to where it meets the next wall,
@@ -546,7 +552,7 @@ dropped onto the surface), with a short rigid throat and a trim ring at each bra
 lining. To keep the outside out of it, the junction's box outside is rigid too, its faces where branches leave stay
 uncarved, and its branch tubes and ribs are placed by true distance from the centre. In the Block Foundry, **F** toggles a fly camera (WASD, Q/E, Shift, scroll for speed).
 Point at a tile and press **I** to walk inside that tile: mouse look, WASD walk, Shift run, and Space to ride a lift
-toward your gaze. Foundry visits use full walking gravity, including in the seed and hub. **Esc** returns to the previous construction view. Building
+toward your gaze. FPS entry checks standing clearance and finds a safe supported position in the selected room. **Esc** returns to the previous construction view. Building
 controls are suspended while walking; tiles without interiors display a message instead of moving you elsewhere.
 
 `StationInteriors` builds the rooms within 15 m of the camera (nearest first, kept to 19 m), with a lamp each that
@@ -556,7 +562,7 @@ Each room hangs the sliding doors on its +x, +y and +z faces (two leaves shaped 
 and `TickDoors` slides them apart into the wall when someone comes within 2.4 m. It finds the station's lifts at `Init`
 (`Lift`: an axis from the lowest floor, or 2 m into the hub room below its hatch, up through each opening, and the floors
 to stop at), carries each floor's real surface across the opening cut in it (`FloorUnder`) and gives the walker its
-gravity (`Up`, `Gravity`: full from 15 m out from the core, fading to none at 3 m and in the hub's rooms). To expose
+gravity (`Up`, `Gravity`: full in ordinary rooms, zero only in explicitly authored zero-g rooms). To expose
 them the corridor's two porthole sides and a home's socket are cut open under the glass. In the gallery, **F** toggles a
 fly camera (WASD, Space/Ctrl, Shift, scroll for speed) and **I** jumps into a home. `tools/tile-lab.sh interior` shoots
 the trench-wall homes, the homes stacked on them and the corridor from inside (floor, door, lift from below and above,
@@ -570,11 +576,11 @@ that no corridor's outside shows inside its tube (`DeathStarRuns/Tiles/interior/
 
 **Death Star → Open Interior Walk**, then Play: walk the interiors in first person (`InteriorWalk`, `StationWalker`).
 Click to capture the mouse (Esc releases it); WASD walk, Shift run, mouse look. You stand upright in the station's
-gravity: up is out from the core and turns smoothly as you go (on the curved grid you feel the sphere's curve near the
-core), never snapping. Doors slide open as you come near. A lift's opening in a floor is floor to walk across; on its
+gravity: each room owns its floor direction, blending only within 0.8 m of connecting openings. Rooms across sealed
+walls do not pull the horizon around. Doors slide open as you come near. A lift's opening in a floor is floor to walk across; on its
 lit ring or over its opening, press **Space** and it shoots you in half a second to the next floor up if you look up,
 down if you look down (from a lift's lowest floor, down into the hub if it starts there). Stairs take you from a home
-up through a corridor's socket onto its walkway. In the zero-g hub you float: WASD thrusts where you look, Space and C
+up through a corridor's socket onto its walkway. In an explicitly authored zero-g room you float: WASD thrusts where you look, Space and C
 (or Ctrl) held along your up; Space by a hatch shoots you up its lift.
 **1** loads the flat review station's homes, lifts and corridor, **2** the Foundry example on the curved grid (its homes
 are stacked round its hub), **R** respawns.
@@ -585,7 +591,10 @@ scale (`people`, on by default everywhere interiors are built; no colliders); on
 at the start. The walker sweeps its capsule against them in its scene's physics, steps up anything to 0.32 m, and
 depenetrates (ignoring its lowest 8 cm, so lamp bars and plate lips don't stop it). It moves in fixed steps of 1/120 s
 (`StationWalker.Frame`), so it walks, falls and rides the same at any frame rate; looking turns at once each frame and
-the camera is placed between the last two steps. `MagBootWalker`, the magnetic boots
+the camera is placed between the last two steps. Stair-height and collision corrections ease independently of mouse
+look. Leaving zero-g preserves the eye position while righting the body and waits for standing clearance. Curved
+corridor stairs have level treads; lift stops use the rendered floor collider where available. Dark blue-grey floors,
+warm edge strips and doorway sills distinguish the walking surface from pale walls and ceiling lights. `MagBootWalker`, the magnetic boots
 the interiors were first walked in, stays for the hull outside, where there is no up. `tools/tile-lab.sh walk` scripts
 the walker headless through its per-frame path on both stages (across a floor to the windows, through a sliding door,
 Space up a lift and back down in half a second, across a lift's opening at the floor's level, up a stair onto a

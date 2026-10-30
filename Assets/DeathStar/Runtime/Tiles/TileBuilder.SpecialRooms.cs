@@ -266,14 +266,22 @@ namespace DeathStar
         // How far the flight climbs to the door in face n of plain room cell (0 if it has none).
         float DoorRise(Vector3Int cell,Vector3Int n)=>SpecialRoom(cell+n)?DoorBetween(cell,cell+n).rise:0;
 
-        // The flight up to a door in face n of plain room cell, in curved space: level treads square to its floor, running
-        // straight in from the door, as steep as a tread and riser allow if a lift's opening leaves it less room.
-        void DoorFlight(TileMesh m,Vector3Int cell,Vector3Int n)
+        readonly struct InteriorStep
         {
-            var q=DoorBetween(cell,cell+n).corners;if(q==null)return;
+            public readonly Vector3 centre,size;public readonly Quaternion rotation;
+            public InteriorStep(Vector3 centre,Quaternion rotation,Vector3 size){this.centre=centre;this.rotation=rotation;this.size=size;}
+        }
+        readonly Dictionary<(Vector3Int,Vector3Int),List<InteriorStep>> doorSteps=new Dictionary<(Vector3Int,Vector3Int),List<InteriorStep>>();
+        // Shared by stair construction and window placement: glazing needs clearance behind it.
+        List<InteriorStep> DoorSteps(Vector3Int cell,Vector3Int n)
+        {
+            if(doorSteps.TryGetValue((cell,n),out var stepsFound))return stepsFound;
+            var result=new List<InteriorStep>();doorSteps[(cell,n)]=result;
+            if(!SpecialRoom(cell+n)||Down(cell)==Vector3Int.zero)return result;
+            var q=DoorBetween(cell,cell+n).corners;if(q==null)return result;
             var down=Down(cell);var up=-FaceNormal(cell,down);
             var floorAt=curved.Map(TileStructure.Center(cell)+(Vector3)down*Half)+up*Inset(cell,down);
-            var sill=(q[0]+q[1])*0.5f;float rise=Vector3.Dot(sill-floorAt,up);if(rise<0.05f)return;
+            var sill=(q[0]+q[1])*0.5f;float rise=Vector3.Dot(sill-floorAt,up);if(rise<0.05f)return result;
             var wall=FaceNormal(cell,n);var into=-Vector3.ProjectOnPlane(wall,up).normalized;
             float t=Inset(cell,n)/Mathf.Max(0.5f,Vector3.Dot(into,-wall));
             var below=WayBetween(cell,cell+down);
@@ -282,20 +290,71 @@ namespace DeathStar
             int steps=Mathf.CeilToInt(rise/Riser-1e-3f);float tread=Tread;
             if((steps-1)*tread>clear){steps=Mathf.Max(2,Mathf.CeilToInt(rise/MaxRiser-1e-3f));tread=Mathf.Clamp(clear/(steps-1),MinTread,Tread);}
             float h=rise/steps;var turn=Quaternion.LookRotation(into,up);
+            for(int i=1;i<steps;i++)
+            {
+                float top=rise-i*h,thick=Mathf.Min(h+0.05f,top-0.02f);if(thick<0.02f)continue;
+                var at=sill+into*(t+(i-0.5f)*tread)-up*(i*h+thick*0.5f);
+                result.Add(new InteriorStep(at,turn,new Vector3(2*StairHalf,thick,tread)));
+            }
+            return result;
+        }
+        // Level treads square to the floor, independent of the wall's lean.
+        void DoorFlight(TileMesh m,Vector3Int cell,Vector3Int n)
+        {
             using(m.BeginWorld("door flight"))
             {
                 m.PushMatrix(Matrix4x4.Translate(-TileStructure.Center(cell)));
-                for(int i=1;i<steps;i++)
+                foreach(var step in DoorSteps(cell,n))
                 {
-                    // a tread on its riser, kept off the floor, which bends away from this plane
-                    float top=rise-i*h,thick=Mathf.Min(h+0.05f,top-0.02f);if(thick<0.02f)continue;
-                    var at=sill+into*(t+(i-0.5f)*tread)-up*(i*h+thick*0.5f);
-                    m.PushMatrix(Matrix4x4.TRS(at,turn,Vector3.one));
-                    m.Box(InnerTrim,Vector3.zero,new Vector3(2*StairHalf,thick,tread));
+                    m.PushMatrix(Matrix4x4.TRS(step.centre,step.rotation,Vector3.one));
+                    m.Box(InnerTrim,Vector3.zero,step.size);
                     m.Pop();
                 }
                 m.Pop();
             }
+        }
+
+        readonly Dictionary<(Vector3Int,Vector3Int),Vector3[]> roomWallCorners=new Dictionary<(Vector3Int,Vector3Int),Vector3[]>();
+        Vector3[] RoomWallCorners(Vector3Int cell,Vector3Int n)
+        {
+            if(roomWallCorners.TryGetValue((cell,n),out var corners))return corners;
+            var p=s.cells[cell];var y=n==p.axis||n==-p.axis?p.side:p.axis;var x=TileStructure.Cross(y,-n);
+            var c=TileStructure.Center(cell);var anchor=c+(Vector3)n*(Half-Inset(cell,n));
+            var frame=new Vector4(n.x,n.y,n.z,Vector3.Dot(c,n)+Half);
+            var r=Rect.MinMaxRect(-Reach(cell,n,-x),-Reach(cell,n,-y),Reach(cell,n,x),Reach(cell,n,y));
+            corners=new Vector3[4];
+            for(int i=0;i<4;i++)corners[i]=curved.Position(anchor+(Vector3)x*((i&1)==0?r.xMin:r.xMax)+(Vector3)y*((i&2)==0?r.yMin:r.yMax),frame);
+            return roomWallCorners[(cell,n)]=corners;
+        }
+        static bool WindowRayHits(Vector3 o,Vector3 d,Vector3 a,Vector3 b,Vector3 c)
+        {
+            var e=b-a;var f=c-a;var p=Vector3.Cross(d,f);float det=Vector3.Dot(e,p);if(Mathf.Abs(det)<1e-7f)return false;
+            var t=o-a;float u=Vector3.Dot(t,p)/det;if(u<0||u>1)return false;
+            var q=Vector3.Cross(t,e);float v=Vector3.Dot(d,q)/det;if(v<0||u+v>1)return false;
+            float distance=Vector3.Dot(f,q)/det;return distance>=0&&distance<0.8f;
+        }
+        bool ClearHullWindow(Face f,Rect pane)
+        {
+            if(curved==null)return true;
+            var frame=new Vector4(f.n.x,f.n.y,f.n.z,Vector3.Dot(TileStructure.Center(f.cell),f.n)+Half);
+            foreach(var uv in new[]{pane.center,new Vector2(pane.xMin,pane.yMin),new Vector2(pane.xMax,pane.yMin),new Vector2(pane.xMax,pane.yMax),new Vector2(pane.xMin,pane.yMax)})
+            {
+                var at=f.At(uv.x,uv.y);var p=curved.Position(at-(Vector3)f.n*0.5f,frame);var inward=-CurvedNormal(f.n,at);
+                foreach(var d in TileStructure.Directions)
+                {
+                    foreach(var step in DoorSteps(f.cell,d))
+                    {
+                        var inverse=Quaternion.Inverse(step.rotation);var bounds=new Bounds(Vector3.zero,step.size+Vector3.one*0.04f);
+                        if(bounds.IntersectRay(new Ray(inverse*(p-step.centre),inverse*inward),out float distance)&&distance<0.8f)return false;
+                    }
+                    // A deeply sheared side wall can also cross the view through a floor or
+                    // wall pane. Reserve clearance to the neighbouring room faces as well.
+                    if(d==f.n||d==-f.n||Joins(f.cell,f.cell+d))continue;
+                    var q=RoomWallCorners(f.cell,d);
+                    if(WindowRayHits(p,inward,q[0],q[1],q[3])||WindowRayHits(p,inward,q[0],q[3],q[2]))return false;
+                }
+            }
+            return true;
         }
 
         void SpecialInterior(TileMesh m,Vector3Int cell)
@@ -306,7 +365,19 @@ namespace DeathStar
             using(m.BeginWorld("special room"))
             {
                 m.PushMatrix(Matrix4x4.Translate(-c));
-                Fan(m,InnerWall,SpecialPolygon(shape,-1,near),shape.up);
+                var floor=SpecialPolygon(shape,-1,near);
+                Fan(m,InnerFloor,floor,shape.up);
+                if(floor.Count>=3)
+                {
+                    var middle=Vector3.zero;foreach(var p in floor)middle+=p/floor.Count;
+                    for(int i=0;i<floor.Count;i++)
+                    {
+                        var a=floor[i]+shape.up*0.006f;var b=floor[(i+1)%floor.Count]+shape.up*0.006f;
+                        var inward=Vector3.Cross(shape.up,b-a).normalized;
+                        if(Vector3.Dot(inward,middle-a)<0)inward=-inward;
+                        m.Quad(FloorEdge,a,b,b+inward*0.04f,a+inward*0.04f,shape.up,(b-a).normalized);
+                    }
+                }
                 if(shape.capped){var cap=SpecialPolygon(shape,-2,near);Fan(m,InnerWall,cap,-shape.up);SpecialLamp(m,cap,-shape.up);}
                 for(int f=0;f<6;f++)
                 {

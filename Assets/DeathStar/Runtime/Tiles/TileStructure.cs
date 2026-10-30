@@ -25,6 +25,7 @@ namespace DeathStar
     {
         public bool automatic;
         public readonly Dictionary<Vector3Int,TilePlacement> cells=new Dictionary<Vector3Int,TilePlacement>();
+        public readonly HashSet<Vector3Int> zeroGravity=new HashSet<Vector3Int>();
         // Wedge and apex cells of a curved build (BlockConstruction.Shape): they build their shape's kit, and no 2 x 2
         // landmark includes them.
         public readonly Dictionary<Vector3Int,ShapeInfo> special=new Dictionary<Vector3Int,ShapeInfo>();

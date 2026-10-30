@@ -6,7 +6,7 @@ namespace DeathStar
     // Greybox interiors. Inside, up is always out from the station's core (StationWalker walks upright in its gravity):
     // a cube is one open room whose floor is the face towards the core (Down), whatever way its tile is turned, with light
     // bars on its ceiling. The flat review stage's core lies far below it, so there every floor is a -y face. The cells
-    // round the core itself are the zero-g hub (Hub): no floor, light bars on the two faces across the tile's axis, and
+    // explicitly marked zero-g are the hub (Hub): no floor, light bars on the two faces across the tile's axis, and
     // round hatches to every neighbour, as when people wore magnetic boots. Each inner wall stands Shell (0.4 m) in from
     // an exposed face, the depth of the window rows, so their glass sits in it, and Partition (0.1 m) in from a face shared
     // with a solid neighbour, so the wall between two rooms is 0.2 m thick and stays behind the mullion on every tile
@@ -30,8 +30,6 @@ namespace DeathStar
         public const float Shell=0.4f,Partition=0.1f,TubeInner=1.2f,HatchRadius=0.9f;
         // A sliding door's opening, and the height of a tube's walkway below its spine (metres).
         public const float DoorWidth=1.3f,DoorHeight=2.2f,WalkwayDepth=0.9f;
-        // A cell whose centre lies within this many cells of the core is part of the zero-g hub.
-        const float HubCells=0.9f;
         // Half-width of a tube's walkway: the inner octagon's width at its height.
         const float WalkwayHalf=TubeInner*0.4142f+TubeInner-WalkwayDepth-0.01f;
         // A stair's risers and treads: 0.25 m and 0.3 m, or as steep as 0.3 m and 0.2 m where the room is short of space.
@@ -53,6 +51,8 @@ namespace DeathStar
         // Edges of Octagon() facing +pu and -pu: a corridor tube's sides, where its portholes sit.
         const int PortholeEdges=1<<0|1<<4;
         static readonly Finish InnerWall=new Finish(TileSlot.Paint,TilePattern.Plain,new Color(1.5f,1.5f,1.5f),0f);
+        static readonly Finish InnerFloor=new Finish(TileSlot.Paint,TilePattern.Plain,new Color(0.42f,0.50f,0.57f),0f);
+        static readonly Finish FloorEdge=new Finish(TileSlot.Paint,TilePattern.Plain,new Color(1.7f,1.25f,0.55f),0f);
         static readonly Finish InnerTrim=new Finish(TileSlot.Trim,TilePattern.Plain,Color.white,0f);
         static readonly Finish InnerDark=new Finish(TileSlot.Dark,TilePattern.Plain,Color.white,0f);
         static readonly Finish Lamp=new Finish(TileSlot.Light,TilePattern.Plain,Color.white,0f).Mounted(Vector3.back);
@@ -73,15 +73,18 @@ namespace DeathStar
             return m;
         }
 
-        // Which way is down in a cell: the face towards the core (zero for the hub's cells). On the curved grid, the face
+        // Which way is down in a cell: the face towards the core (zero only for authored zero-g cells). On the curved grid, the face
         // whose normal points most nearly at the core; on the flat review stage, whose core lies far below it, -y.
         readonly Dictionary<Vector3Int,Vector3Int> downs=new Dictionary<Vector3Int,Vector3Int>();
         public Vector3Int Down(Vector3Int cell)
         {
+            if(s.zeroGravity.Contains(cell))return Vector3Int.zero;
             if(curved==null)return Vector3Int.down;
             if(downs.TryGetValue(cell,out var d))return d;
             var p=curved.Map(TileStructure.Center(cell));d=Vector3Int.zero;
-            if((p-curved.Core).magnitude>=HubCells*Cell)
+            // Even the core has a floor. At the exact centre use a deterministic deck direction.
+            d=Vector3Int.down;
+            if((p-curved.Core).sqrMagnitude>1e-6f)
             {
                 float best=-2;var o=curved.Out(p);
                 foreach(var n in TileStructure.Directions){float k=-Vector3.Dot(FaceNormal(cell,n),o);if(k>best){best=k;d=n;}}
@@ -214,23 +217,59 @@ namespace DeathStar
         float Stretch(Vector3Int cell,Vector3Int n)=>curved==null?1:Mathf.Max(0.05f,curved.Scale(TileStructure.Center(cell),(Vector3)n));
         // A point in the cell's room, in station space: its centre, moved out of any recess that stands into it from a
         // face, past its back, so it lies in the open room.
+        readonly Dictionary<Vector3Int,Vector3> roomPoints=new Dictionary<Vector3Int,Vector3>();
         public Vector3 RoomPoint(Vector3Int cell)
         {
+            if(roomPoints.TryGetValue(cell,out var known))return known;
             var c=TileStructure.Center(cell);
             if(!Interior(cell))return c;
             foreach(var (n,w) in Wells(cell))
             {
                 float back=w.to+Partition,k=Stretch(cell,n);
-                if(back>Half*k&&w.r.Contains(Vector2.zero))c-=(Vector3)n*((back+0.3f)/k-Half);
+                if(curved==null)
+                {if(back>Half*k&&w.r.Contains(Vector2.zero))c-=(Vector3)n*((back+0.3f)/k-Half);continue;}
+                // Recess depth follows the bent face normal, not a lattice axis. On a sheared cell,
+                // the centre can lie inside a pit even when its unbent rectangle misses (0,0).
+                var p=s.cells[cell];var y=n==p.axis||n==-p.axis?p.side:p.axis;var x=TileStructure.Cross(y,-n);
+                var anchor=TileStructure.Center(cell)+(Vector3)n*Half;
+                var frame=new Vector4(n.x,n.y,n.z,Vector3.Dot(anchor,n));
+                var corners=new Vector3[8];var middle=Vector3.zero;
+                for(int i=0;i<8;i++)
+                {
+                    var q=anchor+(Vector3)x*((i&1)==0?w.r.xMin:w.r.xMax)+(Vector3)y*((i&2)==0?w.r.yMin:w.r.yMax)-(Vector3)n*((i&4)==0?0:back);
+                    middle+=(corners[i]=curved.Position(q,frame))*0.125f;
+                }
+                var planes=new Vector4[6];
+                for(int f=0;f<6;f++)
+                {
+                    var a=corners[BlockConstruction.FaceCorners[f,0]];var b=corners[BlockConstruction.FaceCorners[f,1]];
+                    var d=corners[BlockConstruction.FaceCorners[f,2]];var e=corners[BlockConstruction.FaceCorners[f,3]];
+                    var normal=Vector3.Cross(d-a,e-b).normalized;if(Vector3.Dot(normal,(a+b+d+e)*0.25f-middle)<0)normal=-normal;
+                    float depth=Mathf.Max(Mathf.Max(Vector3.Dot(normal,a),Vector3.Dot(normal,b)),Mathf.Max(Vector3.Dot(normal,d),Vector3.Dot(normal,e)));
+                    planes[f]=new Vector4(normal.x,normal.y,normal.z,depth+0.15f);
+                }
+                for(int attempt=0;attempt<24;attempt++)
+                {
+                    var world=curved.Map(c);bool inside=true;
+                    foreach(var plane in planes)if(Vector3.Dot((Vector3)plane,world)>plane.w){inside=false;break;}
+                    if(!inside)break;
+                    c-=(Vector3)n*(0.15f/k);
+                }
             }
-            return c;
+            return roomPoints[cell]=c;
         }
         static Rect Mirror(Rect r)=>Rect.MinMaxRect(-r.xMax,r.yMin,-r.xMin,r.yMax);
         // Metres per station metre along face n's x and y round its centre (1 on flat stages).
         Vector2 FaceScale(Vector3Int cell,Vector3Int n,Vector3Int x,Vector3Int y)=>
             curved==null?Vector2.one:curved.Room(TileStructure.Center(cell)+(Vector3)n*(Half-0.01f),x,y)/Cell;
         // Outward normal of face n of cell at its centre, on the curved grid as bent.
-        public Vector3 FaceNormal(Vector3Int cell,Vector3Int n)=>curved==null?(Vector3)n:CurvedNormal(n,TileStructure.Center(cell)+(Vector3)n*Half);
+        readonly Dictionary<(Vector3Int,Vector3Int),Vector3> faceNormalCache=new Dictionary<(Vector3Int,Vector3Int),Vector3>();
+        public Vector3 FaceNormal(Vector3Int cell,Vector3Int n)
+        {
+            if(curved==null)return n;
+            if(faceNormalCache.TryGetValue((cell,n),out var normal))return normal;
+            return faceNormalCache[(cell,n)]=CurvedNormal(n,TileStructure.Center(cell)+(Vector3)n*Half);
+        }
         // Outward normal of curved face n at station point q on its plane.
         Vector3 CurvedNormal(Vector3Int n,Vector3 q)
         {
@@ -244,9 +283,11 @@ namespace DeathStar
         // the face, crosses the plane of the other's near their edge. Into a cell of the same hall (no wall d) it runs
         // Overlap past the face between them, so the two cells' walls never part. tn: the wall's depth, if not its own.
         const float Overlap=0.03f;
+        readonly Dictionary<(Vector3Int,Vector3Int,Vector3Int,float),float> reaches=new Dictionary<(Vector3Int,Vector3Int,Vector3Int,float),float>();
         float Reach(Vector3Int cell,Vector3Int n,Vector3Int d)=>Reach(cell,n,d,Inset(cell,n));
         float Reach(Vector3Int cell,Vector3Int n,Vector3Int d,float tn)
         {
+            var key=(cell,n,d,tn);if(reaches.TryGetValue(key,out float cached))return cached;
             float td=Inset(cell,d),past=Mathf.Min(0.1f,td*0.7f)+(td==0?Overlap:0);
             if(curved==null)return Half-td+past;
             var c=TileStructure.Center(cell);Vector3 faceN=c+(Vector3)n*Half,faceD=c+(Vector3)d*Half,along=TileStructure.Cross(n,d);
@@ -263,7 +304,7 @@ namespace DeathStar
                 const float u0=Half-0.6f,u1=Half;float s0=S(u0),s1=S(u1),k=(s1-s0)/(u1-u0);
                 reach=Mathf.Max(reach,k<0.05f?Half-td:u0+(past-s0)/k);
             }
-            return reach;
+            return reaches[key]=reach;
         }
 
         // A room: six inner walls, each in the frame of the face outside it (x mirrored, so the wall faces in), at its
@@ -303,7 +344,7 @@ namespace DeathStar
                 {
                     // the window rows the face's forms cut outside, where they fall in the room
                     var face=Forms(new TileMesh{dry=true},cell,p,n,primary);face.m.Pop();
-                    foreach(var r in face.recess)
+                    foreach(var r in face.roomOpenings)
                     {
                         var w=Rect.MinMaxRect(Mathf.Max(r.xMin,room.xMin),Mathf.Max(r.yMin,room.yMin),Mathf.Min(r.xMax,room.xMax),Mathf.Min(r.yMax,room.yMax));
                         if(w.width>0.01f&&w.height>0.01f)holes.Add(Mirror(w));
@@ -312,7 +353,11 @@ namespace DeathStar
                 }
                 m.surfaceFrame=new Vector4(n.x,n.y,n.z,Vector3.Dot((Vector3)n,c)+Half);
                 m.Push((Vector3)n*(Half-t),Quaternion.LookRotation((Vector3)n,(Vector3)y));
-                m.Wall(InnerWall,Mirror(room),holes);
+                m.Wall(n==down?InnerFloor:InnerWall,Mirror(room),holes);
+                // Hull glazing sits 10 cm behind the room wall. Give its interior edge its
+                // own lining; the exterior reveal's triangles can twist away on curved cells.
+                if(p.family==TileFamily.Hull&&!s.Solid(next))foreach(var hole in holes)m.Reveal(InnerTrim,hole,t-0.5f);
+                if(!hub&&n==down)FloorBorder(m,Mirror(room),holes,k);
                 if(wells!=null)foreach(var w in wells)Well(m,w,wells,room,t);
                 // Where this wall ends at a cell of the same hall whose own wall here stands nearer the face (or which has
                 // none, being open onward), a jamb on the face between them closes the step.
@@ -342,7 +387,7 @@ namespace DeathStar
                     var across=TileStructure.Cross(n,-down);var below=WayBetween(cell,cell+down);
                     float margin=below==Way.Lift||below==Way.Hatch?(s.cells[cell+down].family==TileFamily.Corridor?TubeInner:HatchRadius)+Rim+0.05f:0.4f;
                     float depth=(Half-t)*(curved!=null?curved.Scale(c,(Vector3)n):1);
-                    Stairs(m,c+(Vector3)n*Half,L(-(Vector3)down),L((Vector3)across),Reach(cell,n,down)*FaceScale(cell,n,across,-down).y,t,depth-margin);
+                    if(curved==null)Stairs(m,c+(Vector3)n*Half,L(-(Vector3)down),L((Vector3)across),Reach(cell,n,down)*FaceScale(cell,n,across,-down).y,t,depth-margin);
                 }
                 if(hub?axial:n==-down)Lamps(m,Mirror(room),opening>0?Mathf.Max(plate.x/k.x,plate.y/k.y):0,holes);
                 if(!hub&&n==down&&opening==0)
@@ -355,6 +400,41 @@ namespace DeathStar
             m.surfaceFrame=Vector4.zero;
             if(!hub)Columns(m,cell,down);
             if(!hub)foreach(var n in TileStructure.Directions)if(WayBetween(cell,cell+n)==Way.Door&&DoorRise(cell,n)>0.05f)DoorFlight(m,cell,n);
+            if(!hub&&curved!=null)foreach(var n in TileStructure.Directions)
+                if(WayBetween(cell,cell+n)==Way.Tube&&Vector3.Dot(n,down)==0)TubeFlight(m,cell,n);
+        }
+
+        // Curved walls lean; stairs must use the room's gravity, not the wall's tilted frame.
+        void TubeFlight(TileMesh m,Vector3Int cell,Vector3Int n)
+        {
+            var c=TileStructure.Center(cell);var down=Down(cell);var up=-FaceNormal(cell,down);
+            var anchor=c+(Vector3)n*Half;var frame=new Vector4(n.x,n.y,n.z,Vector3.Dot(anchor,n));
+            var rigid=curved.Rigid(new Vector4(anchor.x,anchor.y,anchor.z,1),frame);
+            var sill=rigid.MultiplyPoint3x4(anchor+(Vector3)down*WalkwayDepth);
+            var floorFrame=new Vector4(down.x,down.y,down.z,Vector3.Dot(c,down)+Half);
+            var floor=curved.Position(c+(Vector3)down*(Half-Inset(cell,down)),floorFrame);
+            float rise=Vector3.Dot(sill-floor,up);if(rise<0.05f)return;
+            var into=-Vector3.ProjectOnPlane(FaceNormal(cell,n),up).normalized;
+            float wall=Inset(cell,n)/Mathf.Max(0.5f,Vector3.Dot(into,-FaceNormal(cell,n)));
+            float clear=Mathf.Max(0.4f,Vector3.Dot(curved.Map(c)-sill,into)-wall-0.35f);
+            int steps=Mathf.CeilToInt(rise/Riser);float tread=Mathf.Clamp(clear/Mathf.Max(1,steps-1),MinTread,Tread);
+            float h=rise/steps;var turn=Quaternion.LookRotation(into,up);
+            using(m.BeginWorld("corridor stairs"))
+            {
+                m.PushMatrix(Matrix4x4.Translate(-c));
+                for(int i=0;i<steps;i++)
+                {
+                    float depth=i==0?wall+0.08f:tread;
+                    float along=i==0?(wall-0.08f)*0.5f:wall+(i-0.5f)*tread;
+                    float thick=Mathf.Min(h+0.04f,rise-i*h);
+                    var at=sill+into*along-up*(i*h+thick*0.5f);
+                    m.PushMatrix(Matrix4x4.TRS(at,turn,Vector3.one));
+                    m.Box(InnerFloor,Vector3.zero,new Vector3(2*StairHalf,thick,depth));
+                    m.Box(FloorEdge,new Vector3(0,thick*0.5f+0.003f,depth*0.5f-0.025f),new Vector3(2*StairHalf,0.006f,0.04f));
+                    m.Pop();
+                }
+                m.Pop();
+            }
         }
 
         // A recess the face's forms cut deeper than the wall (a hangar bay, a pit) stands into the room as a closed
@@ -410,6 +490,22 @@ namespace DeathStar
             if(up.x>-0.5f)m.Box(InnerTrim,new Vector3(d.xMax+w*0.5f,d.center.y,-proud*0.5f),new Vector3(w,d.height+2*w,proud));
             if(up.y<0.5f)m.Box(InnerTrim,new Vector3(d.center.x,d.yMin-w*0.5f,-proud*0.5f),new Vector3(d.width,w,proud));
             if(up.y>-0.5f)m.Box(InnerTrim,new Vector3(d.center.x,d.yMax+w*0.5f,-proud*0.5f),new Vector3(d.width,w,proud));
+            // A warm sill identifies the bottom of every doorway from either side.
+            var sill=d.center-up*(Mathf.Abs(up.x)*d.width+Mathf.Abs(up.y)*d.height)*0.5f;
+            m.Box(FloorEdge,new Vector3(sill.x,sill.y,-0.003f),new Vector3(Mathf.Abs(up.x)*0.04f+Mathf.Abs(up.y)*d.width,Mathf.Abs(up.y)*0.04f+Mathf.Abs(up.x)*d.height,0.006f));
+        }
+
+        // Thin, flush wayfinding paint; clip every strip to the floor's real openings.
+        static void FloorBorder(TileMesh m,Rect room,List<Rect> holes,Vector2 scale)
+        {
+            float x=0.04f/Mathf.Max(0.1f,scale.x),y=0.04f/Mathf.Max(0.1f,scale.y);
+            room=Rect.MinMaxRect(room.xMin+x*2.5f,room.yMin+y*2.5f,room.xMax-x*2.5f,room.yMax-y*2.5f);
+            m.Push(new Vector3(0,0,-0.006f),Quaternion.identity);
+            m.Wall(FloorEdge,Rect.MinMaxRect(room.xMin,room.yMin,room.xMin+x,room.yMax),holes);
+            m.Wall(FloorEdge,Rect.MinMaxRect(room.xMax-x,room.yMin,room.xMax,room.yMax),holes);
+            m.Wall(FloorEdge,Rect.MinMaxRect(room.xMin+x,room.yMin,room.xMax-x,room.yMin+y),holes);
+            m.Wall(FloorEdge,Rect.MinMaxRect(room.xMin+x,room.yMax-y,room.xMax-x,room.yMax),holes);
+            m.Pop();
         }
 
         // A lit ring on a floor round the foot of a lift (a round opening of apothem r overhead), at the floor's centre;
@@ -438,6 +534,7 @@ namespace DeathStar
             using(m.BeginFixed("stairs",anchor))
             {
                 m.Box(InnerTrim,V(-WalkwayDepth-0.03f,0,(t-proud)*0.5f),S(0.06f,2*WalkwayHalf,t+proud));
+
                 for(int i=1;i<steps;i++)
                 {
                     float top=-WalkwayDepth-i*h;
@@ -452,7 +549,8 @@ namespace DeathStar
         {
             var holes=new List<Rect>();foreach(var c in ports)holes.Add(Rect.MinMaxRect(-hc,c-ha,hc,c+ha));
             m.Push(down*WalkwayDepth,Quaternion.LookRotation(down,A));
-            m.Wall(InnerTrim,Rect.MinMaxRect(-WalkwayHalf,a0,WalkwayHalf,a1),holes);
+            var deck=Rect.MinMaxRect(-WalkwayHalf,a0,WalkwayHalf,a1);
+            m.Wall(InnerFloor,deck,holes);FloorBorder(m,deck,holes,Vector2.one);
             m.Pop();
         }
 
@@ -622,7 +720,8 @@ namespace DeathStar
                 {
                     var holes=new List<Rect>();if(links.Contains(down))holes.Add(new Rect(-r,-r,2*r,2*r));
                     m.Push((Vector3)down*WalkwayDepth,Quaternion.LookRotation((Vector3)down,down.y!=0?Vector3.forward:Vector3.up));
-                    m.Wall(InnerTrim,new Rect(-box,-box,2*box,2*box),holes);
+                    var deck=new Rect(-box,-box,2*box,2*box);
+                    m.Wall(InnerFloor,deck,holes);FloorBorder(m,deck,holes,Vector2.one);
                     m.Pop();
                 }
                 foreach(var d in TileStructure.Directions)

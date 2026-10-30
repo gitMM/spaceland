@@ -98,6 +98,10 @@ namespace DeathStar
                 return new Equipment(m,part);
             }
             public readonly List<Rect> recess=new List<Rect>(),bare=new List<Rect>();
+            // Interior cuts follow each pane, including its mullions, so curved window rows
+            // and the room wall share vertices along the entire edge of the glazing.
+            public readonly List<Rect> roomOpenings=new List<Rect>();
+            public void Opening(Rect r){recess.Add(r);roomOpenings.Add(r);}
             // Recesses deeper than the window rows (a hangar bay, a pit), from and to depths below the face: a room
             // inside wraps them as closed blocks (TileBuilder.Interior.cs).
             public readonly List<(Rect r,float from,float to)> wells=new List<(Rect,float,float)>();
@@ -265,7 +269,7 @@ namespace DeathStar
             for(int k=0;k<panes;k++)
             {
                 float a=Mathf.Max(-Half+k*pitch+mull,u0),b=Mathf.Min(-Half+(k+1)*pitch-mull,u1);
-                if(b-a>0.2f)f.m.Glass(Rect.MinMaxRect(a,v0,b,v1),depth);
+                if(b-a>0.2f){var pane=Rect.MinMaxRect(a,v0,b,v1);f.roomOpenings.Add(pane);f.m.Glass(pane,depth);}
             }
             for(int k=0;k<=panes;k++)
             {
@@ -367,7 +371,7 @@ namespace DeathStar
             if(Opens(f.cell,f.cell+f.n))
             {
                 var k=f.Local(0,0);const float h=TubeInner+0.1f;
-                f.recess.Add(Rect.MinMaxRect(-h/k.x,-h/k.y,h/k.x,h/k.y));
+                f.Opening(Rect.MinMaxRect(-h/k.x,-h/k.y,h/k.x,h/k.y));
             }
         }
 
@@ -397,7 +401,7 @@ namespace DeathStar
 
         // ---------------------------------------------------------------- families
 
-        static void Hull(Face f)
+        void Hull(Face f)
         {
             if(!f.axial&&f.Rand(3)<0.5f)
             {
@@ -406,7 +410,14 @@ namespace DeathStar
                 foreach(float u in Cell*k.x<3.2f?new[]{0f}:new[]{-1.25f,1.25f})
                 {
                     var w=new Rect(u-0.55f*kx,HighSill+0.1f,1.1f*kx,0.6f*ky);
-                    f.recess.Add(w);f.m.Reveal(Armor,w,0.5f);f.m.Glass(w,0.5f);
+                    if(!ClearHullWindow(f,w))
+                    {
+                        // Use the opposite band when stairs or a leaning room wall block this pane.
+                        // If neither band has clearance, this bay remains continuous armour.
+                        w.y=-w.yMax;
+                        if(!ClearHullWindow(f,w))continue;
+                    }
+                    f.Opening(w);f.m.Reveal(Armor,w,0.5f);f.m.Glass(w,0.5f);
                     f.Box(Armor,w.xMin-0.15f*kx,w.yMax,w.xMax+0.15f*kx,w.yMax+0.18f*ky,0,0.35f,0.02f);
                     f.bare.Add(Rect.MinMaxRect(w.xMin-0.15f*kx,w.yMin,w.xMax+0.15f*kx,w.yMax+0.18f*ky));
                 }
@@ -436,7 +447,7 @@ namespace DeathStar
                 float px=sx>0?tower.xMax+0.05f*kx:tower.xMin-0.05f*kx,py=sy>0?tower.yMax+0.05f*ky:tower.yMin-0.05f*ky;
                 var pit=Rect.MinMaxRect(Mathf.Min(px,sx*2.05f),Mathf.Min(py,sy*2.05f),Mathf.Max(px,sx*2.05f),Mathf.Max(py,sy*2.05f));
                 var inner=Rect.MinMaxRect(pit.xMin+0.55f,pit.yMin+0.55f,pit.xMax-0.55f,pit.yMax-0.55f);
-                f.recess.Add(pit);f.wells.Add((pit,0,1.0f));
+                f.Opening(pit);f.wells.Add((pit,0,1.0f));
                 f.m.Reveal(Armor,pit,1.0f);
                 f.m.Push(new Vector3(0,0,1.0f),Quaternion.identity);
                 if(inner.width>0.4f&&inner.height>0.4f){f.wells.Add((inner,1.0f,2.7f));f.m.Wall(Armor,pit,new List<Rect>{inner});f.m.Reveal(Armor,inner,1.7f);f.m.Back(Deep,inner,1.7f);}
@@ -560,7 +571,7 @@ namespace DeathStar
                 bool dn=f.Cont(-f.y)&&f.s.Primary(f.cell-f.y,f.p)==f.n,up=f.Cont(f.y)&&f.s.Primary(f.cell+f.y,f.p)==f.n;
                 float v0=dn?-Half:-2.05f,v1=up?Half:2.05f;
                 var bay=Rect.MinMaxRect(-1.45f,v0,1.45f,v1);
-                f.recess.Add(bay);f.wells.Add((bay,0,3.4f));
+                f.Opening(bay);f.wells.Add((bay,0,3.4f));
                 f.m.Reveal(Armor,bay,3.4f,1|2|(dn?0:4)|(up?0:8));
                 f.m.Back(Deep,bay,3.4f);
                 Lip(f,-2.4f,-1.45f,-2.4f,-1.85f,-Half,Half,true,0.9f);
@@ -742,7 +753,7 @@ namespace DeathStar
             var bay=Rect.MinMaxRect(c.x-4.1f,c.y-3.5f,c.x+4.1f,c.y+3.5f);
             var part=Rect.MinMaxRect(Mathf.Max(bay.xMin,-Half),Mathf.Max(bay.yMin,-Half),Mathf.Min(bay.xMax,Half),Mathf.Min(bay.yMax,Half));
             int sides=(part.xMin>-Half+1e-3f?1:0)|(part.xMax<Half-1e-3f?2:0)|(part.yMin>-Half+1e-3f?4:0)|(part.yMax<Half-1e-3f?8:0);
-            f.recess.Add(part);f.wells.Add((part,0,4.4f));
+            f.Opening(part);f.wells.Add((part,0,4.4f));
             f.m.Reveal(Armor,part,4.4f,sides);
             f.m.Back(Deep,part,4.4f);
             // lip along the side of the mouth (across x) and along its end (across y), sloping in towards it

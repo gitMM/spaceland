@@ -3,9 +3,9 @@ using UnityEngine.InputSystem;
 
 namespace DeathStar
 {
-    // First person inside the station, upright in its gravity: up is always out from the core (StationInteriors.Up) and
-    // turns smoothly with where the walker is, never snapping. Gravity (StationInteriors.Gravity) is full from the third
-    // shell out and fades towards the core; in the hub's rooms there is none and the walker floats, WASD taking it where
+    // First person inside the station, upright to the occupied room's floor (StationInteriors.Up), with direction
+    // changes confined to connecting openings. Gravity is full in ordinary rooms, including the core;
+    // explicitly authored zero-g rooms have none and the walker floats, WASD taking it where
     // it looks and Space and C (held) along its up. A lift's opening is floor to walk across, at the level of the floor
     // it is in. Space in a lift's column (StationInteriors.LiftAt) shoots the walker along it in rideTime to the next floor
     // up if it looks up, down if it looks down (from a lift's lowest floor, down into the hub if the lift starts there).
@@ -50,7 +50,7 @@ namespace DeathStar
         float accumulator,blend=1;Vector3 previous;bool launch;
         // A ride in progress: its lift, from and to (along its axis), how long it has run, the feet's offsets from the
         // axis at its ends, and whether it ends floating in the hub.
-        StationInteriors.Lift ride;float rideFrom,rideTo,rideT;Vector3 rideStart,rideEnd;bool rideToHub;
+        StationInteriors.Lift ride;float rideFrom,rideTo,rideT;Vector3 rideStart,rideEnd,rideUp;bool rideToHub;
 
         PhysicsScene World=>gameObject.scene.GetPhysicsScene();
 
@@ -101,7 +101,7 @@ namespace DeathStar
             eye.transform.SetPositionAndRotation(ViewPosition,ViewRotation);
         }
         // The camera's eased pose (the lab renders from it too).
-        public Vector3 ViewPosition=>Vector3.Lerp(previous,transform.position,blend)+offset+frame*Vector3.up*eyeHeight;
+        public Vector3 ViewPosition=>Vector3.Lerp(previous,transform.position,blend)+offset+transform.up*eyeHeight;
         public Quaternion ViewRotation=>frame*Quaternion.Euler(pitch,0,0);
         public void Ease(float dt)
         {
@@ -132,6 +132,7 @@ namespace DeathStar
         {
             Ensure();previous=transform.position;blend=1;
             Look(look);
+            if(ride!=null){Ride(dt);return;}
             var mid=transform.position+transform.up*(height*0.5f);
             // floating, what counts is where the head is (the body is only that, Low and High); on foot it floats again
             // only once head and middle are both out of gravity, so it doesn't flicker in a doorway
@@ -141,9 +142,13 @@ namespace DeathStar
             if(interiors!=null&&!floating&&g<=0.01f)g=interiors.Gravity(EyePosition);
             // ... and it lands once the head is well past the way out, where there's floor under it
             if(interiors!=null&&floating&&g>0.01f&&velocity.sqrMagnitude>0.01f)g=Mathf.Min(g,interiors.Gravity(mid-velocity.normalized*0.8f));
-            if(floating&&g>0.01f){Land();mid=transform.position+transform.up*(height*0.5f);}
+            if(floating&&g>0.01f)
+            {
+                // Stay compact until upright and clear of the hatch; never expand inside a wall.
+                if(!Land(dt)){Float(move,vertical,dt);return;}
+                mid=transform.position+transform.up*(height*0.5f);
+            }
             if(g>0.01f)Right(interiors!=null?interiors.Up(mid):Vector3.up,dt);
-            if(ride!=null){Ride(dt);return;}
             var lift=interiors!=null?interiors.LiftAt(mid):null;
             if(space&&lift!=null&&Launch(lift)){Ride(dt);return;}
             float speed=run?runSpeed:walkSpeed;
@@ -171,7 +176,11 @@ namespace DeathStar
             if(delta.sqrMagnitude>1e-10f)Move(delta,grounded,lift);
             float dy=vy*dt,reach=-dy+(grounded?Snap:0);
             if(dy>0){Slide(up*dy,false);State=Mode.Fall;}
-            else if(Stand(reach,lift,out var feet)){transform.position=feet;vy=0;State=Mode.Walk;}
+            else if(Stand(reach,lift,out var feet))
+            {
+                if(grounded)SmoothHeight(Vector3.Dot(feet-transform.position,up));
+                transform.position=feet;vy=0;State=Mode.Walk;
+            }
             else{transform.position+=up*dy;State=Mode.Fall;}
             velocity=up*vy+Vector3.ProjectOnPlane(v,up);
             Depenetrate();
@@ -203,10 +212,14 @@ namespace DeathStar
             if(!grounded)return;
             float got=Vector3.Dot(transform.position-start,dir);if(got>delta.magnitude*0.6f)return;
             var up=transform.up;var blocked=transform.position;
-            if(World.CapsuleCast(start+up*(radius+Lip),start+up*(height-radius),radius-Skin,up,out _,stepHeight+Skin,mask,Triggers))return;
-            transform.position=start+up*stepHeight;
+            float step=stepHeight;
+            if(World.CapsuleCast(start+up*(radius+Lip),start+up*(height-radius),radius-Skin,up,out var overhead,stepHeight+Skin,mask,Triggers))
+                step=Mathf.Min(step,Mathf.Max(0,overhead.distance-Skin));
+            if(step<0.02f)return;
+            transform.position=start+up*step;
             Slide(delta,true);
-            if(Vector3.Dot(transform.position-start,dir)>got+1e-4f&&Stand(stepHeight+Skin,lift,out var feet))transform.position=feet;
+            if(Vector3.Dot(transform.position-start,dir)>got+1e-4f&&Stand(step+Skin,lift,out var feet))
+            {SmoothHeight(Vector3.Dot(feet-start,up));transform.position=feet;}
             else transform.position=blocked;
         }
 
@@ -234,10 +247,17 @@ namespace DeathStar
         {
             var up=transform.up;var o=transform.position+up*(radius+Probe);feet=default;float far=reach+Skin+Probe;
             if(!World.SphereCast(o,radius-Skin,-up,out var hit,far,mask,Triggers))return false;
-            if(Vector3.Dot(hit.normal,up)>=FloorCos){feet=o-up*(hit.distance+radius-Skin);return true;}
+            if(Vector3.Dot(hit.normal,up)>=FloorCos)
+            {
+                feet=o-up*(hit.distance+radius-Skin);
+                if(World.Raycast(o,-up,out var centre,far+radius-Skin,mask,Triggers)&&Vector3.Dot(centre.normal,up)>=FloorCos
+                    &&Mathf.Abs(Vector3.Dot(centre.point-feet,up))<0.05f)feet=centre.point;
+                return true;
+            }
             var away=Vector3.ProjectOnPlane(hit.point-o,up);
             var past=hit.point+up*0.05f+(away.sqrMagnitude>1e-8f?away.normalized*0.03f:Vector3.zero);
-            if(World.Raycast(past,-up,out var top,0.1f,mask,Triggers)&&Vector3.Dot(top.normal,up)>=FloorCos){feet=o-up*(hit.distance+radius-Skin);return true;}
+            if(World.Raycast(past,-up,out var top,0.1f,mask,Triggers)&&Vector3.Dot(top.normal,up)>=FloorCos)
+            {feet=transform.position+up*Vector3.Dot(top.point-transform.position,up);return true;}
             if(World.Raycast(o,-up,out var below,far+radius,mask,Triggers)&&Vector3.Dot(below.normal,up)>=FloorCos){feet=below.point;return true;}
             return false;
         }
@@ -264,6 +284,7 @@ namespace DeathStar
             bool hub=best==float.MaxValue&&!rising&&lift.fromHub;
             if(hub)to=lift.axis[0];else if(best==float.MaxValue)return false;
             ride=lift;rideT=0;rideToHub=hub;rideFrom=lift.Along(feet);rideTo=lift.Along(to);
+            rideUp=hub?transform.up:interiors.Up(to+interiors.Up(to)*0.9f);
             rideStart=feet-lift.At(rideFrom);rideEnd=to-lift.At(rideTo);
             State=Mode.Lift;velocity=Vector3.zero;
             return true;
@@ -274,6 +295,7 @@ namespace DeathStar
         // hub). It passes through nothing, so it sweeps nothing.
         void Ride(float dt)
         {
+            Right(rideUp,dt);
             rideT+=dt;float t=Mathf.Clamp01(rideT/rideTime),a=Mathf.Clamp01((t-0.1f)/0.9f),e=a*a*(3-2*a),c=Mathf.SmoothStep(0,1,t/0.3f);
             transform.position=ride.At(Mathf.Lerp(rideFrom,rideTo,e))+rideStart*(1-c)+rideEnd*e;
             if(t<1)return;
@@ -295,28 +317,48 @@ namespace DeathStar
             Depenetrate();
         }
 
-        // Gravity again after floating: upright where the head is, with the head left where it was and the feet on what's
-        // under it, if that's nearer than they'd reach (the legs may have trailed through a floor).
-        void Land()
+        // Gravity again after floating: right gradually around the head, then expand only with full-body clearance.
+        bool Land(float dt)
         {
             var eyeAt=EyePosition;
             var up=interiors!=null?interiors.Up(eyeAt):transform.up;
             if(up.sqrMagnitude<0.5f)up=transform.up;
-            var forward=Vector3.ProjectOnPlane(transform.forward,up);
-            if(forward.sqrMagnitude<1e-4f)forward=Vector3.ProjectOnPlane(transform.up,up);
-            transform.rotation=Quaternion.LookRotation(forward.normalized,up);
-            transform.position=eyeAt-up*eyeHeight;
-            if(World.Raycast(eyeAt,-up,out var floor,eyeHeight,mask,Triggers))
-            {
-                var feet=floor.point;offset+=transform.position-feet;transform.position=feet;
-            }
+            Right(up,dt);
+            transform.position=eyeAt-transform.up*eyeHeight;previous=transform.position;
+            if(Vector3.Angle(transform.up,up)>1)return false;
+            var feet=eyeAt-up*eyeHeight;
+            if(World.Raycast(eyeAt,-up,out var floor,eyeHeight,mask,Triggers)&&Vector3.Dot(floor.normal,up)>=FloorCos)
+                feet=floor.point;
+            int n=World.OverlapCapsule(feet+up*(Lip+radius),feet+up*(height-radius),radius-Skin,overlaps,mask,Triggers);
+            if(n>0)return false;
+            // Preserve the eye through any floor-height correction. Rotation eases independently of eye position.
+            offset+=transform.position-feet;transform.position=feet;previous=feet;
             State=Mode.Fall;velocity=Vector3.ProjectOnPlane(velocity,up);
+            return true;
+        }
+
+        void SmoothHeight(float rise)
+        {
+            if(Mathf.Abs(rise)<0.001f)return;
+            offset-=transform.up*rise;
+            // Several stair steps must not leave the eye trailing through the floor.
+            offset=Vector3.ClampMagnitude(offset,stepHeight+Skin);
+        }
+
+        // Resolve contacts without teleporting the eye. Skin contact alone needs no correction.
+        void SmoothCorrection(Vector3 correction)
+        {
+            if(correction.sqrMagnitude>1e-10f)
+            {
+                offset=Vector3.ClampMagnitude(offset-correction,stepHeight+Skin);
+            }
         }
 
         // Out of anything the body overlaps, leaving out its lowest Lip, so it stands on lips rather than being pushed
         // off them sideways. Floating, the body is just round the head.
         void Depenetrate()
         {
+            var before=transform.position;
             float h=High-Low+2*radius;body.height=h;body.center=new Vector3(0,(Low+High)*0.5f,0);
             for(int pass=0;pass<3;pass++)
             {
@@ -330,6 +372,7 @@ namespace DeathStar
                 }
                 if(!moved)break;
             }
+            SmoothCorrection(transform.position-before);
         }
     }
 }

@@ -55,11 +55,12 @@ namespace DeathStar
     [Serializable]
     public sealed class BlockSave
     {
-        public int version=6;
+        public int version=7;
         public BlockGuide guide;
         public Vector3Int[] cells;
         public BlockType[] types;
         public TileFamily[] families;
+        public Vector3Int[] zeroGravity;
         public BlockCorner[] corners;
     }
 
@@ -70,6 +71,7 @@ namespace DeathStar
         public static readonly int[,] FaceCorners={{1,3,7,5},{4,6,2,0},{2,6,7,3},{4,0,1,5},{5,7,6,4},{0,2,3,1}};
         HashSet<Vector3Int> cells=new HashSet<Vector3Int>();
         Dictionary<Vector3Int,TileFamily> families=new Dictionary<Vector3Int,TileFamily>();
+        HashSet<Vector3Int> zeroGravity=new HashSet<Vector3Int>();
         Dictionary<Vector3Int,Vector3> corners=new Dictionary<Vector3Int,Vector3>();
         Dictionary<Vector3Int,ShapeInfo> shapes;
         // The guide a new build grows from: centred on the seed cell.
@@ -91,6 +93,14 @@ namespace DeathStar
         public static Vector3Int CornerOffset(int corner)=>new Vector3Int(corner&1,(corner>>1)&1,(corner>>2)&1);
         public bool Contains(Vector3Int p)=>cells.Contains(p);
         public TileFamily Family(Vector3Int p)=>families.TryGetValue(p,out var f)?f:TileFamily.Hull;
+        public bool ZeroGravity(Vector3Int p)=>zeroGravity.Contains(p);
+        // Explicit room authoring; ordinary rooms, including legacy saves, have full gravity.
+        public void SetZeroGravity(Vector3Int p,bool enabled)
+        {
+            if(!Contains(p))throw new ArgumentException("Zero gravity requires an occupied cell.");
+            if(enabled)zeroGravity.Add(p);else zeroGravity.Remove(p);
+            ChangedCells=new HashSet<Vector3Int>{p};foreach(var d in Steps)ChangedCells.Add(p+d);
+        }
         public bool Solid(Vector3Int p)=>Contains(p)&&!TileStructure.IsOpen(Family(p));
         // Solid or a truss (TileStructure.Covered): what a wedge's exposure and a family's main face go by.
         public bool Covered(Vector3Int p)=>Contains(p)&&(Family(p)==TileFamily.Truss||!TileStructure.IsOpen(Family(p)));
@@ -116,7 +126,7 @@ namespace DeathStar
         }
         void Adopt(BlockConstruction next)
         {
-            cells=next.cells;families=next.families;corners=next.corners;ChangedCells=next.ChangedCells;LastError=null;
+            cells=next.cells;families=next.families;zeroGravity=next.zeroGravity;corners=next.corners;ChangedCells=next.ChangedCells;LastError=null;
             guide=next.guide;shapes=next.shapes;
         }
         // Corners never move while their cell exists, so a cell's shape is fixed until it is removed.
@@ -183,10 +193,10 @@ namespace DeathStar
             next=null;LastError=null;
             if(!Enum.IsDefined(typeof(TileFamily),family)){LastError="Unknown tile family.";return false;}
             if(remove?(Count<=1||!Contains(edit)):!CanAdd(edit)){LastError="No available block placement.";return false;}
-            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),families=new Dictionary<Vector3Int,TileFamily>(families),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide,
+            var candidate=new BlockConstruction{cells=new HashSet<Vector3Int>(cells),families=new Dictionary<Vector3Int,TileFamily>(families),zeroGravity=new HashSet<Vector3Int>(zeroGravity),corners=new Dictionary<Vector3Int,Vector3>(corners),guide=guide,
                 shapes=shapes==null?null:new Dictionary<Vector3Int,ShapeInfo>(shapes)};
             candidate.ChangedCells=new HashSet<Vector3Int>{edit};foreach(var step in Steps)candidate.ChangedCells.Add(edit+step);
-            if(remove){candidate.cells.Remove(edit);candidate.families.Remove(edit);candidate.PruneCorners(edit);candidate.shapes?.Remove(edit);}
+            if(remove){candidate.cells.Remove(edit);candidate.families.Remove(edit);candidate.zeroGravity.Remove(edit);candidate.PruneCorners(edit);candidate.shapes?.Remove(edit);}
             else
             {
                 candidate.cells.Add(edit);
@@ -304,11 +314,12 @@ namespace DeathStar
             var keys=new List<Vector3Int>(corners.Keys);keys.Sort(Compare);
             var vertices=new BlockCorner[keys.Count];for(int i=0;i<keys.Count;i++)vertices[i]=new BlockCorner{key=keys[i],position=corners[keys[i]]};
             var palette=new TileFamily[blocks.Count];for(int i=0;i<blocks.Count;i++)palette[i]=Family(blocks[i]);
-            return new BlockSave{guide=guide,cells=blocks.ToArray(),families=palette,corners=vertices};
+            var hubs=new List<Vector3Int>(zeroGravity);hubs.Sort(Compare);
+            return new BlockSave{guide=guide,cells=blocks.ToArray(),families=palette,corners=vertices,zeroGravity=hubs.ToArray()};
         }
         public void Restore(BlockSave save)
         {
-            if(save==null||(save.version<1||save.version>6)||save.cells==null||save.cells.Length==0||save.cells.Length>MaxBlocks)
+            if(save==null||(save.version<1||save.version>7)||save.cells==null||save.cells.Length==0||save.cells.Length>MaxBlocks)
                 throw new ArgumentException("Unsupported or empty construction file.");
             if((save.version==3||save.version==4)&&(save.types==null||save.types.Length!=save.cells.Length))throw new ArgumentException("Incomplete block types.");
             if(save.version>=6&&(save.families==null||save.families.Length!=save.cells.Length))throw new ArgumentException("Incomplete tile families.");
@@ -324,6 +335,8 @@ namespace DeathStar
                 if(!Enum.IsDefined(typeof(TileFamily),save.families[i]))throw new ArgumentException("Unknown tile family.");
                 next.families[save.cells[i]]=save.families[i];
             }
+            if(save.version>=7&&save.zeroGravity!=null)foreach(var cell in save.zeroGravity)
+                if(!next.cells.Contains(cell)||!next.zeroGravity.Add(cell))throw new ArgumentException("Invalid or duplicate zero-gravity cell.");
             // Read old typed saves without changing their stored geometry. New
             // placements and new saves use only the sphere mapping.
             if(save.version==3||save.version==4)

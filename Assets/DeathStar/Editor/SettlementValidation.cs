@@ -22,6 +22,16 @@ namespace DeathStar.EditorTools
             bool rejected=false;try{restored.Restore(bad);}catch(ArgumentException){rejected=true;}
             Require(rejected&&stable==JsonUtility.ToJson(restored.Capture()),"Invalid families are not atomic");checks++;
 
+            preview.SetZeroGravity(Vector3Int.right,true);restored.Restore(preview.Capture());
+            Require(restored.ZeroGravity(Vector3Int.right)&&SettlementSolver.Solve(restored).zeroGravity.Contains(Vector3Int.right),"Explicit zero gravity did not survive save/solve");checks++;
+            var v6=preview.Capture();v6.version=6;restored.Restore(v6);
+            Require(restored.Cells.All(c=>!restored.ZeroGravity(c)),"Legacy rooms must have gravity by default");checks++;
+            restored.Restore(preview.Capture());Require(restored.Remove(Vector3Int.right)&&!restored.ZeroGravity(Vector3Int.right),"Removing a room retained its zero-g setting");checks++;
+            restored.Restore(preview.Capture());Require(restored.ZeroGravity(Vector3Int.right),"Undo snapshot lost zero gravity");checks++;
+            bad=preview.Capture();bad.zeroGravity=new[]{new Vector3Int(50,50,50)};stable=JsonUtility.ToJson(restored.Capture());
+            rejected=false;try{restored.Restore(bad);}catch(ArgumentException){rejected=true;}
+            Require(rejected&&stable==JsonUtility.ToJson(restored.Capture()),"Invalid zero-gravity data is not atomic");checks++;
+
             // Every face, all 24 orientations, negative coordinates and insertion-order determinism.
             var rotations=new HashSet<(Vector3Int,Vector3Int)>();
             foreach(var n in TileStructure.Directions)foreach(var side in TileStructure.Directions)

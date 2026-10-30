@@ -200,10 +200,14 @@ namespace DeathStar.EditorTools
                 foreach(var d in TileStructure.Directions)
                     if(interiors.Portal(cell,d,out var c,out var a,out var u,out var half))portals.Add((c,a,u,half*1.1f+Vector2.one*0.05f));
                 var o=centreOf(cell);
-                for(int k=0;k<raysPerRoom;k++)
+                // Keep the original seam failures covered even if mesh changes alter which
+                // rooms the photographed neighbourhood loads or the random sample order.
+                var seamRays=where=="Foundry"&&cell==new Vector3Int(-2,0,0)?new[]{new Vector3(0.706910f,-0.266032f,0.655367f),new Vector3(-0.906154f,0.369589f,-0.205645f)}:
+                    where=="Foundry"&&cell==new Vector3Int(-2,1,0)?new[]{new Vector3(0.625932f,0.778193f,0.051241f)}:Array.Empty<Vector3>();
+                for(int k=0;k<raysPerRoom+seamRays.Length;k++)
                 {
-                    var dir=new Vector3((float)rnd.NextDouble()*2-1,(float)rnd.NextDouble()*2-1,(float)rnd.NextDouble()*2-1);
-                    if(dir.sqrMagnitude<0.01f||dir.sqrMagnitude>1){k--;continue;}
+                    var dir=k<raysPerRoom?new Vector3((float)rnd.NextDouble()*2-1,(float)rnd.NextDouble()*2-1,(float)rnd.NextDouble()*2-1):seamRays[k-raysPerRoom];
+                    if(k<raysPerRoom&&(dir.sqrMagnitude<0.01f||dir.sqrMagnitude>1)){k--;continue;}
                     dir.Normalize();rays++;
                     // a corridor's own outside showing in front of its tube's walls (front faces: back faces aren't drawn)
                     float wall=s.cells[cell].family==TileFamily.Corridor?FirstHit(mine[cell],o,dir,20):float.MaxValue;
@@ -272,7 +276,7 @@ namespace DeathStar.EditorTools
                             {tube=pair.Key;entered=pair.Key+d;joined=true;}
                 checks.Add((found&&joined,$"{name}: a home with a sliding door to the next, and a corridor entering a home through a socket, exist ({next} to {next+doorDir}, {tube} into {entered})"));
                 if(!found||!joined)return;
-                WayCounts(name,interiors,s,checks,true,true);
+                WayCounts(name,interiors,s,checks,true,false);
                 var home=next+doorDir;
                 interiors.ShowAround(W(next,Vector3.zero),12);
                 RoomChecks(name,interiors,s,c=>interiors.RoomPoint(c),300,checks,notes);

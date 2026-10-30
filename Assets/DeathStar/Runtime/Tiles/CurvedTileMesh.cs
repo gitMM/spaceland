@@ -181,8 +181,21 @@ namespace DeathStar
             dx=Derivative(0,dx);dy=Derivative(1,dy);dz=Derivative(2,dz);
         }
         // A far mesh shares most vertices with its near mesh (TileMesh.FarFromNear): copy those already bent.
+        // Hard edges duplicate positions, and a tube repeats its section for every side. Sample each
+        // deformation once per mesh; normals/tangents still transform independently at every vertex.
+        readonly Dictionary<(Vector3,Vector4),(Vector3 p,Vector3 dx,Vector3 dy,Vector3 dz)> bendFrames=
+            new Dictionary<(Vector3,Vector4),(Vector3,Vector3,Vector3,Vector3)>();
+        readonly Dictionary<(Vector3,int),(Vector3 p,Vector3 u,Vector3 v)> bendTubes=
+            new Dictionary<(Vector3,int),(Vector3,Vector3,Vector3)>();
         public void Bend(Mesh mesh,Vector3Int cell,Mesh bentNear=null,int[] fromNear=null)
         {
+            bendFrames.Clear();bendTubes.Clear();
+            (Vector3 p,Vector3 dx,Vector3 dy,Vector3 dz) Frame(Vector3 point,Vector4 face)
+            {
+                if(bendFrames.TryGetValue((point,face),out var cached))return cached;
+                Transform(point,face,out var p,out var dx,out var dy,out var dz);
+                return bendFrames[(point,face)]=(p,dx,dy,dz);
+            }
             var vertices=mesh.vertices;var normals=mesh.normals;var tangents=mesh.tangents;
             var frames=new List<Vector4>();mesh.GetUVs(4,frames);
             var anchors=new List<Vector4>();mesh.GetUVs(5,anchors);
@@ -205,7 +218,9 @@ namespace DeathStar
                     // along the frame's axis; only the run follows the cells.
                     Vector3 A=f;int axis=A.x!=0?0:A.y!=0?1:2,ua=(axis+1)%3,va=(axis+2)%3;
                     var origin0=(Vector3)anchor;var spine=origin0+A*Vector3.Dot(p-origin0,A);var off=p-spine;
-                    Tube(spine,ua,va,out var at,out var tu,out var tv);var tt=Vector3.Cross(tu,tv);
+                    if(!bendTubes.TryGetValue((spine,axis),out var section))
+                    {Tube(spine,ua,va,out var sp,out var su,out var sv);bendTubes[(spine,axis)]=section=(sp,su,sv);}
+                    var (at,tu,tv)=section;var tt=Vector3.Cross(tu,tv);
                     Vector3 R(Vector3 d)=>tt*d[axis]+tu*d[ua]+tv*d[va];
                     vertices[i]=at+tu*off[ua]+tv*off[va];normals[i]=R(normals[i]).normalized;
                     if(mounted)mounts[i]=R(mount).normalized;
@@ -221,7 +236,7 @@ namespace DeathStar
                     float h=Vector3.Dot(p-pivot,(Vector3)f);
                     if(h<Foot&&anchor.w<1.1f)
                     {
-                        Transform(pivot+Metric(anchor,f).MultiplyVector(p-pivot),f,out var surface,out _,out _,out _);
+                        var surface=Frame(pivot+Metric(anchor,f).MultiplyVector(p-pivot),f).p;
                         var up=rigid.MultiplyVector((Vector3)f);
                         placed+=up*(Vector3.Dot(surface-placed,up)*(1-Mathf.Max(0,h)/Foot));
                     }
@@ -232,7 +247,7 @@ namespace DeathStar
                 }
                 // Anything else has no metric (Metric is the identity) and follows the cells.
                 // Transform normals with the cofactor (inverse transpose); preserve authored hard edges and glass UVs.
-                Transform(p,f,out var bent,out var dx,out var dy,out var dz);
+                var (bent,dx,dy,dz)=Frame(p,f);
                 var n=normals[i];normals[i]=(Vector3.Cross(dy,dz)*n.x+Vector3.Cross(dz,dx)*n.y+Vector3.Cross(dx,dy)*n.z).normalized;
                 if(mounted)mounts[i]=(Vector3.Cross(dy,dz)*mount.x+Vector3.Cross(dz,dx)*mount.y+Vector3.Cross(dx,dy)*mount.z).normalized;
                 var t=tangents[i];var wt=(dx*t.x+dy*t.y+dz*t.z).normalized;

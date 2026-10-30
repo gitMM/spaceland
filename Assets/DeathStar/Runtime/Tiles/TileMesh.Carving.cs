@@ -243,6 +243,8 @@ namespace DeathStar
                 var hp=new Half(p+new Vector2(-e.y,e.x).normalized*Trim,e);
                 clip.Add(hp);wide.Add(hp);
             }
+            // With no lattice seam both passes clip against exactly the same planes.
+            if(wide.Count==clip.Count)wide=clip;
             int key=ax*2+(N[ax]>0?1:0)+31*Mathf.RoundToInt(Vector3.Dot(N,A+so)*8);
             float uMin=float.MaxValue,uMax=float.MinValue,vMin=float.MaxValue,vMax=float.MinValue;
             foreach(var q in quad){uMin=Mathf.Min(uMin,q.x);uMax=Mathf.Max(uMax,q.x);vMin=Mathf.Min(vMin,q.y);vMax=Mathf.Max(vMax,q.y);}
@@ -312,7 +314,7 @@ namespace DeathStar
                 if(open.Count<3)continue;
                 float thick=Thickness(open);
                 if(thick<0.06f&&thick<Thickness(poly)*0.8f)continue;   // a sliver left by an edge
-                var piece=Clip(poly,clip,zone);
+                var piece=ReferenceEquals(clip,wide)?open:Clip(poly,clip,zone);
                 if(piece.Count<3||Mathf.Abs(SignedArea(piece))<0.004f)continue;
                 if(InSolid(lift(Centroid(piece),(h0+h1)*0.5f)))continue;
                 Extrude(fin,piece,h0,h1,Bevel,lift,N);
@@ -481,6 +483,18 @@ namespace DeathStar
             for(int l=0;l<2;l++)foreach(var h in l==0?a:b)
             {
                 if(o.Count==0)return o;
+                // Most plates are wholly inside most planes. Keep their polygon instead of
+                // allocating and copying it for each of the eight clipping boundaries.
+                // Boundary vertices still take the original path to preserve tie handling.
+                bool inside=true,outside=true;
+                foreach(var p in o)
+                {
+                    float side=Cross2(h.e,p-h.o);
+                    if(side<=0)inside=false;
+                    if(side>=0)outside=false;
+                }
+                if(inside)continue;
+                if(outside)return new List<Vector2>();
                 var input=o;o=new List<Vector2>(input.Count+2);
                 for(int j=0;j<input.Count;j++)
                 {
@@ -490,7 +504,8 @@ namespace DeathStar
                     if((sp<0)!=(sq<0)&&Mathf.Abs(sp-sq)>1e-9f)o.Add(Vector2.Lerp(p,q,sp/(sp-sq)));
                 }
             }
-            for(int i=o.Count-1;i>0&&o.Count>2;i--)if((o[i]-o[i-1]).sqrMagnitude<1e-8f)o.RemoveAt(i);
+            for(int i=o.Count-1;i>0&&o.Count>2;i--)if((o[i]-o[i-1]).sqrMagnitude<1e-8f)
+            {if(ReferenceEquals(o,subject))o=new List<Vector2>(o);o.RemoveAt(i);}
             return o;
         }
         // Ear clipping for a small CCW polygon; returns index triples.

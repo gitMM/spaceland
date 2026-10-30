@@ -35,6 +35,7 @@ namespace DeathStar.EditorTools
             {
                 view.Rebuild(SettlementExamples.Foundry());TileLook.AddLights(root.transform);
                 Walks(rig,"curved",view.Interiors,Vector3.zero,checks,shots,notes);
+                ComfortChecks(rig,view.Interiors,checks);
             }
             finally{view.Dispose();Object.DestroyImmediate(root);rig.ShowStage(shown);}
 
@@ -49,6 +50,77 @@ namespace DeathStar.EditorTools
             string summary=$"Walk lab: {checks.Count-fails}/{checks.Count} checks pass, {shots.Count} pictures in {WalkDir}";
             if(fails>0)summary+="\n"+string.Join("\n",checks.Where(c=>!c.ok).Select(c=>"FAIL "+c.text).Concat(notes));
             return "DONE "+summary;
+        }
+
+        static void ComfortChecks(Rig rig,StationInteriors rooms,List<(bool ok,string text)> checks)
+        {
+            rooms.colliders=true;rooms.ShowAround(Vector3.zero,1000);Physics.SyncTransforms();
+            var cells=rooms.Cells.ToList();
+            checks.Add((cells.Count>0&&cells.All(c=>!rooms.Hub(c)&&rooms.Down(c)!=Vector3Int.zero&&rooms.Gravity(rooms.RoomPoint(c))==1),
+                $"Settlement: all {cells.Count} generated rooms have a floor direction and full gravity, including the core"));
+            int sealedSamples=0;float drift=0;
+            foreach(var c in cells)foreach(var d in TileStructure.Directions)
+            {
+                if(rooms.Way(c,c+d)!=TileBuilder.Way.None||rooms.SpecialRoom(c))continue;
+                var p=Vector3.Lerp(rooms.RoomPoint(c),rooms.FaceCentre(c,d),0.65f);
+                if(!rooms.CellAt(p,out var owner)||owner!=c)continue;
+                bool portalNear=false;
+                foreach(var n in TileStructure.Directions)
+                    if(rooms.Portal(c,n,out var at,out var a,out var u,out var half))
+                    {
+                        var v=p-at;
+                        if(Mathf.Abs(Vector3.Dot(v,Vector3.Cross(a,u).normalized))<0.85f&&Mathf.Abs(Vector3.Dot(v,a))<=half.x&&Mathf.Abs(Vector3.Dot(v,u))<=half.y)portalNear=true;
+                    }
+                if(portalNear)continue;
+                sealedSamples++;drift=Mathf.Max(drift,Vector3.Angle(rooms.Up(p),-rooms.FaceNormal(c,rooms.Down(c))));
+            }
+            checks.Add((sealedSamples>0&&drift<0.1f,$"Room gravity: {sealedSamples} samples near sealed faces retain their own floor direction (maximum drift {drift:0.00} degrees)"));
+            var go=new GameObject("Comfort walker");SceneManager.MoveGameObjectToScene(go,rig.PreviewScene);
+            var walker=go.AddComponent<StationWalker>();walker.interiors=rooms;
+            int spawned=0;bool stable=true;float jump=0;
+            try
+            {
+                foreach(var c in cells.OrderBy(c=>rooms.Centre(c).sqrMagnitude).Take(12))
+                {
+                    if(!rooms.SpawnInCell(c,out var feet,out var up,out var forward))continue;
+                    spawned++;walker.Place(feet,up,forward);var eye=walker.ViewPosition;
+                    for(int i=0;i<60;i++)
+                    {
+                        walker.Frame(Vector2.zero,Vector2.zero,false,0,false,WalkDt);walker.Ease(WalkDt);
+                        jump=Mathf.Max(jump,Vector3.Distance(eye,walker.ViewPosition));eye=walker.ViewPosition;
+                        stable&=walker.State!=StationWalker.Mode.Float;
+                    }
+                }
+                checks.Add((spawned>=6&&stable&&jump<0.1f,$"Settlement: {spawned} central-room FPS entries stay in gravity; largest idle eye movement {jump*100:0.0} cm/frame"));
+            }
+            finally{Object.DestroyImmediate(go);rooms.Clear();rooms.colliders=false;}
+
+            // A deliberate zero-g room, with a normal deck on either side. Start rolled 90 degrees,
+            // then leave through a doorway; the head must remain continuous while the body rights itself.
+            var root=new GameObject("Gravity transition check");SceneManager.MoveGameObjectToScene(root,rig.PreviewScene);
+            var interiors=root.AddComponent<StationInteriors>();interiors.colliders=true;interiors.people=false;
+            var structure=new TileStructure();
+            for(int i=0;i<3;i++)structure.Set(Vector3Int.right*i,TileFamily.Habitat,Vector3Int.up,Vector3Int.right);
+            structure.zeroGravity.Add(Vector3Int.right);
+            try
+            {
+                interiors.Init(structure,new TileBuilder(structure),rig.Library.materials,rig.Library.clearGlass,null);
+                interiors.ShowAround(Vector3.right*5,30);Physics.SyncTransforms();
+                go=new GameObject("Transition walker");SceneManager.MoveGameObjectToScene(go,rig.PreviewScene);
+                walker=go.AddComponent<StationWalker>();walker.interiors=interiors;
+                walker.Place(new Vector3(5,-0.75f,-1.65f),Vector3.forward,Vector3.right);
+                walker.Frame(Vector2.zero,Vector2.zero,false,0,false,WalkDt);walker.Ease(WalkDt);
+                bool floated=walker.State==StationWalker.Mode.Float;bool landed=false;float turn=0;jump=0;
+                for(int i=0;i<600;i++)
+                {
+                    var p=walker.ViewPosition;var q=walker.ViewRotation;
+                    walker.Frame(Vector2.up,Vector2.zero,false,0,false,WalkDt);walker.Ease(WalkDt);interiors.TickDoors(walker.EyePosition,WalkDt);
+                    jump=Mathf.Max(jump,Vector3.Distance(p,walker.ViewPosition));turn=Mathf.Max(turn,Quaternion.Angle(q,walker.ViewRotation));
+                    if(walker.State==StationWalker.Mode.Walk){landed=true;break;}
+                }
+                checks.Add((floated&&landed&&jump<0.1f&&turn<2,$"Authored zero-g exit: float {floated}, land {landed}, eye step {jump*100:0.0} cm, rotation {turn:0.00} degrees/frame"));
+            }
+            finally{if(go)Object.DestroyImmediate(go);interiors.Clear();Object.DestroyImmediate(root);}
         }
 
         static void Walks(Rig rig,string where,StationInteriors interiors,Vector3 near,List<(bool ok,string text)> checks,List<(string file,string what)> shots,List<string> notes)
