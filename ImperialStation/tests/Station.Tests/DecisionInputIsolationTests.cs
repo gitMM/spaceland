@@ -150,4 +150,25 @@ public sealed class DecisionInputIsolationTests
         Assert.Equal(2, Late(plain).Length); Assert.All(Late(plain), o => Assert.Equal("OwnCompletionAlreadyPosted", o.Reason));
         Assert.Equal(Late(plain).Select(o => (o.Status, o.Reason)), Late(changed).Select(o => (o.Status, o.Reason)));
     }
+
+    [Fact]
+    public void T08_FailedHandoffIsHandledByTheTeamOnTheLeadersListEachOnItsOwnCopy()
+    {
+        // Target 1 walks away during BeginEscort, so the leader's handoff fails at 494 and the team reinspects.
+        // A co-located supervisor privately holds a copy of the same dispatch but is not on the leader's team list.
+        static World Make() { var w = Load("guard_search", catalog: "escort").CreateWorld(42, true); w.Submit(395, new(new(1), ActionKind.Move, new(2, 0, 0))); return w; }
+        var (plain, changed) = Twin(Make, 493, w =>
+        {
+            var orders = (IDictionary)Get(w, "localGuardOrders");
+            var source = orders.Values.Cast<object>().First(o => (long)Get(o, "<ActorId>k__BackingField") == 4);
+            var copy = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(source, null)!;
+            Set(copy, "ActorId", 2L); Set(copy, "OrderMessageId", 999_999L); orders.Add(999_999L, copy);
+            Set(Actor(w, 2), "Position", new Coord(1, 0, 0));
+        }, 494);
+        Assert.Equal(FailureReason.NotAtRequiredTile, plain.InspectActor(new(3)).LastFailure);
+        var leader = (Plain: plain.InspectLocalGuardOrders(new(3)).Single(), Changed: changed.InspectLocalGuardOrders(new(3)).Single());
+        Assert.Equal((leader.Plain.Status, leader.Plain.Reason), (leader.Changed.Status, leader.Changed.Reason));
+        var planted = changed.InspectLocalGuardOrders(new(2)).Single(); var original = changed.InspectLocalGuardOrders(new(4)).Single();
+        Assert.Equal(GuardOrderStatus.TargetLocated, planted.Status); Assert.NotEqual(GuardOrderStatus.TargetLocated, original.Status);
+    }
 }
