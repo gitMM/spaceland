@@ -45,7 +45,7 @@ public sealed class InstitutionPolicyTests
     [Fact]
     public void SupervisorRequestsDetentionOnlyAtThreshold()
     {
-        var personnel = new PersonnelConfig("supervisor", 1000, 2);
+        var personnel = new PublicPersonnelPolicy("supervisor", 2);
         Assert.True(DetentionDecisions.ShouldRequestDetention(new CaseDecisionPayload(4, 1, 11, 2, "Accepted"), personnel, "supervisor"));
         Assert.False(DetentionDecisions.ShouldRequestDetention(new CaseDecisionPayload(4, 1, 11, 1, "Accepted"), personnel, "supervisor"));
         Assert.False(DetentionDecisions.ShouldRequestDetention(new CaseDecisionPayload(4, 1, 11, 2, "Accepted"), personnel, "worker"));

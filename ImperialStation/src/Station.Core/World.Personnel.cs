@@ -23,7 +23,8 @@ namespace Station.Core
         public IReadOnlyList<ReprimandSnapshot> InspectReprimands() => reprimands.Values.Select(c => c.Copy()).ToArray();
         public IReadOnlyList<CaseFilingSnapshot> InspectCaseFilings(Id<ActorTag> actor) => caseFilings.Values.Where(f => f.ActorId == actor.Value).Select(f => f.Copy()).ToArray();
         private void InitializePersonnel(PersonnelConfig config)
-        { if (Information == null || !JobsEnabled || Authority == null) throw new ArgumentException("Personnel requires information, jobs and the authority's registrations."); Personnel = config; }
+        { if (Information == null || !JobsEnabled || Authority == null) throw new ArgumentException("Personnel requires information, jobs and the authority's registrations."); Personnel = config;
+          publicKnowledge = publicKnowledge!.WithPersonnel(new PublicPersonnelPolicy(config.SupervisorRole, config.DetentionThreshold)); }
         private void RecordQueryDisclosure(Actor actor, ActiveAction action, RecordEntry entry, long capturedVersion)
         {
             if (Personnel == null || !(entry.Kind is RecordKind.WorkAttempt or RecordKind.WorkReport)) return;

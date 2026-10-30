@@ -4,6 +4,13 @@ using System.Linq;
 
 namespace Station.Contracts
 {
+    // The part of the personnel policy the institution publishes: who may request detention and at what count.
+    public sealed class PublicPersonnelPolicy
+    {
+        public string SupervisorRole { get; }
+        public int DetentionThreshold { get; }
+        public PublicPersonnelPolicy(string supervisorRole, int detentionThreshold) { SupervisorRole = supervisorRole; DetentionThreshold = detentionThreshold; }
+    }
     public sealed class PersonnelConfig
     {
         public string SupervisorRole { get; }

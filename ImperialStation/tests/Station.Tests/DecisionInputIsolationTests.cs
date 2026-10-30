@@ -66,4 +66,13 @@ public sealed class DecisionInputIsolationTests
             Assert.DoesNotContain(w.Trace, e => e.Type == "GuardRevocationLearned"); Assert.Empty(w.InspectKnownGuardRevocations());
         }
     }
+
+    [Fact]
+    public void T08_SupervisorDetentionRequestUsesThePublishedThresholdNotThePrivatePersonnelConfig()
+    {
+        // The institution privately raises its threshold after publishing 2; the supervisor knows only the publication.
+        var (plain, changed) = Twin(() => Load("detention_authorization").CreateWorld(42, true), 110, w => Set(w, "<Personnel>k__BackingField", new PersonnelConfig("supervisor", 6048000, 5)), 111);
+        Assert.Equal(5, changed.Personnel!.DetentionThreshold);
+        foreach (var w in new[] { plain, changed }) Assert.Equal(DetentionRequestStatus.Queued, Assert.Single(w.InspectLocalDetentionRequests(new(2))).Status);
+    }
 }

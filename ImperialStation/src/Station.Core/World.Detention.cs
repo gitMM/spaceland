@@ -43,7 +43,7 @@ namespace Station.Core
                 Emit("DetentionDecisionRead", actor, messageId: message.Id, detail: decision.State + "; " + decision.Reason); return;
             }
             var c = message.Draft.CaseDecision;
-            if (message.Draft.Kind != MessageKind.CaseDecision || c == null || !DetentionDecisions.ShouldRequestDetention(c, Personnel, actor.Role) || localDetentionRequests.ContainsKey(message.Id)) return;
+            if (message.Draft.Kind != MessageKind.CaseDecision || c == null || !DetentionDecisions.ShouldRequestDetention(c, publicKnowledge?.Personnel, actor.Role) || localDetentionRequests.ContainsKey(message.Id)) return;
             var request = new LocalDetentionRequestSnapshot { CaseReplyMessageId = message.Id, ActorId = actor.Id.Value, AccountId = c.AccountId, CaseId = c.CaseId };
             localDetentionRequests.Add(message.Id, request);
             var payload = new DetentionRequestPayload(c.AccountId, c.CaseId, message.Id);

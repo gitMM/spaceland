@@ -46,7 +46,7 @@ namespace Station.Mind
             return new DetentionRequestChoice(DetentionDecisionState.Approved, "Approved", DetentionAuthorizationChoice.IssueNew, subjectActorId: subject.ActorId);
         }
         // A supervisor who read an accepted case reply decides whether to ask for detention.
-        public static bool ShouldRequestDetention(CaseDecisionPayload? decision, PersonnelConfig? personnel, string role) =>
+        public static bool ShouldRequestDetention(CaseDecisionPayload? decision, PublicPersonnelPolicy? personnel, string role) =>
             decision != null && decision.Accepted && personnel != null && role == personnel.SupervisorRole && ThresholdMet(decision.QualifyingCount, personnel.DetentionThreshold);
     }
 }

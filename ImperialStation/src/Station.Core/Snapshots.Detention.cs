@@ -93,7 +93,7 @@ namespace Station.Core
                 var l = new LocalDetentionRequestSnapshot { CaseReplyMessageId = r.ReadInt64(), ActorId = r.ReadInt64(), AccountId = r.ReadInt64(), CaseId = r.ReadInt64(), Status = ReadEnum<DetentionRequestStatus>(r), RequestMessageId = r.ReadInt64(), ReplyMessageId = r.ReadInt64(),
                     ReadTick = r.ReadInt64(), AuthorizationId = r.ReadInt64(), Expires = r.ReadInt64(), Reason = r.ReadString() };
                 if (Personnel == null || !actors.TryGetValue(new Id<ActorTag>(l.ActorId), out var actor) || !messages.TryGetValue(l.CaseReplyMessageId, out var source) || source.Stage != MessageStage.Read || source.Draft.Recipient != actor.Account ||
-                    source.Draft.CaseDecision?.Accepted != true || source.Draft.CaseDecision.AccountId != l.AccountId || source.Draft.CaseDecision.CaseId != l.CaseId || !DetentionDecisions.ThresholdMet(source.Draft.CaseDecision.QualifyingCount, Personnel.DetentionThreshold)) throw new ArgumentException("Invalid private detention request source.");
+                    source.Draft.CaseDecision?.Accepted != true || source.Draft.CaseDecision.AccountId != l.AccountId || source.Draft.CaseDecision.CaseId != l.CaseId || !DetentionDecisions.ShouldRequestDetention(source.Draft.CaseDecision, publicKnowledge?.Personnel, actor.Role)) throw new ArgumentException("Invalid private detention request source.");
                 if (l.Status == DetentionRequestStatus.Queued)
                 {
                     if (l.RequestMessageId != 0 || !reportAgents.TryGetValue(actor.Id, out var agent) || !agent.Pending.Any(d => d.Kind == MessageKind.RequestDetention && d.DetentionRequest?.CaseReplyMessageId == source.Id)) throw new ArgumentException("Missing queued detention request.");
