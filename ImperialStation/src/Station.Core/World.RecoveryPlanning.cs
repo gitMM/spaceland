@@ -58,7 +58,7 @@ namespace Station.Core
             if (KnownUrgentOrder(actor.Id)) agent.UrgentCredentialBlocked = true;
             RequestRecoveryDecision(agent, NeedNow); return true;
         }
-        private bool RepairCredentialBlocked(Actor actor, long machine) => publicKnowledge?.Work?.Equipment.FirstOrDefault(m => m.Id == machine)?.RequiresCredential == true && PrepareCredentialGoal(actor);
+        private bool RepairCredentialBlocked(Actor actor, long machine) => RepairPolicy.RequiresCredential(publicKnowledge, machine) && PrepareCredentialGoal(actor);
         private void DiscoverMissingCredential(Actor actor, string reason)
         {
             if (!recoveryAgents.TryGetValue(actor.Id.Value, out var agent) || agent.Pending) return;
@@ -73,7 +73,7 @@ namespace Station.Core
         }
         private bool DeferToRecovery(Actor actor)
         {
-            if (!recoveryAgents.TryGetValue(actor.Id.Value, out var agent) || !agent.Pending || agent.RetryAt > NeedNow || KnownUrgentOrder(actor.Id) && !agent.UrgentCredentialBlocked) return false;
+            if (!recoveryAgents.TryGetValue(actor.Id.Value, out var agent) || !RecoveryPolicy.Ready(agent.Pending, agent.RetryAt, NeedNow) || RecoveryPolicy.YieldsToUrgentOrder(KnownUrgentOrder(actor.Id), agent.UrgentCredentialBlocked)) return false;
             RequestRecoveryDecision(agent, NeedNow); return true;
         }
         private void RequestRecoveryDecision(RecoveryAgentSnapshot agent, long tick)
@@ -91,36 +91,37 @@ namespace Station.Core
         private void EvaluateRecovery(Id<ActorTag> actorId)
         {
             var agent = recoveryAgents[actorId.Value]; agent.NextDecision = -1; var actor = actors[actorId];
-            if (!agent.Pending || actor.Action != null || agent.PlannedTick == processingTick || EscortControls(actorId) || DeferToNeed(actor) || KnownUrgentOrder(actorId) && !agent.UrgentCredentialBlocked) return;
+            if (!agent.Pending || actor.Action != null || agent.PlannedTick == processingTick || EscortControls(actorId) || DeferToNeed(actor) || RecoveryPolicy.YieldsToUrgentOrder(KnownUrgentOrder(actorId), agent.UrgentCredentialBlocked)) return;
             if (agent.RetryAt > processingTick) { RequestRecoveryDecision(agent, agent.RetryAt); return; }
             if (!SpendPlanningRequest()) { RequestRecoveryDecision(agent, checked(processingTick + 1)); return; }
-            var view = ActorView(actorId); bool held = CredentialPlanning.KnownUsableCredential(view);
+            var view = ActorView(actorId);
+            // Registry read (see KnownRecoveryDesks): the capability is not yet published to the citizen.
             bool alternate = recoveryCapabilities.TryGetValue(actorId.Value, out var capability) && capability.Retained && capability.AccountId == actor.Account.Value;
             var memory = new RecoveryPlanningState(agent.OldCredentialId, agent.OldCardId, alternate, agent.PostedTick >= 0, agent.KnownCaseId > 0, agent.IssuedCardId,
                 sessions.TryGetValue(actorId, out var session) && session.Scope == SessionScope.CredentialRecovery ? session.Terminal : 0, agent.TerminalRetry.Where(t => t.Value > processingTick).Select(t => t.Key).ToArray());
-            var plan = held ? ReportPlanning.PlanInbox(view, Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget) :
-                CredentialPlanning.Plan(view, memory, KnownRecoveryDesks(view), RecoveryIdentityCheckTicks, Information!.PostTicks, Information.ReadBaseTicks, Information.LatencyTicks, Config.ItemActionTicks, Math.Min(6, planner.Candidates), planner.MaximumDepth, planner.NodeBudget);
+            var timings = new CredentialRecoveryTimings(Information!.LoginTicks, Information.ReadBaseTicks, Information.PostTicks, Information.LatencyTicks, Config.ItemActionTicks, RecoveryIdentityCheckTicks);
+            var plan = RecoveryPolicy.Plan(view, memory, () => KnownRecoveryDesks(view), timings, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += plan.Expansions; agent.LastOutcome = plan.Outcome; agent.LastCost = plan.Cost;
-            if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
+            var first = RecoveryPolicy.FirstIntent(plan);
+            if (first.HasValue)
             {
-                var intent = plan.Steps[0].Intent;
-                if (intent.Kind == ActionKind.PickUp && intent.Item.Value == 0) throw new InvalidOperationException("Unbound recovery output cannot execute.");
+                var intent = first.Value;
                 PlansFound++; agent.Reason = ""; agent.PlannedTick = processingTick; agent.PlannedKind = intent.Kind; agent.PlannedTerminal = intent.ServiceId;
                 long cause = Emit("PlanSelected", actor, causeId: agent.DiscoveryCauseId, detail: "restore-credential/v1; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.RecoveryCommand, Intent = intent, CauseId = cause }); return;
             }
             if (plan.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
-            RetryRecovery(agent, plan.Outcome == PlanOutcome.BudgetExhausted ? "PlanBudgetExhausted" : !alternate ? "MissingRecoveryCapabilityOrKnownCard" : "NoKnownRecoveryRouteOrService");
+            RetryRecovery(agent, RecoveryPolicy.RetryReason(plan.Outcome, alternate));
         }
         private void StartRecoveryIntent(ScheduledEvent e)
         {
             var actor = actors[e.Intent.Actor]; var agent = recoveryAgents[actor.Id.Value];
-            if (!agent.Pending || actor.Action != null || agent.RetryAt > processingTick || EscortControls(actor.Id) || DeferToNeed(actor) || KnownUrgentOrder(actor.Id) && !agent.UrgentCredentialBlocked) { RequestRecoveryDecision(agent, checked(processingTick + 1)); return; }
+            if (!agent.Pending || actor.Action != null || agent.RetryAt > processingTick || EscortControls(actor.Id) || DeferToNeed(actor) || RecoveryPolicy.YieldsToUrgentOrder(KnownUrgentOrder(actor.Id), agent.UrgentCredentialBlocked)) { RequestRecoveryDecision(agent, checked(processingTick + 1)); return; }
             agent.ActiveActionId = nextAction; Start(e.Intent, e.CauseId);
         }
         private void RetryRecovery(RecoveryAgentSnapshot agent, string reason)
         {
-            agent.Reason = reason; agent.RetryAt = checked(processingTick + agent.Backoff); agent.Backoff = NextWorkBackoff(agent.Backoff);
+            agent.Reason = reason; agent.RetryAt = WorkBackoff.RetryTick(processingTick, agent.Backoff, true); agent.Backoff = NextWorkBackoff(agent.Backoff);
             Emit("CredentialRecoveryWaiting", actors[new Id<ActorTag>(agent.ActorId)], causeId: agent.DiscoveryCauseId, detail: reason + "; retry=" + agent.RetryAt);
             RequestRecoveryDecision(agent, agent.RetryAt); WakeDaily(actors[new Id<ActorTag>(agent.ActorId)]); WakeNeed(actors[new Id<ActorTag>(agent.ActorId)]);
         }
@@ -139,15 +140,15 @@ namespace Station.Core
             if (agent.ActiveActionId == action.Id.Value)
             {
                 agent.ActiveActionId = 0; agent.RetryAt = 0;
-                // Reaching another desk does not establish that recovery service
-                // works there. Preserve failure backoff across travel so a large
-                // station cannot turn an outage into a rapid tour of every desk.
-                if (action.Kind != ActionKind.Move) agent.Backoff = planner.InitialBackoff;
-                if (action.Kind == ActionKind.PostLostCard) { agent.PostedTick = processingTick; agent.RetryAt = checked(processingTick + 2 * Information!.LatencyTicks); agent.Reason = "AwaitingRecoveryReply"; }
-                if (action.Kind == ActionKind.ReadRecoveryInbox && agent.KnownCaseId == 0) { RetryRecovery(agent, "NoReadRecoveryAuthorization"); return; }
-                if (action.Kind == ActionKind.ReadInbox)
+                if (RecoveryPolicy.ResetsBackoff(action.Kind)) agent.Backoff = planner.InitialBackoff;
+                // The captured messages' read stage is the citizen's own completed read.
+                bool unread = action.Kind == ActionKind.ReadInbox && action.CapturedMessages.Any(id => messages[id].Stage != MessageStage.Read);
+                var progress = RecoveryPolicy.AfterAction(action.Kind, agent.KnownCaseId != 0, unread);
+                if (progress == RecoveryProgress.AwaitReply) { agent.PostedTick = processingTick; agent.RetryAt = RecoveryPolicy.ReplyWaitUntil(processingTick, Information!.LatencyTicks); agent.Reason = RecoveryPolicy.AwaitingReplyReason; }
+                if (progress == RecoveryProgress.RetryUnauthorized) { RetryRecovery(agent, "NoReadRecoveryAuthorization"); return; }
+                if (progress == RecoveryProgress.RetryUnreadInbox) { RetryRecovery(agent, "CurrentInboxNotFullyRead"); return; }
+                if (progress == RecoveryProgress.Complete)
                 {
-                    if (action.CapturedMessages.Any(id => messages[id].Stage != MessageStage.Read)) { RetryRecovery(agent, "CurrentInboxNotFullyRead"); return; }
                     agent.Pending = false; agent.Completed++; agent.Reason = ""; agent.NextDecision = -1;
                     foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.EvaluateRecovery && e.Intent.Actor == actor.Id).ToArray()) scheduled.Remove(e);
                     agent.CompletionCauseId = Emit("CredentialRecoveryCompleted", actor, action.Id, causeId: action.CauseId, detail: "CurrentOrdersRead"); return;
@@ -157,16 +158,14 @@ namespace Station.Core
         }
         private void RecoveryActionFailed(Actor actor, Id<ActionTag> action, FailureReason reason)
         {
-            if (reason is FailureReason.MissingCredential or FailureReason.CredentialRevoked) DiscoverMissingCredential(actor, reason.ToString());
+            if (RecoveryPolicy.RevealsMissingCredential(reason)) DiscoverMissingCredential(actor, reason.ToString());
             if (!recoveryAgents.TryGetValue(actor.Id.Value, out var agent) || !agent.Pending || agent.ActiveActionId != action.Value) return;
             agent.ActiveActionId = 0;
-            if (reason == FailureReason.CredentialRevoked && agent.PlannedKind == ActionKind.Login && agent.IssuedCardId > 0)
+            if (RecoveryPolicy.ReplacementRevoked(reason, agent.PlannedKind, agent.IssuedCardId))
             { agent.Pending = false; DiscoverMissingCredential(actor, "ReplacementCredentialRevoked"); }
-            if (agent.PlannedTerminal > 0 && reason is FailureReason.RequiredServiceNotPresent or FailureReason.InsufficientMaterials or FailureReason.NotQualified or FailureReason.IdentityVerificationFailed)
-                // Keep observed service failure beyond the next decision. Expiring
-                // it at RetryAt made every retry choose the same failed desk.
-                agent.TerminalRetry[agent.PlannedTerminal] = checked(processingTick + agent.Backoff + planner.MaximumBackoff);
-            RetryRecovery(agent, reason == FailureReason.None ? "Interrupted" : reason.ToString());
+            var unavailableUntil = RecoveryPolicy.DeskUnavailableUntil(reason, agent.PlannedTerminal, processingTick, agent.Backoff, planner.MaximumBackoff);
+            if (unavailableUntil.HasValue) agent.TerminalRetry[agent.PlannedTerminal] = unavailableUntil.Value;
+            RetryRecovery(agent, RecoveryPolicy.FailureRetryReason(reason));
         }
         private void WakeRecovery(Actor actor)
         { if (actor.Action == null && recoveryAgents.TryGetValue(actor.Id.Value, out var agent) && agent.Pending) RequestRecoveryDecision(agent, NeedNow); }

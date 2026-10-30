@@ -129,29 +129,31 @@ namespace Station.Core
                 Kind = draft.WorkOrder.Kind, TileId = draft.WorkOrder.Tile.Value, ProjectId = draft.WorkOrder.Construction?.ProjectId ?? 0,
                 OrderMessageId = message.Id, ReadTick = processingTick, Expires = draft.WorkOrder.Expires, Status = LocalOrderStatus.Read, Backoff = planner.InitialBackoff };
             localOrders.Add(order.AttemptId, order);
-            // A repair order is the authority's authenticated claim that the machine needed
-            // repair when it was posted. An older private belief that it works cannot close
-            // the order; the worker must observe the machine again. Fresher observations win.
-            if (order.Kind == WorkKind.RepairMachine && order.MachineId > 0)
+            // Belief revision on read is a Mind rule; Core only supplies the private fact.
+            var claimed = WorkOrderPolicy.ClaimedCondition(order.Kind, order.MachineId);
+            if (claimed.HasValue)
             {
-                var condition = new FactKey(SubjectKind.Machine, order.MachineId, AttributeKind.Operational);
-                // Seeded knowledge has no observation time; only an older actual sighting is superseded.
-                if (actor.Knowledge.Entries.TryGetValue(condition, out var known) && known.Fact.SourceKind != EvidenceKind.Seeded && known.Fact.Value.Equals(FactValue.Boolean(true)) && known.Fact.ObservedTick < draft.ObservedTick)
+                var condition = claimed.Value;
+                if (WorkOrderPolicy.OrderSupersedesBelief(actor.Knowledge.Entries.TryGetValue(condition, out var known) ? known.Fact : null, draft.ObservedTick))
                     Learn(actor, condition, FactValue.Boolean(false), EvidenceKind.MessageRead, message.Id, draft.ObservedTick, 0);
             }
-            // A late inbox read must not restart an assignment the citizen already
-            // reported complete through their own authenticated session. This is
-            // memory of their submission, not the authority's assessment or physical truth.
-            if (messages.Values.Any(m => m.PhysicalSender == actor.Id && m.SenderAccount == actor.Account && m.TerminalId > 0 && m.SessionId > 0 &&
-                m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId == order.JobId && m.Draft.AttemptId == order.AttemptId && m.SubmittedTick <= processingTick))
-            { order.Status = LocalOrderStatus.Completed; order.Reason = "OwnCompletionAlreadyPosted"; UnpinOrder(actor, order.AttemptId); return; }
-            if (order.Expires <= processingTick) { order.Status = LocalOrderStatus.Expired; order.Reason = "KnownOrderExpired"; QueueOrderReport(order, MessageKind.OrderRejected, order.Reason); UnpinOrder(actor, order.AttemptId); return; }
+            // Memory of the citizen's own authenticated submission, not the
+            // authority's assessment or physical truth.
+            bool ownCompletionPosted = messages.Values.Any(m => m.PhysicalSender == actor.Id && m.SenderAccount == actor.Account && m.TerminalId > 0 && m.SessionId > 0 &&
+                m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId == order.JobId && m.Draft.AttemptId == order.AttemptId && m.SubmittedTick <= processingTick);
+            switch (WorkOrderPolicy.OnRead(ownCompletionPosted, order.Expires, processingTick))
+            {
+                case WorkOrderReadOutcome.OwnCompletionAlreadyPosted:
+                    order.Status = LocalOrderStatus.Completed; order.Reason = WorkOrderPolicy.OwnCompletionReason; UnpinOrder(actor, order.AttemptId); return;
+                case WorkOrderReadOutcome.Expired:
+                    order.Status = LocalOrderStatus.Expired; order.Reason = WorkOrderPolicy.ExpiredReason; QueueOrderReport(order, MessageKind.OrderRejected, order.Reason); UnpinOrder(actor, order.AttemptId); return;
+            }
             Schedule(new ScheduledEvent { Tick = order.Expires, Phase = EventPhase.Decision, Kind = ScheduledKind.ExpireWorkOrder, Value = order.AttemptId });
             RequestOrderDecision(order, processingTick);
         }
         private void RequestOrderDecision(LocalWorkOrderSnapshot order, long tick)
         {
-            if (order.Status != LocalOrderStatus.Read && !(order.Status == LocalOrderStatus.Working && order.Kind != WorkKind.RepairMachine)) return;
+            if (!WorkOrderPolicy.AwaitsDecision(KnownWorkStatus(order.Status), order.Kind)) return;
             if (processingPhase >= EventPhase.Decision && tick <= processingTick) tick = checked(processingTick + 1);
             if (order.NextDecision >= 0) return;
             order.NextDecision = tick; Schedule(new ScheduledEvent { Tick = tick, Phase = EventPhase.Decision, Kind = ScheduledKind.EvaluateWorkOrder, Value = order.AttemptId });
@@ -160,21 +162,25 @@ namespace Station.Core
         {
             var order = localOrders[id]; order.NextDecision = -1;
             if (EscortControls(new Id<ActorTag>(order.ActorId)) || DeferToNeed(actors[new Id<ActorTag>(order.ActorId)]) || DeferToDueGoal(actors[new Id<ActorTag>(order.ActorId)])) return;
-            if (order.Status == LocalOrderStatus.Working && order.Kind != WorkKind.RepairMachine) { if (order.Kind == WorkKind.VerifyMachine) EvaluateVerificationOrder(order); else if (order.Kind == WorkKind.ConstructHabitat) EvaluateConstructionOrder(order); else EvaluateCleanupOrder(order); return; }
-            if (order.Status != LocalOrderStatus.Read) return;
+            switch (WorkOrderPolicy.Route(KnownWorkStatus(order.Status), order.Kind))
+            {
+                case WorkOrderRoute.Verification: EvaluateVerificationOrder(order); return;
+                case WorkOrderRoute.Construction: EvaluateConstructionOrder(order); return;
+                case WorkOrderRoute.Cleanup: EvaluateCleanupOrder(order); return;
+                case WorkOrderRoute.None: return;
+            }
             var actor = actors[new Id<ActorTag>(order.ActorId)];
             if (actor.Action != null || !KnownOnDuty(actor.Id) || PrepareCredentialGoal(actor)) return; // Action/duty boundaries wake this retained order.
             if (!SpendPlanningRequest()) { RequestOrderDecision(order, checked(processingTick + 1)); return; }
-            var view = ActorView(actor.Id);
-            var equipment = view.PublicKnowledge?.Work?.Equipment.SingleOrDefault(m => m.Id == order.MachineId);
-            var result = order.Kind == WorkKind.ConstructHabitat ? ConstructionPlanning.Plan(view, ReadConstructionSpecification(order), planner.Candidates, planner.MaximumDepth, planner.NodeBudget) : order.Kind == WorkKind.VerifyMachine ? VerificationPlanning.Plan(view, order.MachineId, planner.MaximumDepth, planner.NodeBudget) : order.Kind == WorkKind.CleanTile ? CleanupPlanning.Plan(view, new Id<TileTag>(order.TileId), false, Information!.InspectTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget) :
-                equipment == null || !equipment.Roles.Contains(view.Role, StringComparer.Ordinal) ? new PlanResult(PlanOutcome.NoPlan) : RepairPlanning.Plan(view, order.MachineId, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            var result = WorkOrderPolicy.PlanAcceptance(ActorView(actor.Id), order.Kind, order.MachineId, order.TileId, order.Kind == WorkKind.ConstructHabitat ? ReadConstructionSpecification(order) : null,
+                Information!.InspectTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += result.Expansions;
-            if (result.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; RequestOrderDecision(order, checked(processingTick + order.Backoff)); order.Backoff = NextWorkBackoff(order.Backoff); return; }
-            if (result.Outcome == PlanOutcome.NoPlan)
-            { PlansUnavailable++; order.Status = LocalOrderStatus.Rejected; order.Reason = order.Kind == WorkKind.ConstructHabitat ? "NoKnownConstructionPrerequisitesOrRoute" : order.Kind == WorkKind.VerifyMachine ? "NoKnownVerificationRoute" : order.Kind == WorkKind.CleanTile ? "NoKnownCleanupPrerequisitesOrRoute" : "NoKnownRepairPrerequisitesOrRoute"; QueueOrderReport(order, MessageKind.OrderRejected, order.Reason); UnpinOrder(actor, id); }
+            var acceptance = WorkOrderPolicy.Accept(result.Outcome, order.Kind);
+            if (acceptance.Verdict == WorkOrderVerdict.Retry) { PlansExhausted++; RequestOrderDecision(order, checked(processingTick + order.Backoff)); order.Backoff = NextWorkBackoff(order.Backoff); return; }
+            if (acceptance.Verdict == WorkOrderVerdict.Reject)
+            { PlansUnavailable++; order.Status = LocalOrderStatus.Rejected; order.Reason = acceptance.Reason; QueueOrderReport(order, MessageKind.OrderRejected, order.Reason); UnpinOrder(actor, id); }
             else
-            { PlansFound++; order.Status = LocalOrderStatus.AcknowledgmentPending; QueueOrderReport(order, MessageKind.OrderAccepted, "Accepted"); }
+            { PlansFound++; order.Status = LocalOrderStatus.AcknowledgmentPending; QueueOrderReport(order, MessageKind.OrderAccepted, acceptance.Reason); }
             Emit("WorkOrderEvaluated", actor, attemptId: order.AttemptId, messageId: order.OrderMessageId, detail: "attempt=" + id + "; " + order.Status);
         }
         private bool SpendPlanningRequest()
@@ -183,12 +189,18 @@ namespace Station.Core
             if (planningRequestsThisTick >= planner.RequestsPerTick) return false;
             planningRequestsThisTick++; PlannerRequests++; return true;
         }
-        private long NextWorkBackoff(long value) => value > planner.MaximumBackoff / 2 ? planner.MaximumBackoff : Math.Min(planner.MaximumBackoff, checked(value * 2));
+        private long NextWorkBackoff(long value) => WorkBackoff.Next(value, planner.MaximumBackoff);
+        private static KnownWorkOrderStatus KnownWorkStatus(LocalOrderStatus status) => (KnownWorkOrderStatus)(int)status;
+        private static WorkOrderBrief WorkOrderBriefOf(LocalWorkOrderSnapshot order) => new WorkOrderBrief(order.AttemptId, order.Kind, KnownWorkStatus(order.Status), order.MachineId, order.TileId);
+        // The citizen's own private order copies, in attempt order.
+        private IEnumerable<WorkOrderBrief> OwnWorkOrderBriefs(long actorId) => localOrders.Values.Where(o => o.ActorId == actorId).Select(WorkOrderBriefOf);
+        private bool WorkReportsFirst(Id<ActorTag> actor) => WorkOrderPolicy.ReportsFirst(needAgents.ContainsKey(actor.Value), reportAgents.TryGetValue(actor, out var report) ? report.Pending.Count : 0,
+            checkIns.TryGetValue(actor, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick));
         private void WakeOrderDecisions(Actor actor, bool failed = false)
         {
             if (actor.Action != null) return;
-            foreach (var order in localOrders.Values.Where(o => o.ActorId == actor.Id.Value && (o.Status == LocalOrderStatus.Read || o.Status == LocalOrderStatus.Working && o.Kind != WorkKind.RepairMachine) && o.NextDecision < 0))
-                RequestOrderDecision(order, failed ? checked(processingTick + order.Backoff) : processingTick);
+            foreach (var order in localOrders.Values.Where(o => o.ActorId == actor.Id.Value && WorkOrderPolicy.AwaitsDecision(KnownWorkStatus(o.Status), o.Kind) && o.NextDecision < 0))
+                RequestOrderDecision(order, WorkBackoff.RetryTick(processingTick, order.Backoff, failed));
         }
         private void QueueOrderReport(LocalWorkOrderSnapshot order, MessageKind kind, string reason)
         {
@@ -245,14 +257,15 @@ namespace Station.Core
             if (order.Kind is WorkKind.VerifyMachine or WorkKind.ConstructHabitat) { RequestOrderDecision(order, processingTick); return; }
             if (order.Kind == WorkKind.CleanTile)
             {
-                foreach (var priorCleanup in localOrders.Values.Where(o => o.AttemptId != order.AttemptId && o.ActorId == order.ActorId && o.Kind == WorkKind.CleanTile && o.TileId == order.TileId && o.Status == LocalOrderStatus.Working).ToArray())
-                { priorCleanup.Status = LocalOrderStatus.Cancelled; priorCleanup.Reason = "SupersedingOrderRead"; RemoveOrderGoal(priorCleanup); SetAttemptExecution(priorCleanup.AttemptId, WorkExecution.Cancelled); UnpinOrder(actors[new Id<ActorTag>(priorCleanup.ActorId)], priorCleanup.AttemptId); }
+                foreach (long priorId in WorkOrderPolicy.SupersededCleanups(WorkOrderBriefOf(order), OwnWorkOrderBriefs(order.ActorId)))
+                { var priorCleanup = localOrders[priorId]; priorCleanup.Status = LocalOrderStatus.Cancelled; priorCleanup.Reason = WorkOrderPolicy.SupersededReason; RemoveOrderGoal(priorCleanup); SetAttemptExecution(priorCleanup.AttemptId, WorkExecution.Cancelled); UnpinOrder(actors[new Id<ActorTag>(priorCleanup.ActorId)], priorCleanup.AttemptId); }
                 order.CleanupChecked = false; RequestOrderDecision(order, processingTick); return;
             }
             var actorId = new Id<ActorTag>(order.ActorId);
             if (!repairAgents.TryGetValue(actorId, out var agent)) { agent = new RepairAgent { Actor = actorId, Backoff = planner.InitialBackoff }; repairAgents.Add(actorId, agent); }
-            if (agent.Attempts.TryGetValue(order.MachineId, out long oldId) && oldId != order.AttemptId && localOrders.TryGetValue(oldId, out var old))
-            { old.Status = LocalOrderStatus.Cancelled; old.Reason = "SupersedingOrderRead"; SetAttemptExecution(oldId, WorkExecution.Cancelled); UnpinOrder(actors[actorId], oldId); }
+            bool retained = agent.Attempts.TryGetValue(order.MachineId, out long oldId);
+            if (WorkOrderPolicy.SupersedesRepair(retained ? oldId : (long?)null, order.AttemptId) && localOrders.TryGetValue(oldId, out var old))
+            { old.Status = LocalOrderStatus.Cancelled; old.Reason = WorkOrderPolicy.SupersededReason; SetAttemptExecution(oldId, WorkExecution.Cancelled); UnpinOrder(actors[actorId], oldId); }
             agent.Attempts[order.MachineId] = order.AttemptId;
             if (!agent.Pending.Contains(order.MachineId)) agent.Pending.Add(order.MachineId);
             RequestRepairDecision(agent, processingTick);
@@ -275,8 +288,8 @@ namespace Station.Core
         private void ExpireWorkOrder(long id)
         {
             var order = localOrders[id];
-            if (order.Status is LocalOrderStatus.Completed or LocalOrderStatus.Cancelled or LocalOrderStatus.Rejected or LocalOrderStatus.Expired) return;
-            order.Status = LocalOrderStatus.Expired; order.Reason = "KnownOrderExpired"; CancelPendingAcknowledgment(order); RemoveOrderGoal(order); UnpinOrder(actors[new Id<ActorTag>(order.ActorId)], id);
+            if (WorkOrderPolicy.Settled(KnownWorkStatus(order.Status))) return;
+            order.Status = LocalOrderStatus.Expired; order.Reason = WorkOrderPolicy.ExpiredReason; CancelPendingAcknowledgment(order); RemoveOrderGoal(order); UnpinOrder(actors[new Id<ActorTag>(order.ActorId)], id);
             SetAttemptExecution(id, WorkExecution.Cancelled); QueueOrderReport(order, MessageKind.WorkBlocked, order.Reason);
         }
         private void UnpinOrder(Actor actor, long id)

@@ -83,7 +83,7 @@ namespace Station.Core
         }
         private void PlanGuardJoin(Actor actor, LocalGuardOrderSnapshot local)
         {
-            if (local.FormedTick >= 0) { local.Status = GuardOrderStatus.Searching; local.Reason = "SearchKnownCandidates"; RequestGuardDecision(local, processingTick); return; }
+            if (GuardSearchPolicy.TeamFormed(local.FormedTick)) { local.Status = GuardOrderStatus.Searching; local.Reason = GuardSearchPolicy.SearchReason; RequestGuardDecision(local, processingTick); return; }
             if (!SpendPlanningRequest()) { RequestGuardDecision(local, checked(processingTick + 1)); return; }
             var plan = GuardSearchPlanning.Join(ActorView(actor.Id), local.Payload, Information!.InspectTicks, planner.MaximumDepth, planner.NodeBudget);
             ExecuteGuardPlan(actor, local, plan, "guard-join/v1");
@@ -99,17 +99,18 @@ namespace Station.Core
             PlannerExpansions += plan.Expansions;
             if (plan.Outcome != PlanOutcome.PlanFound || plan.Steps.Count == 0)
             {
-                if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; local.Reason = "PlanBudgetExhausted"; }
-                else { PlansUnavailable++; local.Reason = "NoKnownSearchRoute"; QueueGuardOutcome(local, "SearchUnreachable", processingTick); }
+                var failure = GuardSearchPolicy.Failure(plan.Outcome);
+                if (plan.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
+                local.Reason = failure.Reason;
+                if (failure.Outcome != null) QueueGuardOutcome(local, failure.Outcome, processingTick);
                 RequestGuardDecision(local, checked(processingTick + local.Backoff)); local.Backoff = NextWorkBackoff(local.Backoff);
                 if (checkIns.TryGetValue(actor.Id, out var checkIn)) RequestCheckInDecision(checkIn, processingTick); return;
             }
-            PlansFound++; var step = plan.Steps[0].Intent;
-            if (step.Kind != ActionKind.BeginEscort) local.Backoff = planner.InitialBackoff;
-            if (local.Status != GuardOrderStatus.TargetLocated) local.Reason = policy;
+            PlansFound++; var intent = GuardSearchPolicy.Intent(plan, actor.Id, local.OrderMessageId);
+            if (GuardSearchPolicy.ResetsBackoff(intent.Kind)) local.Backoff = planner.InitialBackoff;
+            local.Reason = GuardSearchPolicy.SelectedReason(KnownGuardStatus(local.Status), policy, local.Reason);
             long cause = Emit("PlanSelected", actor, messageId: local.OrderMessageId, detail: policy + "; candidate=" + local.CandidateIndex + "; cost=" + plan.Cost);
-            Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, CauseId = cause,
-                Intent = new ActionIntent(actor.Id, step.Kind, step.Target, step.Item, serviceId: step.ServiceId, targetActor: step.TargetActor, guardOrderId: local.OrderMessageId) });
+            Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, CauseId = cause, Intent = intent });
         }
         private void GuardTargetObserved(Actor actor, ActiveAction action, FactValue value)
         {
@@ -117,8 +118,9 @@ namespace Station.Core
                 local.Payload.Expires <= processingTick || action.TargetActor.Value != local.Payload.SubjectActorId || action.Target != local.Payload.Candidates[local.CandidateIndex]) return;
             bool found = value.Kind == FactValueKind.Coordinate;
             local.SearchObservations = local.SearchObservations.Concat(new[] { new PatrolObservation(processingTick, action.Id.Value, action.Target, found) }).ToArray(); local.CandidateIndex++;
-            if (found) { local.Status = GuardOrderStatus.TargetLocated; local.Reason = "LocallyIdentifiedTarget"; RemoveGuardDecision(local); }
-            else if (local.CandidateIndex == local.Payload.Candidates.Count) { local.Status = GuardOrderStatus.SearchExhausted; local.Reason = "TargetNotLocated"; RemoveGuardDecision(local); QueueGuardOutcome(local, "TargetNotLocated", processingTick); }
+            var observation = GuardSearchPolicy.Observe(found, local.CandidateIndex, local.Payload.Candidates.Count);
+            if (observation == GuardSearchObservation.Located) { local.Status = GuardOrderStatus.TargetLocated; local.Reason = "LocallyIdentifiedTarget"; RemoveGuardDecision(local); }
+            else if (observation == GuardSearchObservation.Exhausted) { local.Status = GuardOrderStatus.SearchExhausted; local.Reason = "TargetNotLocated"; RemoveGuardDecision(local); QueueGuardOutcome(local, "TargetNotLocated", processingTick); }
             Emit("GuardSearchCandidateInspected", actor, action.Id, messageId: local.OrderMessageId, target: action.Target, detail: found ? "FoundHere" : "AbsentHere", causeId: action.CauseId);
         }
     }
