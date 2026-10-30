@@ -41,18 +41,10 @@ namespace Station.Core
         private ExpansionCandidate[] GrowthCandidates()
         {
             // Publication and administrative commitments are the sole occupancy evidence here.
-            var layout = new SortedSet<Coord>(publicKnowledge!.Layout.Select(t => t.Position).Concat(growthCommitments.Values.Where(c => c.AcceptedReportId > 0).Select(c => constructionProjects[c.ProjectId].Site)));
-            var sites = new SortedSet<Coord>();
-            foreach (var tile in layout)
-            foreach (var site in tile.Neighbors())
-                if (Growth!.Contains(site) && !layout.Contains(site) && !constructionSites.ContainsKey(site)) sites.Add(site);
-            var options = from d in Topology.Definitions.Values
-                          where d.Family == TileFamily.Habitat && d.Construction != null && d.Construction.Berths > 0 && registrations.Values.Any(p => d.Construction.Access.Roles.Contains(p.Role, StringComparer.Ordinal))
-                          from site in sites
-                          let recipe = recipes[d.Construction!.RecipeId]
-                          orderby recipe.Duration, site
-                          select new { d.Id, Site = site, d.Construction!.Berths, Recipe = recipe };
-            return options.OrderBy(c => c.Recipe.Duration).ThenBy(c => c.Site).ThenBy(c => c.Id, StringComparer.Ordinal).Take(Growth!.Candidates).Select((c, i) => new ExpansionCandidate(i + 1, c.Id, c.Site, c.Berths, c.Recipe.Duration, c.Recipe.Inputs)).ToArray();
+            var layout = publicKnowledge!.Layout.Select(t => t.Position).Concat(growthCommitments.Values.Where(c => c.AcceptedReportId > 0).Select(c => constructionProjects[c.ProjectId].Site));
+            var definitions = Topology.Definitions.Values.Where(d => d.Construction != null).Select(d => new HabitatOption(d.Id, d.Family, d.Construction!.Berths, d.Construction.Access.Roles,
+                recipes[d.Construction.RecipeId].Duration, recipes[d.Construction.RecipeId].Inputs));
+            return ExpansionPlanning.Candidates(layout, Growth!.Minimum, Growth.Maximum, constructionSites.Keys, definitions, registrations.Values.Select(p => p.Role), Growth.Candidates);
         }
         private void RequestGrowthReview(long tick)
         {
@@ -63,7 +55,7 @@ namespace Station.Core
         {
             var s = growthState!; s.NextReview = -1; bool dispatchPending = DispatchGrowthProjects();
             long pending = growthCommitments.Values.Where(c => c.AcceptedReportId == 0).Sum(c => c.Berths);
-            long deficit = s.BelievedCompletedBerths >= s.Target ? 0 : Math.Max(0, s.Target - s.BelievedCompletedBerths - pending);
+            long deficit = ExpansionPlanning.Deficit(s.BelievedCompletedBerths, s.Target, pending);
             if (deficit == 0)
             {
                 s.Reason = s.BelievedCompletedBerths >= s.Target ? "BelievedCapacitySufficient" : "CapacityCommittedAwaitingEvidence";

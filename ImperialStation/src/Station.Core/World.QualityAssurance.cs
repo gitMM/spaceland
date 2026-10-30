@@ -24,7 +24,7 @@ namespace Station.Core
             var draft = message.Draft; var job = jobs[attempt.JobId];
             if (QualityAssurance != null && job.Kind == WorkKind.RepairMachine && draft.Kind == MessageKind.WorkCompleted && !qualityChecks.ContainsKey(attempt.Id))
             {
-                int roll = streams["qa"].Next(1000); bool sample = roll < QualityAssurance.SamplePermille;
+                int roll = streams["qa"].Next(1000); bool sample = QualityPolicy.Sampled(QualityAssurance, roll);
                 var check = new QualityAssuranceSnapshot { RepairAttemptId = attempt.Id, RepairJobId = job.Id, MachineId = job.MachineId, CompletionMessageId = message.Id,
                     ReceivedTick = processingTick, SampleRoll = roll, DueTick = sample ? checked(processingTick + QualityAssurance.DelayTicks) : -1,
                     Status = sample ? QualityAssuranceStatus.Scheduled : QualityAssuranceStatus.NotSampled };
@@ -36,9 +36,10 @@ namespace Station.Core
             var q = qualityChecks.Values.SingleOrDefault(c => c.VerificationJobId == job.Id);
             if (q == null || q.ResultMessageId > 0) return;
             q.VerificationAttemptId = attempt.Id;
-            if (draft.Kind == MessageKind.WorkCompleted)
-            { q.ResultMessageId = message.Id; q.Status = draft.Claim.Equals(FactValue.Boolean(true)) ? QualityAssuranceStatus.ReportedClear : QualityAssuranceStatus.ReportedDiscrepancy; q.Reason = "VerificationClaimReceived"; }
-            else if (draft.Kind is MessageKind.OrderRejected or MessageKind.WorkBlocked or MessageKind.UnableToContinue)
+            var verdict = QualityPolicy.Verdict(draft.Kind, draft.Claim);
+            if (verdict is VerificationVerdict.Clear or VerificationVerdict.Discrepancy)
+            { q.ResultMessageId = message.Id; q.Status = verdict == VerificationVerdict.Clear ? QualityAssuranceStatus.ReportedClear : QualityAssuranceStatus.ReportedDiscrepancy; q.Reason = "VerificationClaimReceived"; }
+            else if (verdict == VerificationVerdict.NeedsAttention)
             { q.Status = QualityAssuranceStatus.NeedsAttention; q.Reason = draft.Claim.Text; }
             else return;
             Emit("QualityResultReceived", attemptId: attempt.Id, messageId: message.Id, detail: q.Status.ToString(), causeId: q.CauseId);
@@ -48,18 +49,21 @@ namespace Station.Core
             var q = qualityChecks[attempt]; if (q.Status != QualityAssuranceStatus.Scheduled) return;
             q.Status = QualityAssuranceStatus.PendingSupervisor; RequestQualityReview(processingTick);
         }
-        private IEnumerable<DispatchCandidate> VerificationCandidates(IAuthorityView view) => view.Personnel
-            .Where(p => p.Role == (QualityAssurance?.SupervisorRole ?? "supervisor") && p.Roster != null && p.Roster.OnDuty(view.Tick))
-            .Select(Candidate).Where(c => !c.Committed && c.KnownOrigin.HasValue);
-        private long SelectVerification(IAuthorityView view, long machine, long excludedActor, IEnumerable<DispatchCandidate>? available = null)
+        private string SupervisorRole => QualityAssurance?.SupervisorRole ?? "supervisor";
+        private static QualityCheckStage QualityStage(QualityAssuranceStatus status) => status switch
         {
-            var target = view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == machine); if (target == null) return 0;
-            // Reject ineligible roles/rosters before evaluating their commitments.
-            // Candidate reads the work history; scanning it for every citizen for
-            // every pending verification made concurrent QA quadratic in population.
-            return (available ?? VerificationCandidates(view)).Where(c => c.Person.ActorId != excludedActor)
-                .OrderBy(c => TravelEstimates.Authority(c.KnownOrigin!.Value, target.Position, view.NominalTravelTicks)).ThenBy(c => c.Person.ActorId).Select(c => c.Person.ActorId).FirstOrDefault();
-        }
+            QualityAssuranceStatus.NotSampled => QualityCheckStage.NotSampled,
+            QualityAssuranceStatus.Scheduled => QualityCheckStage.Scheduled,
+            QualityAssuranceStatus.PendingSupervisor => QualityCheckStage.PendingSupervisor,
+            QualityAssuranceStatus.Assigned => QualityCheckStage.Assigned,
+            QualityAssuranceStatus.ReportedClear => QualityCheckStage.ReportedClear,
+            QualityAssuranceStatus.ReportedDiscrepancy => QualityCheckStage.ReportedDiscrepancy,
+            QualityAssuranceStatus.NeedsAttention => QualityCheckStage.NeedsAttention,
+            _ => throw new ArgumentOutOfRangeException(nameof(status))
+        };
+        private IEnumerable<DispatchCandidate> VerificationCandidates(IAuthorityView view) => QualityPolicy.VerificationCandidates(view, SupervisorRole, Candidate);
+        private long SelectVerification(IAuthorityView view, long machine, long excludedActor, IEnumerable<DispatchCandidate>? available = null) =>
+            QualityPolicy.Verifier(view, machine, excludedActor, available ?? VerificationCandidates(view));
         private void RequestQualityReview(long tick)
         {
             if (QualityAssurance == null || !qualityChecks.Values.Any(q => q.Status == QualityAssuranceStatus.PendingSupervisor)) return;

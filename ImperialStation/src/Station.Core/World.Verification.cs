@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
 using Station.Mind;
@@ -17,15 +18,19 @@ namespace Station.Core
             var result = new VerificationInspectionSnapshot { ActorId = actor.Id.Value, AttemptId = action.AttemptId, MachineId = action.ServiceId, ActionId = action.Id.Value,
                 Tick = processingTick, Operational = operational.Value.Number != 0, RequiredResource = required.Value.Text, InstalledResource = installed.Value.Text };
             verificationInspections.Add(action.AttemptId, result);
-            Emit("VerificationInspected", actor, action.Id, attemptId: action.AttemptId, detail: result.Discrepancy ? "ResolveJobDiscrepancy" : "NoDiscrepancy", causeId: action.CauseId);
+            Emit("VerificationInspected", actor, action.Id, attemptId: action.AttemptId, detail: Discrepancy(result) ? "ResolveJobDiscrepancy" : "NoDiscrepancy", causeId: action.CauseId);
         }
+        private static bool Discrepancy(VerificationInspectionSnapshot result) => VerificationPlanning.Discrepancy(result.Operational, result.RequiredResource, result.InstalledResource);
+        // The citizen's own order book, as private knowledge for its order-priority rules.
+        private IEnumerable<KnownLocalOrder> OwnLocalOrders(long actor) =>
+            localOrders.Values.Where(o => o.ActorId == actor).Select(o => new KnownLocalOrder(o.AttemptId, o.Kind, o.Status == LocalOrderStatus.Working));
         private void EvaluateVerificationOrder(LocalWorkOrderSnapshot order)
         {
             var actor = actors[new Id<ActorTag>(order.ActorId)]; if (actor.Action != null || processingTick >= order.Expires) return;
-            if (localOrders.Values.Any(o => o.ActorId == order.ActorId && o.Status == LocalOrderStatus.Working && o.Kind != WorkKind.RepairMachine && o.AttemptId < order.AttemptId)) return;
+            if (VerificationPlanning.YieldsToOlderOrder(order.AttemptId, OwnLocalOrders(order.ActorId))) return;
             if (verificationInspections.TryGetValue(order.AttemptId, out var result))
             {
-                order.Status = LocalOrderStatus.Completed; order.Reason = result.Discrepancy ? "ResolveJobDiscrepancy" : "VerifiedClear";
+                order.Status = LocalOrderStatus.Completed; order.Reason = VerificationPlanning.Finding(Discrepancy(result));
                 var draft = new MessageDraft(MessageKind.WorkCompleted, RecipientKind.Authority, default, new FactKey(SubjectKind.Machine, order.MachineId, AttributeKind.Operational),
                     FactValue.Boolean(result.Operational), result.Tick, order.JobId, order.AttemptId, order.OrderMessageId, operationKey: "verification/" + order.AttemptId,
                     inspectionReport: Personnel == null ? null : new InspectionReportPayload(result.ActionId, result.RequiredResource, result.InstalledResource));
