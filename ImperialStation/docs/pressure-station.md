@@ -4,7 +4,7 @@ Requested 2026-10-29. Status (2026-10-30): the gate passes at 32 and 256 citizen
 for seeds 42, 7, 91, 1234 and 2026, with exact replay and the independent audit; the
 milestone stays open for calibration (see below).
 
-Done: the six [staffing, daily timing and response-time](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)
+Done: the six [staffing, daily timing and response-time](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times)
 fixes, the [population margin follow-up](acceptance-current.md#follow-up--population-margin-and-unacknowledged-facility-orders-2026-10-30)
 and [missed-window, check-in and unread-roster verification with seed coverage](acceptance-current.md#remaining-daily-life-verification).
 Remaining: calibrate the declared response targets and the 3,000-tick check-in bound,
@@ -46,7 +46,7 @@ this workload or treat outstanding construction gates as required release work.
 ## Staffing, daily timing and response times (2026-10-30)
 
 This increment implements items 6, 1 and 3 of the
-[next step](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
+[completed step](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times).
 Items 5, 4 and 2 follow in a later section. The population gate is now 256 citizens.
 
 Declared workload changes (all in `PressureStation.Generator.cs`):
@@ -194,7 +194,7 @@ State `5d0c4526…eb01`, continuation `52125ac3…8ff3`.
 ## Terminal outages, cafeteria estimates, escort deadlines and a stale-belief fix (2026-10-30)
 
 Items 5 and 4 are described in the
-[acceptance matrix](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
+[acceptance matrix](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times).
 Snapshot schema 48 adds learned terminal outages and cafeteria estimates.
 
 The first 256-citizen run with learned outages failed the clear-day gate: three

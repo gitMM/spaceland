@@ -46,11 +46,14 @@ also completes all 63 required releases, but first clears its backlogs at tick
 318,000, leaving only 6,000 clear ticks. It fails the unchanged 36,000-tick clear-day
 requirement; replay cannot turn that primary failure into a passing population gate.
 
-## Next step — staffing, daily timing and response times
+## Completed step — staffing, daily timing and response times
 
-Requested after the user's review of the 32-person logs (2026-10-29). This is the
-next implementation and verification step, not a completed milestone. Keep the
-station layout and population fixed; expansion remains deferred.
+Requested after the user's review of the 32-person logs (2026-10-29); completed
+2026-10-30 (all six items below, including staggered guard shifts, are done). It is
+not the next step: remaining work is listed in
+[pressure-station.md](pressure-station.md) and
+[remaining daily-life verification](#remaining-daily-life-verification). The station
+layout and population stay fixed; expansion remains deferred.
 
 **Status 2026-10-30: all six items are implemented and verified at 32 and 256
 citizens (items 6, 1 and 3 first, then 5, 4 and 2). With all six, the 256-citizen
