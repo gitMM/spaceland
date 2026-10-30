@@ -1199,3 +1199,27 @@ derived site/service indexes. SubjectKind.Service is used for locally learned
 constructed service locations. Unknown dynamic beds are excluded from ActorView;
 physical completion does not change the initial public layout or authority beliefs.
 See h3-physical-construction-progress.md for evidence and remaining autonomous work.
+
+## Decision-input memory (snapshots 50–53, 2026-10-30)
+
+These schemas close the T08 decision-input leaks listed in
+[acceptance-current.md](acceptance-current.md#follow-up--t08-decision-inputs-2026-10-30).
+Each one saves something a citizen was told or saw, so a decision no longer reads world
+truth or another party's private state.
+
+- **50:** `knownRecordGrants`, each holder's own copy of its records-access grants
+  (actor, terminal, record kind, role), delivered at start-up. Audit terminal choice
+  reads only this copy; the records office keeps `recordAccess`.
+- **51:** `seenServiceWaits`, per citizen, the visible wait of each usable need service
+  on its own tile. It is set on arrival and on every queue, seat, bed-label or power
+  change while the citizen stands there. Same-tile wait comparison and the on-arrival
+  switch to a free identical service read only this.
+- **52:** `RetainsAlternateIdentity` on each recovery agent: whether the citizen was told
+  at enrolment that it holds an alternate identity proof.
+- **53:** `ownCompletionPosts`, (actor, job, attempt) for each `WorkCompleted` a citizen
+  posted itself. A late order read uses it instead of scanning the message store.
+
+Publication changes are not serialized. They are rebuilt when their service starts or is
+restored: `PublicKnowledge.Personnel` (supervisor role and detention threshold) and
+`PublicKnowledge.RecoveryDesks` (the credential-recovery desk directory). Older binary
+checkpoints are rejected. Scenario and replay envelope schema versions are unchanged.

@@ -42,10 +42,25 @@ co-locates guard teams (a physical handshake).
 
 The move was verified as behaviour-identical: the 32-citizen pressure, recovery and
 institutional benchmarks and the 256-citizen pressure run produce byte-identical
-checkpoints and traces before and after. Known information leaks, where Core still
-reads world truth to build a decision's inputs, are listed under T08 in the
-[acceptance matrix](acceptance-current.md#acceptance-gates); fixing them changes
-behaviour and is separate work.
+checkpoints and traces before and after.
+
+The follow-up audit's information leaks, where Core read world truth to build a
+decision's inputs, were closed the same day (see
+[T08 decision inputs](acceptance-current.md#follow-up--t08-decision-inputs-2026-10-30)).
+Inputs now come from four sources:
+
+- **Publications:** `PublicKnowledge.Personnel` (supervisor role, detention threshold)
+  and `PublicKnowledge.RecoveryDesks`.
+- **Institution-held records:** authority `registrations` authenticate requesters and
+  choose replies; detention intake reads the published `DetentionAuthorization` ledger
+  row.
+- **The decider's own memory:** record-grant notices, alternate-identity enrolment, own
+  completion posts, the inbox read's own result and own credential facts.
+- **Local perception:** `seenServiceWaits`, updated on arrival and on every visible
+  change at the citizen's tile.
+
+A conversation partner decides consent itself when asked. After a failed handoff, each
+guard on the leader's team list reacts on its own order copy.
 
 
 ## World and execution
