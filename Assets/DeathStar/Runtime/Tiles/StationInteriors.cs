@@ -4,11 +4,12 @@ using UnityEngine.Rendering.Universal;
 
 namespace DeathStar
 {
-    // The station's interiors near the viewer (TileBuilder.BuildInterior). Cells with an interior whose centres lie
-    // within radius of the ring centre get their room and a lamp (and in play a collider), and their tiles' windows turn
+    // The station's interiors near the viewer (TileBuilder.BuildInterior). Cells with an interior in a hall (a lone room
+    // is a hall of one) with any cell centre within radius of the ring centre get their room and a lamp (and in play a
+    // collider), so a hall is never seen with holes where its far cells would be, and their tiles' windows turn
     // to clear glass so the real room shows through them (not Command's or Industrial's, whose towers stand glazed
-    // outside the cube with no room in them); further out the windows keep TileGlass's fake rooms. A cell
-    // drops its interior again past radius + hold. Rooms are built nearest first, perFrame at a time in play. On the
+    // outside the cube with no room in them); further out the windows keep TileGlass's fake rooms. A hall
+    // drops its interiors again once all its cells are past radius + hold. Rooms are built nearest first, perFrame at a time in play. On the
     // Foundry's curved grid they are bent like the tiles (CurvedTileMesh.Bend) and distances use the cells' curved centres.
     // Lamps light only the interiors (rendering layer 1), so no light falls through walls onto the hull outside. With
     // colliders (always in play) each room gets a mesh collider and its tile's window glass another, for StationWalker.
@@ -39,6 +40,9 @@ namespace DeathStar
         Dictionary<Vector3Int,MeshRenderer[]> tiles;
         readonly Dictionary<Vector3Int,(GameObject go,Mesh mesh,Mesh glass)> built=new Dictionary<Vector3Int,(GameObject,Mesh,Mesh)>();
         readonly List<Vector3Int> scratch=new List<Vector3Int>();
+        // Each cell's hall (TileBuilder.Hall), and in ShowAround the distance from its centre to each hall's nearest cell.
+        readonly Dictionary<Vector3Int,Vector3Int> hallOf=new Dictionary<Vector3Int,Vector3Int>();
+        readonly Dictionary<Vector3Int,float> hallNear=new Dictionary<Vector3Int,float>();
         Transform holder;
 
         public int Count=>built.Count;
@@ -339,6 +343,7 @@ namespace DeathStar
             centres.Clear();
             foreach(var pair in structure.cells)
                 if(builder.Interior(pair.Key))centres[pair.Key]=warp!=null?warp.Map(TileStructure.Center(pair.Key)):TileStructure.Center(pair.Key);
+            hallOf.Clear();foreach(var c in centres.Keys)hallOf[c]=builder.Hall(c);
             this.clear=clear!=null?clear:materials[(int)TileSlot.Glass];
             inside=(Material[])materials.Clone();inside[(int)TileSlot.Glass]=this.clear;
             floors.Clear();
@@ -346,17 +351,23 @@ namespace DeathStar
             FindLifts();
         }
 
-        // Builds the interiors within r of centre, nearest first (at most max of them; 0: all), and drops those past
-        // r + hold.
+        // Builds the interiors of the halls with a cell within r of centre, nearest cell first (at most max of them; 0:
+        // all), and drops those of the halls whose cells are all past r + hold.
         public void ShowAround(Vector3 centre,float r,int max=0)
         {
             if(structure==null)return;
             var sw=System.Diagnostics.Stopwatch.StartNew();
+            hallNear.Clear();
+            foreach(var pair in centres)
+            {
+                var h=hallOf[pair.Key];float d=Vector3.Distance(pair.Value,centre);
+                if(!hallNear.TryGetValue(h,out var near)||d<near)hallNear[h]=d;
+            }
             scratch.Clear();
-            foreach(var cell in built.Keys)if(Vector3.Distance(centres[cell],centre)>r+hold)scratch.Add(cell);
+            foreach(var cell in built.Keys)if(hallNear[hallOf[cell]]>r+hold)scratch.Add(cell);
             foreach(var cell in scratch)Drop(cell);
             scratch.Clear();
-            foreach(var pair in centres)if(!built.ContainsKey(pair.Key)&&Vector3.Distance(pair.Value,centre)<=r)scratch.Add(pair.Key);
+            foreach(var pair in centres)if(!built.ContainsKey(pair.Key)&&hallNear[hallOf[pair.Key]]<=r)scratch.Add(pair.Key);
             scratch.Sort((a,b)=>(centres[a]-centre).sqrMagnitude.CompareTo((centres[b]-centre).sqrMagnitude));
             int n=max>0?Mathf.Min(max,scratch.Count):scratch.Count;
             for(int i=0;i<n;i++)Add(scratch[i]);
