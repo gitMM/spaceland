@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -49,7 +50,7 @@ namespace Station.Core
         public IReadOnlyList<NeedActivitySnapshot> InspectNeedActivities() => needActivities.Values.Select(a => a.Copy()).ToArray();
         public long MealsConsumed => mealSinks.Values.Sum();
         private static bool IsNeedAction(ActionKind kind) => kind is ActionKind.Eat or ActionKind.UseToilet or ActionKind.Rest or ActionKind.Sleep;
-        private static bool RelievesNeed(ActionKind kind, NeedKind need) => kind == ActionKind.Eat && need == NeedKind.Hunger || kind == ActionKind.UseToilet && need == NeedKind.Bladder || kind == ActionKind.Sleep && (need is NeedKind.SleepPressure or NeedKind.WorkStrain) || kind == ActionKind.Rest && need == NeedKind.WorkStrain;
+        private static bool RelievesNeed(ActionKind kind, NeedKind need) => NeedPriority.Relieves(kind, need);
         private void InitializeNeedServices(IEnumerable<NeedServiceDefinition> definitions)
         {
             foreach (var d in definitions)
@@ -114,10 +115,9 @@ namespace Station.Core
         // choice; this decision uses only what is visible here and now.
         private NeedService TakeVisiblyFreeIdentical(Actor actor, ActiveAction action, NeedService chosen)
         {
-            if (VisibleWait(chosen) == 0) return chosen;
+            if (!ServicePreference.SeeksIdentical(VisibleWait(chosen))) return chosen;
             var d = chosen.Definition;
-            var free = needServices.Values.FirstOrDefault(s => s != chosen && s.Definition.Position == d.Position && s.Definition.Kind == d.Kind && s.Definition.DetentionFacilityId == d.DetentionFacilityId &&
-                s.Definition.DurationTicks == d.DurationTicks && VisibleWait(s) == 0 && NeedServiceAccess(actor, action, s) == FailureReason.None);
+            var free = needServices.Values.FirstOrDefault(s => s != chosen && ServicePreference.Identical(s.Definition, d) && ServicePreference.VisiblyFree(VisibleWait(s)) && NeedServiceAccess(actor, action, s) == FailureReason.None);
             if (free == null) return chosen;
             action.ServiceId = free.Definition.Id;
             foreach (var goal in DailyFor(actor.Id.Value).Where(g => g.ActiveActionId == action.Id.Value)) goal.ServiceId = free.Definition.Id;

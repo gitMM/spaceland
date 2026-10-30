@@ -19,35 +19,27 @@ namespace Station.Core
             }
             else { agent.ToiletDueTick = -1; agent.ToiletSequence = 0; }
         }
-        private bool OptionalRestOpportunity(Id<ActorTag> actor)
-        {
-            if (!AtSeek(actor, NeedKind.WorkStrain) || !routines.TryGetValue(actor, out var routine) || routine.KnownRoster == null) return false;
-            return !routine.KnownRoster.OnDuty(NeedNow) || DailyRoutine.Around(routine.KnownRoster, NeedNow).Any(w => w.Kind == RoutineOpportunityKind.ScheduledRest && w.Opens <= NeedNow && NeedNow < w.Closes);
-        }
-        private bool OrdinaryWorkReady(Actor actor)
-        {
-            if (!KnownOnDuty(actor.Id)) return false;
-            if (repairAgents.TryGetValue(actor.Id, out var repairs) && repairs.Pending.Count > 0 && (repairs.BlockedReason.Length == 0 || repairs.NextDecision <= NeedNow)) return true;
-            return localOrders.Values.Any(o => o.ActorId == actor.Id.Value && (o.Status is LocalOrderStatus.Read or LocalOrderStatus.Working)) || audits.Values.Any(a => a.ActorId == actor.Id.Value && a.Pending);
-        }
+        private bool OptionalRestOpportunity(Id<ActorTag> actor) =>
+            OffDutyPolicy.OptionalRestOpportunity(AtSeek(actor, NeedKind.WorkStrain), routines.TryGetValue(actor, out var routine) ? routine.KnownRoster : null, NeedNow);
+        private bool OrdinaryWorkReady(Actor actor) => OffDutyPolicy.OrdinaryWorkReady(KnownOnDuty(actor.Id),
+            () => repairAgents.TryGetValue(actor.Id, out var repairs) && OffDutyPolicy.RepairDue(repairs.Pending.Count, repairs.BlockedReason.Length > 0, repairs.NextDecision, NeedNow),
+            () => localOrders.Values.Any(o => o.ActorId == actor.Id.Value && (o.Status is LocalOrderStatus.Read or LocalOrderStatus.Working)) || audits.Values.Any(a => a.ActorId == actor.Id.Value && a.Pending));
         private bool DeferToOptionalRest(Actor actor)
         {
-            if (!needAgents.TryGetValue(actor.Id.Value, out var agent) || agent.RetryAt > NeedNow || !(OptionalRestOpportunity(actor.Id) || ConversationOpportunity(actor.Id)) || KnownUrgentOrder(actor.Id) || OrdinaryWorkReady(actor)) return false;
+            if (!needAgents.TryGetValue(actor.Id.Value, out var agent) || !NeedPriority.OptionalReliefDefers(agent.RetryAt, NeedNow,
+                () => OptionalRestOpportunity(actor.Id) || ConversationOpportunity(actor.Id), () => KnownUrgentOrder(actor.Id), () => OrdinaryWorkReady(actor))) return false;
             RequestNeedDecision(agent, NeedNow); return true;
         }
         private bool LowerNeedMayStart(Actor actor, NeedKind goal)
         {
-            // Pre-sleep relief deliberately precedes urgent (never critical) sleep pressure.
-            if (PreSleepRelief(actor.Id) == goal && !HasCriticalNeed(actor.Id)) return !KnownUrgentOrder(actor.Id) && !DeferToRecovery(actor);
-            if (KnownUrgentOrder(actor.Id) || DeferToNeed(actor) || DeferToRecovery(actor)) return false;
-            var due = SelectedDueGoal(actor);
-            if (goal == NeedKind.Bladder) return AtSeek(actor.Id, goal) && due.Source == DueSource.Toilet;
-            return (goal == NeedKind.WorkStrain && OptionalRestOpportunity(actor.Id) || goal == NeedKind.Social && ConversationOpportunity(actor.Id)) && due.Source == DueSource.None && !OrdinaryWorkReady(actor);
+            bool preSleep = NeedPriority.IsPreSleepGoal(goal, PreSleepRelief(actor.Id), () => HasCriticalNeed(actor.Id));
+            if (GoalPriority.FirstDeferring(NeedPriority.LowerNeedGates(preSleep), g => Defers(actor, g)) != PriorityGate.None) return false;
+            return NeedPriority.LowerNeedMayStart(goal, preSleep, () => SelectedDueGoal(actor).Source, () => AtSeek(actor.Id, goal), () => OptionalRestOpportunity(actor.Id), () => ConversationOpportunity(actor.Id), () => OrdinaryWorkReady(actor));
         }
         private void EvaluateLowerNeed(Actor actor, NeedAgentSnapshot agent)
         {
             var due = SelectedDueGoal(actor); var preSleep = PreSleepRelief(actor.Id);
-            NeedKind goal = preSleep ?? (due.Source == DueSource.Toilet ? NeedKind.Bladder : OptionalRestOpportunity(actor.Id) ? NeedKind.WorkStrain : NeedKind.Social);
+            NeedKind goal = NeedPriority.LowerNeedGoal(preSleep, due.Source, () => OptionalRestOpportunity(actor.Id));
             if (!LowerNeedMayStart(actor, goal))
             {
                 if (UrgentNeed(actor.Id) != null && agent.UrgentRetryAt > processingTick) RequestNeedDecision(agent, agent.UrgentRetryAt);
@@ -59,6 +51,7 @@ namespace Station.Core
             if (goal == NeedKind.Social)
             {
                 var partners = new System.Collections.Generic.List<long>();
+                // Core walks the local candidates Mind orders; each consent check is the partner's own (see ConversationConsents).
                 foreach (long id in LocalConversationCandidates(actor, agent.ConversationCursor))
                 {
                     ConversationPartnerCandidatesExamined++; agent.ConversationCursor = id;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -26,7 +27,7 @@ namespace Station.Core
     {
         private readonly SortedDictionary<(long Actor, long Service), ServiceEstimateSnapshot> serviceEstimates = new SortedDictionary<(long Actor, long Service), ServiceEstimateSnapshot>();
         // Estimates older than this are ignored rather than trusted indefinitely.
-        private long EstimateStaleTicks => checked(planner.MaximumBackoff * 6);
+        private long EstimateStaleTicks => ServicePreference.StaleTicks(planner.MaximumBackoff);
         public IReadOnlyList<ServiceEstimateSnapshot> InspectServiceEstimates(Id<ActorTag> actor) =>
             serviceEstimates.Values.Where(e => e.ActorId == actor.Value).Select(e => e.Copy()).ToArray();
         private ServiceEstimateSnapshot Estimate(Actor actor, NeedService service)
@@ -44,39 +45,25 @@ namespace Station.Core
             Emit("ServiceEstimateLearned", actor, detail: "service=" + service.Definition.Id + "; " + source + "; wait=" + estimate.WaitTicks + "; meals=" + estimate.MealsSeen);
         }
         // Whole service rounds needed before a newcomer's turn, as seen from the service's tile.
-        private static long VisibleWait(NeedService service)
-        {
-            long ahead = service.Queue.Count + service.Occupants.Count, capacity = Math.Max(1, service.Definition.Capacity);
-            return checked(ahead < capacity ? 0 : (ahead - capacity) / capacity + 1) * service.Definition.DurationTicks;
-        }
+        private static long VisibleWait(NeedService service) => ServicePreference.VisibleWait(service.Queue.Count, service.Occupants.Count, service.Definition.Capacity, service.Definition.DurationTicks);
         // Queue seen on arrival.
         private void ObserveServiceQueue(Actor actor, NeedService service) => LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedQueue, wait: VisibleWait(service));
         private long MealsVisible(NeedService service) => AvailableItemsAt(service.Definition.Position).Where(i => i.Resource == service.Definition.MealResource)
             .Sum(i => Math.Max(0, i.Quantity - (mealReservations.TryGetValue(i.Id.Value, out var claims) ? claims.Count : 0)));
-        // Fresh expected extra waits per service, for this citizen's planning only. A learned
-        // cafeteria wait shorter than one service duration is ignored so small queues cause
-        // no switching.
+        // Gathers this citizen's learned estimates and the services it can use on its own
+        // tile; Mind turns them into expected extra waits for its planning only.
         private SortedDictionary<long, long> KnownServiceWaits(Id<ActorTag> actor)
         {
             var waits = new SortedDictionary<long, long>();
             foreach (var e in serviceEstimates.Values.Where(e => e.ActorId == actor.Value && needServices.ContainsKey(e.ServiceId)))
             {
-                bool freshWait = e.WaitObservedTick >= 0 && NeedNow - e.WaitObservedTick <= EstimateStaleTicks, freshStock = e.StockObservedTick >= 0 && NeedNow - e.StockObservedTick <= EstimateStaleTicks;
-                // A cafeteria last seen empty is the least preferred, not forbidden: it is
-                // still chosen when nothing else is known, so restocking can be discovered.
-                long extra = (freshStock && e.MealsSeen == 0 ? EstimateStaleTicks : 0) + (freshWait ? Math.Max(0, e.WaitTicks - needServices[e.ServiceId].Definition.DurationTicks) : 0);
+                long extra = ServicePreference.LearnedExtraWait(NeedNow, EstimateStaleTicks, e.WaitObservedTick, e.WaitTicks, e.StockObservedTick, e.MealsSeen, needServices[e.ServiceId].Definition.DurationTicks);
                 if (extra > 0) waits[e.ServiceId] = extra;
             }
-            // Identical services this citizen may use on its own tile (for example a
-            // detention facility's beds) are compared by the queues it can see there now,
-            // so it does not queue at one while another stands free.
             var position = actors[actor].Position;
-            var here = needServices.Values.Where(s => s.Definition.Position == position && s.Enabled && (s.Definition.Kind != NeedServiceKind.Bed || s.AssignedActorId == 0 || s.AssignedActorId == actor.Value)).ToArray();
-            foreach (var s in here.Where(s => here.Count(o => o.Definition.Kind == s.Definition.Kind && o.Definition.DetentionFacilityId == s.Definition.DetentionFacilityId) > 1))
-            {
-                long visible = VisibleWait(s);
-                if (visible > 0) waits[s.Definition.Id] = visible; else waits.Remove(s.Definition.Id);
-            }
+            var here = needServices.Values.Where(s => s.Definition.Position == position && s.Enabled && (s.Definition.Kind != NeedServiceKind.Bed || s.AssignedActorId == 0 || s.AssignedActorId == actor.Value))
+                .Select(s => (s.Definition.Id, s.Definition.Kind, s.Definition.DetentionFacilityId, (Func<long>)(() => VisibleWait(s)))).ToArray();
+            ServicePreference.CompareVisibleQueues(waits, here);
             return waits;
         }
         private void WriteServiceEstimates(BinaryWriter w)

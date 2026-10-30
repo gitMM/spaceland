@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -112,13 +113,13 @@ namespace Station.Core
             if (critical.HasValue)
             {
                 state.LastCriticalTick = processingTick;
-                var group = ActiveEscort(actorId);
-                if (group != null && EscortPayload(group).SubjectActorId != actorId.Value && (group.Status is EscortStatus.Escorting or EscortStatus.AwaitingIntake))
-                { CriticalNeedInterruptions++; InterruptEscort(group, "CriticalNeed/" + critical.Value); }
-                else if (group == null && actor.Action != null && !RelievesNeed(actor.Action.Kind, critical.Value) && !TravellingForNeed(actor, critical.Value))
+                var group = ActiveEscort(actorId); var kind = critical.Value;
+                switch (NeedPriority.CriticalResponse(group != null, group != null && EscortPayload(group).SubjectActorId == actorId.Value, group != null && (group.Status is EscortStatus.Escorting or EscortStatus.AwaitingIntake),
+                    actor.Action?.Kind, kind, () => TravellingForNeed(actor, kind)))
                 {
-                    CriticalNeedInterruptions++;
-                    if (actor.Action.Kind == ActionKind.Move) actor.Action.CancelAtBoundary = true; else CancelRunning(actor);
+                    case CriticalPreemption.InterruptEscort: CriticalNeedInterruptions++; InterruptEscort(group!, "CriticalNeed/" + kind); break;
+                    case CriticalPreemption.StopAtBoundary: CriticalNeedInterruptions++; actor.Action!.CancelAtBoundary = true; break;
+                    case CriticalPreemption.CancelNow: CriticalNeedInterruptions++; CancelRunning(actor); break;
                 }
                 if (group == null) WakeGuard(actor);
             }

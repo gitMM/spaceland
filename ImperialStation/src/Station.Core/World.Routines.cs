@@ -103,8 +103,8 @@ namespace Station.Core
             return true;
         }
         private void ScheduleRoutineEvent(Id<ActorTag> actor, long tick, ScheduledKind kind) => Schedule(new ScheduledEvent { Tick = tick, Phase = EventPhase.Decision, Kind = kind, Intent = new ActionIntent(actor, ActionKind.Move, default) });
-        private bool KnownOnDuty(Id<ActorTag> actor) => !routines.TryGetValue(actor, out var state) || state.KnownRoster == null || state.KnownRoster.OnDuty(Math.Max(0, processingTick));
-        private bool RoutineAllowsCheckIn(Id<ActorTag> actor) => KnownOnDuty(actor) || routines[actor].EndShiftCheckIn;
+        private bool KnownOnDuty(Id<ActorTag> actor) => OffDutyPolicy.KnownOnDuty(routines.TryGetValue(actor, out var state) ? state.KnownRoster : null, Math.Max(0, processingTick));
+        private bool RoutineAllowsCheckIn(Id<ActorTag> actor) => OffDutyPolicy.AllowsCheckIn(KnownOnDuty(actor), routines.TryGetValue(actor, out var state) && state.EndShiftCheckIn);
         private void MarkRoutineCheckIn(Id<ActorTag> actor)
         {
             if (!checkIns.TryGetValue(actor, out var agent)) return;
@@ -115,14 +115,14 @@ namespace Station.Core
         {
             var state = routines[actorId]; var roster = state.KnownRoster!; var actor = actors[actorId];
             state.OnDuty = roster.OnDuty(processingTick); state.NextBoundary = roster.NextBoundary(processingTick);
-            SetRoutineActivity(actor, state, state.OnDuty ? "OnDuty" : actor.Action == null ? "AfterDutyCheckIn" : "FinishingAction");
+            SetRoutineActivity(actor, state, OffDutyPolicy.BoundaryActivity(state.OnDuty, actor.Action != null));
             ScheduleRoutineEvent(actorId, state.NextBoundary, ScheduledKind.RoutineBoundary);
             state.EndShiftCheckIn = !state.OnDuty;
             if (!state.OnDuty)
             {
                 // Movement is stopped only on arrival at the next tile. Finite local
                 // work may finish; the retained goal cannot start another work step.
-                if (actor.Action?.Kind == ActionKind.Move && !EscortControls(actorId) && !TravellingForDailyNeed(actor) && !(needAgents.TryGetValue(actorId.Value, out var needAgent) && needAgent.ActiveActionId == actor.Action.Id.Value)) Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, CauseId = Emit("RoutineStopRequested", actor, detail: "off-duty-stop/v1; roster=" + roster.Version), Intent = new ActionIntent(actorId, ActionKind.Cancel, actor.Position) });
+                if (OffDutyPolicy.StopsMoveAtBoundary(actor.Action?.Kind == ActionKind.Move, () => EscortControls(actorId), () => TravellingForDailyNeed(actor), () => needAgents.TryGetValue(actorId.Value, out var needAgent) && needAgent.ActiveActionId == actor.Action!.Id.Value)) Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, CauseId = Emit("RoutineStopRequested", actor, detail: "off-duty-stop/v1; roster=" + roster.Version), Intent = new ActionIntent(actorId, ActionKind.Cancel, actor.Position) });
                 MarkRoutineCheckIn(actorId);
             }
             WakeRoutine(actor); WakeOrderDecisions(actor); WakeAudits(actor); WakeNeed(actor);
@@ -147,24 +147,33 @@ namespace Station.Core
         private void EvaluateRoutine(Id<ActorTag> actorId)
         {
             var state = routines[actorId]; state.NextDecision = -1; var actor = actors[actorId]; var roster = state.KnownRoster;
-            if (EscortControls(actorId)) { SetRoutineActivity(actor, state, "EscortProtocol"); return; }
-            if (roster == null) { SetRoutineActivity(actor, state, "UnknownRoster"); return; }
-            state.OnDuty = roster.OnDuty(processingTick);
-            if (state.OnDuty) { SetRoutineActivity(actor, state, "OnDuty"); return; }
-            if (actor.Action != null) { SetRoutineActivity(actor, state, "FinishingAction"); return; }
-            if (DeferToNeed(actor) || DeferToDueGoal(actor)) { SetRoutineActivity(actor, state, "SeekingNeedRelief"); return; }
-            if (DeferToOptionalRest(actor)) { SetRoutineActivity(actor, state, "SeekingAdditionalRest"); return; }
-            if (!needAgents.ContainsKey(actorId.Value) && (reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0 || state.EndShiftCheckIn && checkIns.TryGetValue(actorId, out var checkIn) && checkIn.Due))
-            { SetRoutineActivity(actor, state, "AfterDutyCheckIn"); return; }
-            if (!roster.RestTile.HasValue) { SetRoutineActivity(actor, state, "MissingRestDestination"); EndSession(actorId, "OffDutyMissingRestDestination"); return; }
-            if (actor.Position == roster.RestTile.Value) { SetRoutineActivity(actor, state, "OffDuty"); EndSession(actorId, "OffDuty"); return; }
+            // Mind orders the off-duty checks; Core evaluates each against own state.
+            var gate = GoalPriority.FirstDeferring(OffDutyPolicy.RoutineGates, g =>
+            {
+                switch (g)
+                {
+                    case PriorityGate.Inactive: return roster == null;
+                    case PriorityGate.OnDuty: state.OnDuty = OffDutyPolicy.KnownOnDuty(roster, processingTick); return state.OnDuty;
+                    case PriorityGate.AfterDutyCheckIn: return OffDutyPolicy.OwesAfterDutyCheckIn(needAgents.ContainsKey(actorId.Value), () => reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0,
+                        () => state.EndShiftCheckIn && checkIns.TryGetValue(actorId, out var checkIn) && checkIn.Due);
+                    case PriorityGate.MissingRestDestination: return !roster!.RestTile.HasValue;
+                    case PriorityGate.AtRest: return actor.Position == roster!.RestTile!.Value;
+                    default: return Defers(actor, g);
+                }
+            });
+            if (gate != PriorityGate.None)
+            {
+                SetRoutineActivity(actor, state, OffDutyPolicy.Activity(gate));
+                var ended = OffDutyPolicy.EndsSession(gate); if (ended != null) EndSession(actorId, ended);
+                return;
+            }
             if (!SpendPlanningRequest()) { WakeRoutine(actor); return; }
             // A policy chooses a known destination. The ordinary planner and executor
             // still own travel cost, adjacency, action timing and arrival.
-            var result = RoutinePlanning.PlanRest(ActorView(actorId), roster.RestTile.Value, planner.MaximumDepth, planner.NodeBudget);
+            var result = RoutinePlanning.PlanRest(ActorView(actorId), roster!.RestTile!.Value, planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += result.Expansions;
             if (result.Outcome != PlanOutcome.PlanFound || result.Steps.Count == 0)
-            { SetRoutineActivity(actor, state, result.Outcome == PlanOutcome.BudgetExhausted ? "RestPlanBudgetExhausted" : "NoKnownRestRoute"); if (result.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++; return; }
+            { SetRoutineActivity(actor, state, OffDutyPolicy.RestPlanFailure(result.Outcome)); if (result.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++; return; }
             PlansFound++; SetRoutineActivity(actor, state, "GoingOffDuty");
             long cause = Emit("PlanSelected", actor, detail: "off-duty/v1; roster=" + roster.Version + "; cost=" + result.Cost);
             Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, Value = DecisionSource(actor, DueSource.None), Intent = result.Steps[0].Intent, CauseId = cause });
@@ -173,7 +182,7 @@ namespace Station.Core
         {
             if (!routines.TryGetValue(actor.Id, out var state)) return;
             state.EndShiftCheckIn = false;
-            if (failed && !KnownOnDuty(actor.Id) && checkIns.TryGetValue(actor.Id, out var checkIn)) checkIn.Due = false;
+            if (failed && OffDutyPolicy.AbandonsFailedCheckIn(KnownOnDuty(actor.Id)) && checkIns.TryGetValue(actor.Id, out var checkIn)) checkIn.Due = false;
             WakeRoutine(actor);
         }
         private void SetRoutineActivity(Actor actor, RoutineSnapshot state, string activity)
