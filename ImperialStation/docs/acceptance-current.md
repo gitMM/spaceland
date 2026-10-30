@@ -51,10 +51,9 @@ Requested after the user's review of the 32-person logs (2026-10-29). This is th
 next implementation and verification step, not a completed milestone. Keep the
 station layout and population fixed; expansion remains deferred.
 
-**Status 2026-10-30: all six items implemented and verified at 32 and 256 citizens;
-items 6, 1 and 3 first (below), then 5, 4 and 2;
-the 256-citizen population gate passes (clear from 288,000, exact replay, independent
-audit). Items 5, 4 and 2 are done as well; 32 and 256 pass with all six.**
+**Status 2026-10-30: all six items are implemented and verified at 32 and 256
+citizens (items 6, 1 and 3 first, then 5, 4 and 2). With all six, the 256-citizen
+population gate passes: clear from 288,000, exact replay, independent audit.**
 The suite passes **854 tests**, zero failures or skips
 (`artifacts/pressure-tests/items-all.trx`). Snapshot schema is 49.
 Details, evidence and limitations are in the
