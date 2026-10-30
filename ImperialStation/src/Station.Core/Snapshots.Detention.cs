@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -38,8 +39,8 @@ namespace Station.Core
                     IssuedTick = r.ReadInt64(), Expires = r.ReadInt64(), SentenceTicks = r.ReadInt64(), CountThroughCaseId = r.ReadInt64(), CountThroughRecordVersion = r.ReadInt64(), Status = ReadEnum<DetentionAuthorizationStatus>(r), RevokedTick = r.ReadInt64() };
                 int n = Count(r); var justifications = new long[n]; for (int j = 0; j < n; j++) justifications[j] = r.ReadInt64(); o.JustifyingCases = justifications;
                 if (Detention == null || Personnel == null || o.Id < 1 || o.Id >= nextDetentionAuthorization || o.IssuedTick < 0 || o.IssuedTick > LastProcessedTick || o.Expires != checked(o.IssuedTick + Detention.OrderTicks) || o.SentenceTicks != Detention.SentenceTicks ||
-                    o.CountThroughRecordVersion < 0 || o.CountThroughRecordVersion > records.Version || o.CountThroughCaseId < 1 || o.CountThroughCaseId >= nextCase || !justifications.SequenceEqual(QualifyingReprimandCases(o.AccountId, o.IssuedTick, o.CountThroughCaseId, o.CountThroughRecordVersion)) || justifications.Length < Personnel.DetentionThreshold ||
-                    !registrations.TryGetValue(o.ActorId, out var subject) || subject.AccountId != o.AccountId || registrations.Values.Count(p => p.AccountId == o.AccountId) != 1 ||
+                    o.CountThroughRecordVersion < 0 || o.CountThroughRecordVersion > records.Version || o.CountThroughCaseId < 1 || o.CountThroughCaseId >= nextCase || !justifications.SequenceEqual(QualifyingReprimandCases(o.AccountId, o.IssuedTick, o.CountThroughCaseId, o.CountThroughRecordVersion)) || !DetentionDecisions.ThresholdMet(justifications.Length, Personnel.DetentionThreshold) ||
+                    !registrations.TryGetValue(o.ActorId, out var subject) || subject.AccountId != o.AccountId || DetentionDecisions.UniqueSubject(registrations.Values, o.AccountId) == null ||
                     !messages.TryGetValue(o.RequestMessageId, out var request) || request.Draft.Kind != MessageKind.RequestDetention || request.Stage != MessageStage.Accepted || request.DeliveryTick != o.IssuedTick ||
                     request.Draft.DetentionRequest?.AccountId != o.AccountId || request.Draft.DetentionRequest.CaseId != o.CaseId || ValidateDetentionRequest(request).Length != 0) throw new ArgumentException("Invalid detention authorization evidence.");
                 var history = records.History.Values.Where(e => e.Kind == RecordKind.DetentionAuthorization && e.EntityId == o.Id).ToArray();
@@ -92,7 +93,7 @@ namespace Station.Core
                 var l = new LocalDetentionRequestSnapshot { CaseReplyMessageId = r.ReadInt64(), ActorId = r.ReadInt64(), AccountId = r.ReadInt64(), CaseId = r.ReadInt64(), Status = ReadEnum<DetentionRequestStatus>(r), RequestMessageId = r.ReadInt64(), ReplyMessageId = r.ReadInt64(),
                     ReadTick = r.ReadInt64(), AuthorizationId = r.ReadInt64(), Expires = r.ReadInt64(), Reason = r.ReadString() };
                 if (Personnel == null || !actors.TryGetValue(new Id<ActorTag>(l.ActorId), out var actor) || !messages.TryGetValue(l.CaseReplyMessageId, out var source) || source.Stage != MessageStage.Read || source.Draft.Recipient != actor.Account ||
-                    source.Draft.CaseDecision?.Accepted != true || source.Draft.CaseDecision.AccountId != l.AccountId || source.Draft.CaseDecision.CaseId != l.CaseId || source.Draft.CaseDecision.QualifyingCount < Personnel.DetentionThreshold) throw new ArgumentException("Invalid private detention request source.");
+                    source.Draft.CaseDecision?.Accepted != true || source.Draft.CaseDecision.AccountId != l.AccountId || source.Draft.CaseDecision.CaseId != l.CaseId || !DetentionDecisions.ThresholdMet(source.Draft.CaseDecision.QualifyingCount, Personnel.DetentionThreshold)) throw new ArgumentException("Invalid private detention request source.");
                 if (l.Status == DetentionRequestStatus.Queued)
                 {
                     if (l.RequestMessageId != 0 || !reportAgents.TryGetValue(actor.Id, out var agent) || !agent.Pending.Any(d => d.Kind == MessageKind.RequestDetention && d.DetentionRequest?.CaseReplyMessageId == source.Id)) throw new ArgumentException("Missing queued detention request.");
@@ -113,7 +114,7 @@ namespace Station.Core
             long first = detentionRequestKeys[message.SenderAccount.Value + "/" + message.Draft.OperationKey];
             if (d.Reason == "IdempotencyConflict") { if (d.State != DetentionDecisionState.Rejected || first == message.Id || SameDraft(messages[first].Draft, message.Draft)) throw new ArgumentException("Invalid detention retry conflict."); return; }
             if (validation.Length > 0)
-            { if (d.Reason != validation || d.State != (validation == "PersonnelUnavailable" ? DetentionDecisionState.Waiting : DetentionDecisionState.Rejected)) throw new ArgumentException("Invalid detention evidence rejection."); return; }
+            { if (d.Reason != validation || d.State != DetentionDecisions.EvidenceRejectionState(validation)) throw new ArgumentException("Invalid detention evidence rejection."); return; }
             if (d.State == DetentionDecisionState.Approved)
             {
                 if (!detentionAuthorizations.TryGetValue(d.AuthorizationId, out var order) || order.AccountId != d.AccountId || order.IssuedTick > request.ReceivedTick || order.Expires <= request.ReceivedTick || order.Expires != d.Expires || RevocationWasKnownToAuthority(order.Id, request.ReceivedTick, request.ValidationRecordVersion) ||
@@ -125,12 +126,14 @@ namespace Station.Core
             }
             bool valid = d.Reason switch {
                 "DetentionPolicyUnavailable" => d.State == DetentionDecisionState.Waiting && Detention == null,
-                "AmbiguousSubjectIdentity" => d.State == DetentionDecisionState.Waiting && registrations.Values.Count(p => p.AccountId == d.AccountId) != 1,
-                "ThresholdNotMet" => d.State == DetentionDecisionState.Rejected && Personnel != null && d.QualifyingCount < Personnel.DetentionThreshold,
-                "PriorRequestClosed" => d.State == DetentionDecisionState.Rejected && first != message.Id && SameDraft(messages[first].Draft, message.Draft) &&
-                    (detentionRequests[first].Decision.State == DetentionDecisionState.Rejected || detentionRequests[first].Decision.State == DetentionDecisionState.Approved && (detentionRequests[first].Decision.Expires <= request.ReceivedTick || ReleaseWasReceived(detentionRequests[first].Decision.AuthorizationId, request.ReceivedTick, request.ValidationRecordVersion) || RevocationWasKnownToAuthority(detentionRequests[first].Decision.AuthorizationId, request.ReceivedTick, request.ValidationRecordVersion))),
+                "AmbiguousSubjectIdentity" => d.State == DetentionDecisionState.Waiting && DetentionDecisions.UniqueSubject(registrations.Values, d.AccountId) == null,
+                "ThresholdNotMet" => d.State == DetentionDecisionState.Rejected && Personnel != null && !DetentionDecisions.ThresholdMet(d.QualifyingCount, Personnel.DetentionThreshold),
+                "PriorRequestClosed" => d.State == DetentionDecisionState.Rejected && first != message.Id && SameDraft(messages[first].Draft, message.Draft) && PriorRequestClosed(detentionRequests[first].Decision, request),
                 _ => false };
             if (!valid) throw new ArgumentException("Invalid detention decision reason.");
         }
+        private bool PriorRequestClosed(DetentionDecisionPayload prior, DetentionRequestSnapshot request) => prior.State == DetentionDecisionState.Approved
+            ? DetentionDecisions.PriorRequestClosed(prior, prior.Expires, request.ReceivedTick, ReleaseWasReceived(prior.AuthorizationId, request.ReceivedTick, request.ValidationRecordVersion), RevocationWasKnownToAuthority(prior.AuthorizationId, request.ReceivedTick, request.ValidationRecordVersion))
+            : DetentionDecisions.PriorRequestClosed(prior, prior.Expires, request.ReceivedTick, false, false);
     }
 }

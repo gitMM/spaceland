@@ -16,8 +16,7 @@ namespace Station.Core
         {
             if (!inspection.Discrepancy || audits.ContainsKey(inspection.AttemptId)) return;
             var actor = actors[new Id<ActorTag>(inspection.ActorId)];
-            long terminal = recordAccess.Values.Where(g => g.Actor == actor.Id && g.RequiredRole == actor.Role && g.Kind == RecordKind.WorkAttempt &&
-                recordAccess.TryGetValue((actor.Id.Value, g.TerminalId, RecordKind.WorkReport), out var reports) && reports.RequiredRole == actor.Role).Select(g => g.TerminalId).FirstOrDefault();
+            long terminal = AuditPlanning.ChooseTerminal(recordAccess.Values.Where(g => g.Actor == actor.Id).Select(g => (g.TerminalId, g.Kind, g.RequiredRole)), actor.Role);
             var audit = new AuditSnapshot { VerificationAttemptId = inspection.AttemptId, ActorId = actor.Id.Value, TerminalId = terminal, Backoff = planner.InitialBackoff };
             audits.Add(audit.VerificationAttemptId, audit);
             Emit("DiscrepancyAuditOpened", actor, attemptId: audit.VerificationAttemptId, terminalId: terminal, detail: "ResolveJobDiscrepancy");
@@ -25,7 +24,7 @@ namespace Station.Core
         }
         private void FinishAudit(AuditSnapshot audit, string reason, AccountabilityFinding? finding = null)
         {
-            audit.Finding = finding; audit.Reason = reason; audit.Status = finding?.Attributable == true ? AuditStatus.ReadyToFile : AuditStatus.NeedsReview;
+            audit.Finding = finding; audit.Reason = reason; audit.Status = AuditPlanning.ReadyToFile(finding) ? AuditStatus.ReadyToFile : AuditStatus.NeedsReview;
             foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.EvaluateAudit && e.Value == audit.VerificationAttemptId).ToArray()) scheduled.Remove(e);
             audit.NextDecision = -1;
             QueueCaseFiling(audit);
@@ -45,7 +44,7 @@ namespace Station.Core
             if (actor.Action != null) return;
             foreach (var audit in audits.Values.Where(a => a.ActorId == actor.Id.Value && a.Pending))
             {
-                if (completed != null && completed.ServiceId == audit.TerminalId && completed.Kind is ActionKind.Login or ActionKind.QueryRecords)
+                if (completed != null && AuditPlanning.ProgressResetsBackoff(completed.Kind, completed.ServiceId, audit.TerminalId))
                     audit.Backoff = planner.InitialBackoff;
                 RequestAudit(audit, failed ? checked(processingTick + audit.Backoff) : processingTick);
                 if (failed) audit.Backoff = NextWorkBackoff(audit.Backoff);
@@ -56,9 +55,7 @@ namespace Station.Core
         {
             var audit = audits[id]; audit.NextDecision = -1; if (!audit.Pending) return;
             var actor = actors[new Id<ActorTag>(audit.ActorId)];
-            if (EscortControls(actor.Id) || actor.Action != null || DeferToNeed(actor) || DeferToDueGoal(actor) || !KnownOnDuty(actor.Id) || audits.Values.Any(a => a.ActorId == actor.Id.Value && a.Pending && a.VerificationAttemptId < id) ||
-                !needAgents.ContainsKey(actor.Id.Value) && (reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0 || checkIns.TryGetValue(actor.Id, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick)) ||
-                localOrders.Values.Any(o => o.ActorId == actor.Id.Value && o.Status is LocalOrderStatus.Read or LocalOrderStatus.AcknowledgmentPending or LocalOrderStatus.Working)) return;
+            if (EscortControls(actor.Id) || actor.Action != null || DeferToNeed(actor) || DeferToDueGoal(actor) || !KnownOnDuty(actor.Id) || AuditDefers(actor, id)) return;
             if (!SpendPlanningRequest()) { RequestAudit(audit, checked(processingTick + 1)); return; }
             var plan = ReportPlanning.PlanRecords(ActorView(actor.Id), AuditQuery(audit), audit.TerminalId, Information!.LoginTicks, Information.QueryTicks, planner.MaximumDepth, planner.NodeBudget);
             PlannerExpansions += plan.Expansions;
@@ -70,10 +67,14 @@ namespace Station.Core
                 long cause = Emit("PlanSelected", actor, attemptId: id, terminalId: audit.TerminalId, detail: "audit-records/v1; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.Command, Value = DecisionSource(actor, DueSource.None), Intent = plan.Steps[0].Intent, CauseId = cause }); return;
             }
-            if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; audit.Reason = "PlanBudgetExhausted"; }
-            else { PlansUnavailable++; audit.Reason = "NoKnownRecordsRouteOrCredential"; }
+            if (plan.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
+            audit.Reason = AuditPlanning.PlanFailureReason(plan.Outcome);
             RequestAudit(audit, checked(processingTick + audit.Backoff)); audit.Backoff = NextWorkBackoff(audit.Backoff);
         }
+        private bool AuditDefers(Actor actor, long id) => AuditPlanning.DefersToOtherWork(
+            audits.Values.Any(a => a.ActorId == actor.Id.Value && a.Pending && a.VerificationAttemptId < id), needAgents.ContainsKey(actor.Id.Value),
+            reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0, checkIns.TryGetValue(actor.Id, out var checkIn) && (checkIn.Due || checkIn.DueTick == processingTick),
+            localOrders.Values.Any(o => o.ActorId == actor.Id.Value && o.Status is LocalOrderStatus.Read or LocalOrderStatus.AcknowledgmentPending or LocalOrderStatus.Working));
         private void AuditQueryCompleted(Actor actor, ActiveAction action)
         {
             var audit = audits.Values.FirstOrDefault(a => a.ActorId == actor.Id.Value && a.Pending);
@@ -85,39 +86,15 @@ namespace Station.Core
             if (audit.Status == AuditStatus.QueryingReports && audit.ReportVersion < 0) audit.ReportVersion = receipt.Version;
             long cutoff = audit.Status == AuditStatus.QueryingAttempts ? audit.AttemptVersion : audit.ReportVersion;
             audit.RecordVersion = Math.Max(audit.RecordVersion, cutoff);
-            // Read only facts actually learned by this completed action. CapturedRecords is a service
-            // implementation detail and is deliberately unavailable to this citizen decision.
-            var groups = actor.Knowledge.Entries.Values.Select(e => e.Fact).Where(f => f.Key.SubjectKind == SubjectKind.Record && f.SourceKind == EvidenceKind.RecordQuery && f.SourceId == action.Id.Value).GroupBy(f => f.Key.SubjectId).ToArray();
-            if (groups.Length != receipt.DisclosedRows) { FinishAudit(audit, "IncompleteDisclosure"); return; }
-            foreach (var group in groups)
-            {
-                FactValue? Field(AttributeKind key) => group.Where(f => f.Key.Attribute == key).Select(f => (FactValue?)f.Value).SingleOrDefault();
-                long Num(AttributeKind key) => Field(key) is FactValue f && f.Kind == FactValueKind.Number ? f.Number : -1;
-                var metadata = new[] { AttributeKind.RecordType, AttributeKind.RecordEntityId, AttributeKind.RecordVersion, AttributeKind.AccountId, AttributeKind.RecordFieldCount };
-                var fields = group.Where(f => !metadata.Contains(f.Key.Attribute)).Select(f => new RecordField(f.Key.Attribute, f.Value)).ToArray();
-                if (Num(AttributeKind.RecordVersion) != group.Key || Num(AttributeKind.RecordEntityId) < 1 || Num(AttributeKind.AccountId) < 1 || Num(AttributeKind.RecordFieldCount) != fields.Length ||
-                    Field(AttributeKind.RecordType)?.Text != query.Kind.ToString() || group.Select(f => f.ObservedTick).Distinct().Count() != 1)
-                { FinishAudit(audit, "IncompleteDisclosure"); return; }
-                if (group.Key > cutoff) continue;
-                var row = new RecordEntry(query.Kind, Num(AttributeKind.RecordEntityId), Num(AttributeKind.AccountId), group.Key, group.First().ObservedTick, "disclosed/" + group.Key, fields);
-                var inspection = verificationInspections[audit.VerificationAttemptId];
-                bool relevant = row.Kind == RecordKind.WorkAttempt ? fields.Any(f => f.Attribute == AttributeKind.MachineId && f.Value.Equals(FactValue.Integer(inspection.MachineId))) && fields.Any(f => f.Attribute == AttributeKind.TaskKind && f.Value.Text == "RepairMachine") :
-                    audit.Evidence.Any(r => r.Kind == RecordKind.WorkAttempt && fields.Any(f => f.Attribute == AttributeKind.AttemptId && f.Value.Equals(FactValue.Integer(r.EntityId))));
-                if (!relevant) continue;
-                if (audit.Evidence.Count >= AuditEvidenceLimit) { FinishAudit(audit, "EvidenceCapacityExceeded"); return; }
-                audit.Evidence = audit.Evidence.Concat(new[] { row }).ToArray(); audit.QueryActionIds = audit.QueryActionIds.Concat(new[] { action.Id.Value }).ToArray();
-            }
-            audit.Cursor = Math.Min(receipt.NextCursor, cutoff);
-            if (receipt.HasMore && receipt.NextCursor < cutoff)
-            { if (audit.Pages >= AuditPageLimit) FinishAudit(audit, "HistoryPageLimitExceeded"); return; }
-            if (audit.Status == AuditStatus.QueryingAttempts) { audit.Status = AuditStatus.QueryingReports; audit.Cursor = 0; }
-            else
-            {
-                var v = verificationInspections[audit.VerificationAttemptId];
-                var finding = AccountabilityPolicy.Assess(v.MachineId, v.RequiredResource, v.InstalledResource, v.Tick, audit.Evidence, true);
-                FinishAudit(audit, finding.Reason, finding);
-            }
-            if (audit.Pending && audit.Pages >= AuditPageLimit) FinishAudit(audit, "HistoryPageLimitExceeded");
+            // Only facts this completed action taught are offered to the audit decision.
+            var learned = actor.Knowledge.Entries.Values.Select(e => e.Fact).Where(f => f.Key.SubjectKind == SubjectKind.Record && f.SourceKind == EvidenceKind.RecordQuery && f.SourceId == action.Id.Value).ToArray();
+            var v = verificationInspections[audit.VerificationAttemptId];
+            var page = AuditPlanning.ReadPage(new AuditPageInput(audit.Status == AuditStatus.QueryingAttempts, query.Kind, cutoff, audit.Pages, AuditPageLimit, AuditEvidenceLimit, receipt, action.Id.Value, learned,
+                audit.Evidence, audit.QueryActionIds, v.MachineId, v.RequiredResource, v.InstalledResource, v.Tick));
+            audit.Evidence = page.Evidence; audit.QueryActionIds = page.QueryActionIds;
+            if (page.Cursor.HasValue) audit.Cursor = page.Cursor.Value;
+            if (page.AdvanceToReports) audit.Status = AuditStatus.QueryingReports;
+            if (page.FinishReason != null) FinishAudit(audit, page.FinishReason, page.Finding);
         }
     }
 }
