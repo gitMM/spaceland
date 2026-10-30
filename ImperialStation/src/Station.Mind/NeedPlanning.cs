@@ -27,7 +27,7 @@ namespace Station.Mind
         // executor checks them locally; a failed attempt informs retries. expectedWaits
         // holds only the citizen's own fresh learned estimates and the queues it sees on
         // its own tile (extra ticks per service).
-        public static PlanResult Plan(IActorView view, NeedKind need, IEnumerable<long>? avoidedServices = null, int candidates = 3, int depth = 8, int budget = 512, SortedDictionary<long, long>? expectedWaits = null)
+        public static PlanResult Plan(IActorView view, NeedKind need, IEnumerable<long>? avoidedServices = null, int candidates = 3, int depth = 8, int budget = 512, SortedDictionary<long, long>? expectedWaits = null, long sleptThisWindow = 0)
         {
             long Wait(long service) => expectedWaits != null && expectedWaits.TryGetValue(service, out long wait) ? wait : 0;
             if (candidates < 1 || candidates > 30) throw new ArgumentOutOfRangeException(nameof(candidates));
@@ -60,7 +60,8 @@ namespace Station.Mind
                         new ActionIntent(view.Actor, ActionKind.AllocateBerth, service.Position, serviceId: service.Id)));
                 }
                 steps.Add(new SymbolicAction("UseRelief:" + service.Id, at | permission, 1, 1, 0, checked(service.DurationTicks + Wait(service.Id)),
-                    new ActionIntent(view.Actor, service.Action, service.Position, serviceId: service.Id)));
+                    new ActionIntent(view.Actor, service.Action, service.Position, serviceId: service.Id,
+                        quantity: service.Kind == NeedServiceKind.Bed ? DailyPolicy.SleepLength(view.KnownRoster, view.Tick, service.DurationTicks, sleptThisWindow) : 0)));
             }
             return GoapPlanner.Search(new PlanningProblem(2, 1, names, steps), depth, budget);
         }
@@ -68,13 +69,13 @@ namespace Station.Mind
         // Urgent relief: tries each candidate need in order under one shared node budget,
         // then, with no plan for urgent sleep pressure, falls back to rest (rest never
         // satisfies sleep; a real alternative need wins first).
-        public static ReliefChoice PlanUrgent(IActorView view, IReadOnlyList<NeedValue> candidates, NeedValue? urgentSleep, bool sleepFallbackDue, IEnumerable<long> avoidedServices, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits)
+        public static ReliefChoice PlanUrgent(IActorView view, IReadOnlyList<NeedValue> candidates, NeedValue? urgentSleep, bool sleepFallbackDue, IEnumerable<long> avoidedServices, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits, long sleptThisWindow = 0)
         {
             var plan = new PlanResult(PlanOutcome.NoPlan); int remaining = budget; long expansions = 0; NeedValue? need = null;
             foreach (var candidate in candidates)
             {
                 need = candidate;
-                plan = Plan(view, need.Kind, avoidedServices, candidateLimit, depth, remaining, expectedWaits);
+                plan = Plan(view, need.Kind, avoidedServices, candidateLimit, depth, remaining, expectedWaits, sleptThisWindow);
                 expansions += plan.Expansions; remaining -= plan.Expansions;
                 if (plan.Outcome != PlanOutcome.NoPlan) break;
                 if (remaining <= 0) { plan = new PlanResult(PlanOutcome.BudgetExhausted); break; }
@@ -89,9 +90,9 @@ namespace Station.Mind
             return new ReliefChoice(plan, need, fallback, expansions);
         }
         // Relief for one need; unmet sleep pressure may fall back to rest with the budget left.
-        public static ReliefChoice PlanWithRestFallback(IActorView view, NeedKind need, IEnumerable<long> avoidedServices, bool sleepFallbackDue, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits)
+        public static ReliefChoice PlanWithRestFallback(IActorView view, NeedKind need, IEnumerable<long> avoidedServices, bool sleepFallbackDue, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits, long sleptThisWindow = 0)
         {
-            var plan = Plan(view, need, avoidedServices, candidateLimit, depth, budget, expectedWaits);
+            var plan = Plan(view, need, avoidedServices, candidateLimit, depth, budget, expectedWaits, sleptThisWindow);
             long expansions = plan.Expansions; bool fallback = false;
             if (plan.Outcome == PlanOutcome.NoPlan && need == NeedKind.SleepPressure && sleepFallbackDue && plan.Expansions < budget)
             {

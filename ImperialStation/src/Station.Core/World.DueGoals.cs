@@ -87,6 +87,13 @@ namespace Station.Core
         {
             if (GoalPriority.FirstDeferring(GoalPriority.DueArbitrationGates, g => Defers(actor, g)) != PriorityGate.None) return true;
             if (!GoalPriority.ArbitratesDueGoals(needAgents.ContainsKey(actor.Id.Value))) return false;
+            if (requesting == DueSource.None && id == 0)
+            {
+                // Ordinary work waits for a duty meal its own hunger will need before the
+                // window closes; the decision at that tick re-wakes the deferred work.
+                long mealDue = DutyMealComingDue(actor);
+                if (mealDue >= 0) { RequestNeedDecision(needAgents[actor.Id.Value], mealDue); return true; }
+            }
             var selected = SelectedDueGoal(actor);
             if (!GoalPriority.Supersedes(selected, requesting, id)) return false;
             switch (selected.Source)

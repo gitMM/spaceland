@@ -59,7 +59,10 @@ public sealed class StationIntegrationTests
         // Conversation initiators no longer read partners' private consent, so who is asked changes.
         // Schema 51 saves what each citizen sees of the services on its own tile; 52 saves its
         // knowledge of its own alternate identity proof; 53 its memory of its own completion posts.
-        Assert.Equal("7a179fbda0a775ad481009a03840c791e34e870d6789f33d30a3a7aee2fa2fe7", measured.Digest);
+        // Sleep is sized from own knowledge (bed duration less sleep already taken in the
+        // window, ending by the known pre-duty meal), so late sleepers no longer sleep
+        // through the pre-duty meal; workers, rests and toilets are unchanged.
+        Assert.Equal("1b3116394f56025e6d871d5ec2c5dd701fc90f8c81a6a41c4ead6e38cbf00dae", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

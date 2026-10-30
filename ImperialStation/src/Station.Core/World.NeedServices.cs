@@ -43,6 +43,28 @@ namespace Station.Core
     {
         private readonly SortedDictionary<long, NeedService> needServices = new SortedDictionary<long, NeedService>();
         private readonly SortedDictionary<long, NeedActivitySnapshot> needActivities = new SortedDictionary<long, NeedActivitySnapshot>();
+        // Derived per-actor index of own sleep activities in action order; rebuilt on restore.
+        private readonly SortedDictionary<long, List<NeedActivitySnapshot>> sleepsByActor = new SortedDictionary<long, List<NeedActivitySnapshot>>();
+        private void IndexSleep(NeedActivitySnapshot activity)
+        {
+            if (activity.Kind != ActionKind.Sleep) return;
+            if (!sleepsByActor.TryGetValue(activity.ActorId, out var list)) sleepsByActor.Add(activity.ActorId, list = new List<NeedActivitySnapshot>());
+            list.Add(activity);
+        }
+        // A sleep runs its planned finite length (never longer than the bed's duration).
+        private static long NeedDuration(ActiveAction action, NeedService service) =>
+            action.Kind == ActionKind.Sleep && action.Quantity > 0 ? Math.Min(action.Quantity, service.Definition.DurationTicks) : service.Definition.DurationTicks;
+        // Own sleep already taken (ended activities) since the current known sleep window
+        // opened: the result of the citizen's own actions, used to sleep only what remains.
+        private long SleptThisWindow(Id<ActorTag> actor)
+        {
+            long? opened = DailyPolicy.SleepWindowOpened(routines.TryGetValue(actor, out var routine) ? routine.KnownRoster : null, NeedNow);
+            if (!opened.HasValue || !sleepsByActor.TryGetValue(actor.Value, out var list)) return 0;
+            long slept = 0;
+            for (int i = list.Count - 1; i >= 0 && list[i].RequestedTick >= opened.Value; i--)
+                if (list[i].StartedTick >= 0 && list[i].EndedTick >= list[i].StartedTick) slept = checked(slept + list[i].EndedTick - list[i].StartedTick);
+            return slept;
+        }
         // Derived live reservations; historical activities remain the serialized authority.
         private readonly SortedDictionary<long, SortedSet<long>> mealReservations = new SortedDictionary<long, SortedSet<long>>();
         private readonly SortedDictionary<string, long> mealSinks = new SortedDictionary<string, long>(StringComparer.Ordinal);
@@ -102,11 +124,13 @@ namespace Station.Core
         private void StartNeedActivity(Actor actor, ActiveAction action)
         {
             if (!needServices.TryGetValue(action.ServiceId, out var service)) { Fail(actor, action.Id, FailureReason.RequiredServiceNotPresent); return; }
+            // Only sleep may be shorter than the service's declared duration (a finite length).
+            if (action.Quantity < 0 || action.Quantity > 0 && (action.Kind != ActionKind.Sleep || action.Quantity > service.Definition.DurationTicks)) { Fail(actor, action.Id, FailureReason.InvalidQuantity); return; }
             var failure = NeedServiceAccess(actor, action, service); if (failure != FailureReason.None) { Fail(actor, action.Id, failure); return; }
             service = TakeVisiblyFreeIdentical(actor, action, service);
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
-            needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
+            needActivities.Add(activity.ActionId, activity); IndexSleep(activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
             ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); ServiceVisiblyChanged(service); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
         }
         // Arriving at a service that visibly has someone ahead, a citizen uses an identical
@@ -151,7 +175,7 @@ namespace Station.Core
                 if (meal != null) { action.Item = meal.Id; activity.MealItemId = meal.Id.Value; }
                 activity.Status = NeedActivityStatus.Active; activity.StartedTick = processingTick; service.Occupants.Add(action.Id.Value);
                 ReserveMeal(activity);
-                action.Waiting = false; action.Started = processingTick; action.Completes = checked(processingTick + service.Definition.DurationTicks);
+                action.Waiting = false; action.Started = processingTick; action.Completes = checked(processingTick + NeedDuration(action, service));
                 Emit("NeedServiceClaimed", actor, action.Id, action.Item, arrival: action.Completes, detail: service.Definition.Kind.ToString()); ScheduleCompletion(actor, action.Completes);
             }
             ServiceVisiblyChanged(service);

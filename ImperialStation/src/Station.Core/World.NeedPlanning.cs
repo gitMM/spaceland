@@ -120,7 +120,7 @@ namespace Station.Core
             var candidates = NeedPriority.UrgentCandidates(view.Needs, () => KnownUrgentOrder(actorId), () => PreSleepRelief(actorId), out var preSleep);
             var sleep = NeedPriority.UrgentSleep(view.Needs, () => KnownUrgentOrder(actorId));
             var choice = NeedPlanning.PlanUrgent(view, candidates, sleep, agent.SleepFallbackRetryAt <= processingTick, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId),
-                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId));
+                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId), SleptThisWindow(actorId));
             PlannerExpansions += choice.Expansions; var plan = choice.Plan; bool fallback = choice.Fallback;
             if (choice.Need != null) { need = choice.Need; agent.Goal = need.Kind; }
             agent.LastOutcome = plan.Outcome; agent.LastCost = plan.Cost;

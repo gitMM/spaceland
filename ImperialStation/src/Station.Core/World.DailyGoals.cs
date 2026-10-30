@@ -93,6 +93,13 @@ namespace Station.Core
         private bool MealNeeded(Id<ActorTag> actor, DailyGoalSnapshot goal) =>
             DailyPolicy.MealNeeded(Needs!.Rules[(int)NeedKind.Hunger], () => NeedValues(actor.Value).Single(n => n.Kind == NeedKind.Hunger).Q,
                 routines.TryGetValue(actor, out var routine) ? routine.KnownRoster : null, goal.RosterVersion, goal.Closes, NeedNow, Config.TickDurationMs);
+        // Gathers own hunger and the open duty-meal goal; Mind forecasts when the meal is needed.
+        private long DutyMealComingDue(Actor actor)
+        {
+            if (Needs == null || !dailySchedules.ContainsKey(actor.Id.Value)) return -1;
+            var goal = DailyFor(actor.Id.Value).FirstOrDefault(g => g.Kind == RoutineOpportunityKind.DutyMeal && g.Status == DailyGoalStatus.Pending && g.Opens <= NeedNow && NeedNow < g.Closes);
+            return goal == null ? -1 : DailyPolicy.DutyMealComingDue(Needs.Rules[(int)NeedKind.Hunger], NeedValues(actor.Id.Value).Single(n => n.Kind == NeedKind.Hunger).Q, goal.Closes, NeedNow, Config.TickDurationMs);
+        }
         private bool DailyGoalEligible(DailyGoalSnapshot goal) => DailyPolicy.Eligible(goal.Status == DailyGoalStatus.Pending, goal.Kind, goal.Need, goal.DueTick, goal.RetryAt, goal.Closes, NeedNow,
             () => MealNeeded(new Id<ActorTag>(goal.ActorId), goal));
         private NeedKind? PreSleepRelief(Id<ActorTag> actor)
@@ -126,7 +133,7 @@ namespace Station.Core
             if (!SpendPlanningRequest()) { RequestDailyDecision(actorId, checked(processingTick + 1)); return; }
             var memory = needAgents[actorId.Value];
             var choice = NeedPlanning.PlanWithRestFallback(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), memory.SleepFallbackRetryAt <= processingTick,
-                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId));
+                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId), SleptThisWindow(actorId));
             PlannerExpansions += choice.Expansions; var plan = choice.Plan; bool fallback = choice.Fallback;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
