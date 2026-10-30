@@ -409,7 +409,7 @@ the result, so no snapshot schema change is needed.
 | Decision | Reason |
 | --- | --- |
 | Move every goal-priority, dispatch and institutional decision from Core into `Station.Mind`, with Core gathering inputs and applying choices | R-ARC-01/03/05 require all decision code in Mind behind the Contracts-only reference; the compile-time boundary is what makes hidden-state isolation (T08) checkable. |
-| Keep the move behaviour-identical and prove it by byte comparison | Checkpoints and traces of the 32-citizen pressure, recovery and institutional benchmarks match the pre-move build exactly. Behaviour changes, including leak fixes, stay separate and reviewable. |
+| Keep the move behaviour-identical and prove it by byte comparison | Checkpoints and traces of the 32-citizen pressure, recovery and institutional benchmarks and the 256-citizen pressure run match the pre-move build exactly (runtime unchanged, about 2.5 minutes for 256). Behaviour changes, including leak fixes, stay separate and reviewable. |
 | Express short-circuiting priority checks as ordered gate lists in Mind, evaluated one at a time by Core | Several checks wake the goal that wins; evaluating them eagerly would add wakes and change event order. Mind owns the order, Core performs each check's side effect only when asked. |
 | Pass Core status enums to Mind as Contracts mirrors or booleans | Mind cannot reference Core; mirrors are mapped by explicit switches or ordinal checks with a test asserting the names match. |
 | Make snapshot restore validators call the same Mind rules as live decisions | Detention, case and survey validation previously re-implemented the reason chains; one rule cannot drift from its copy. |

@@ -41,7 +41,7 @@ queues in creation order, evicts least-recently-used knowledge (a memory model) 
 co-locates guard teams (a physical handshake).
 
 The move was verified as behaviour-identical: the 32-citizen pressure, recovery and
-institutional benchmarks produce byte-identical
+institutional benchmarks and the 256-citizen pressure run produce byte-identical
 checkpoints and traces before and after. Known information leaks, where Core still
 reads world truth to build a decision's inputs, are listed under T08 in the
 [acceptance matrix](acceptance-current.md#acceptance-gates); fixing them changes
