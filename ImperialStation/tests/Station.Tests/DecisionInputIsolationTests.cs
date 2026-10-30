@@ -1,0 +1,52 @@
+using System.Collections;
+using System.Reflection;
+using System.Text.Json.Nodes;
+using Station.Contracts;
+using Station.Core;
+using Station.Runner;
+using Xunit;
+
+namespace Station.Tests;
+
+// T08 / R-ARC-04: each test runs two identical worlds, changes state the decider cannot know in one
+// of them just before the decision, and requires the same choice in both.
+public sealed class DecisionInputIsolationTests
+{
+    private static LoadedScenario Load(string scenario, Action<JsonObject>? change = null)
+    {
+        var json = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.Root, "scenarios", scenario + ".json")))!.AsObject(); change?.Invoke(json);
+        json["assertions"] = new JsonArray();
+        return new(json.ToJsonString(), File.ReadAllText(Path.Combine(Fixtures.Root, "content", "jobs.json")), "isolation-test");
+    }
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+    internal static object Get(object owner, string field) => owner.GetType().GetField(field, Any)!.GetValue(owner)!;
+    internal static void Set(object owner, string field, object? value) => owner.GetType().GetField(field, Any)!.SetValue(owner, value);
+    internal static object Actor(World w, long id) => ((IDictionary)Get(w, "actors"))[new Id<ActorTag>(id)]!;
+    // Advances both worlds to the same tick, hides a change in the second, then advances both to the same end.
+    private static (World Plain, World Changed) Twin(Func<World> make, long changeAt, Action<World> change, long end)
+    {
+        var plain = make(); var changed = make(); plain.AdvanceTo(changeAt); changed.AdvanceTo(changeAt); change(changed);
+        plain.AdvanceTo(end); changed.AdvanceTo(end); return (plain, changed);
+    }
+    // A forged physical identity: the supervisor's body now claims another role and account. The institution never saw it.
+    private static void Disguise(World w, long actor) { var a = Actor(w, actor); Set(a, "Role", "worker"); Set(a, "Account", new Id<AccountTag>(999)); }
+
+    [Fact]
+    public void T08_DetentionRequestAuthenticationAndReplyUseRegistrationsNotPhysicalActors()
+    {
+        var (plain, changed) = Twin(() => Load("detention_authorization").CreateWorld(42, true), 112, w => Disguise(w, 2), 113);
+        var expected = Assert.Single(plain.InspectDetentionRequests()); var actual = Assert.Single(changed.InspectDetentionRequests());
+        Assert.Equal(DetentionDecisionState.Approved, expected.Decision.State);
+        Assert.Equal(expected.Decision.State, actual.Decision.State); Assert.Equal(expected.Decision.Reason, actual.Decision.Reason);
+        Assert.NotEqual(0, expected.ReplyMessageId); Assert.Equal(expected.ReplyMessageId, actual.ReplyMessageId);
+    }
+
+    [Fact]
+    public void T08_CaseFilingAuthenticationAndReplyUseRegistrationsNotPhysicalActors()
+    {
+        var (plain, changed) = Twin(() => Load("personnel_case").CreateWorld(42, true), 66, w => Disguise(w, 2), 67);
+        string Decided(World w) => Assert.Single(w.Trace, e => e.Type == "CaseSubmissionDecided").Detail;
+        Assert.Equal(Decided(plain), Decided(changed)); Assert.Single(changed.InspectCases());
+        Assert.Equal(plain.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision), changed.InspectMessages().Count(m => m.Draft.Kind == MessageKind.CaseDecision));
+    }
+}

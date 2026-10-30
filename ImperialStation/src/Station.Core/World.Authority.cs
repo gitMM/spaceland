@@ -23,6 +23,10 @@ namespace Station.Core
             foreach (var actor in actors.Values) registrations.Add(actor.Id.Value, new KnownPersonnel(actor.Id.Value, actor.Account.Value, actor.Role));
             Schedule(new ScheduledEvent { Tick = 0, Phase = EventPhase.Decision, Kind = ScheduledKind.OpenAdmissionBucket });
         }
+        // Institutions authenticate a posting against their own registration records, never the physical actor.
+        private KnownPersonnel? RegisteredSender(MessageSnapshot message) =>
+            registrations.TryGetValue(message.PhysicalSender.Value, out var person) && person.AccountId == message.SenderAccount.Value ? person : null;
+        private bool RegisteredAccount(Id<AccountTag> account) => registrations.Values.Any(p => p.AccountId == account.Value);
         public IReadOnlyList<ReportExpectationSnapshot> InspectExpectations() => expectations.Values.Select(e => e.Copy()).ToArray();
         public IReadOnlyList<AcknowledgmentWatchSnapshot> InspectAcknowledgmentWatches() => acknowledgmentWatches.Values.Select(e => e.Copy()).ToArray();
         public IReadOnlyList<MissingReportIncident> InspectMissingReports() => missingReports.Values.Select(e => e.Copy()).ToArray();

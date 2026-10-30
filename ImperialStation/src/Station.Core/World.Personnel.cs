@@ -23,7 +23,7 @@ namespace Station.Core
         public IReadOnlyList<ReprimandSnapshot> InspectReprimands() => reprimands.Values.Select(c => c.Copy()).ToArray();
         public IReadOnlyList<CaseFilingSnapshot> InspectCaseFilings(Id<ActorTag> actor) => caseFilings.Values.Where(f => f.ActorId == actor.Value).Select(f => f.Copy()).ToArray();
         private void InitializePersonnel(PersonnelConfig config)
-        { if (Information == null || !JobsEnabled) throw new ArgumentException("Personnel requires information and jobs."); Personnel = config; }
+        { if (Information == null || !JobsEnabled || Authority == null) throw new ArgumentException("Personnel requires information, jobs and the authority's registrations."); Personnel = config; }
         private void RecordQueryDisclosure(Actor actor, ActiveAction action, RecordEntry entry, long capturedVersion)
         {
             if (Personnel == null || !(entry.Kind is RecordKind.WorkAttempt or RecordKind.WorkReport)) return;
@@ -71,7 +71,7 @@ namespace Station.Core
             var p = message.Draft.CaseSubmission!;
             long at = historicalTick ?? processingTick;
             if (Personnel == null) return "PersonnelUnavailable";
-            if (!actors.TryGetValue(message.PhysicalSender, out var sender) || sender.Account != message.SenderAccount || sender.Role != Personnel.SupervisorRole || message.TerminalId < 1 || message.SessionId < 1 || message.SubmittedTick < 0) return "RequesterPermissionDenied";
+            if (RegisteredSender(message)?.Role != Personnel.SupervisorRole || message.TerminalId < 1 || message.SessionId < 1 || message.SubmittedTick < 0) return "RequesterPermissionDenied";
             if (!CasePolicy.SupportedPolicy(p)) return "UnsupportedAccountabilityPolicy";
             if (!messages.TryGetValue(p.InspectionReportId, out var inspection) || inspection.PhysicalSender != message.PhysicalSender || inspection.SenderAccount != message.SenderAccount ||
                 inspection.Draft.Kind != MessageKind.WorkCompleted || inspection.Draft.InspectionReport == null || inspection.TerminalId < 1 || inspection.SessionId < 1 || inspection.SubmittedTick < 0 || inspection.SubmittedTick > message.SubmittedTick ||
@@ -123,7 +123,7 @@ namespace Station.Core
             }
             if (!filingKeys.ContainsKey(key)) filingKeys.Add(key, message.Id);
             // A reply travels through the mailbox. This does not update a supervisor's private goal.
-            if (actors.Values.Any(a => a.Account == message.SenderAccount))
+            if (RegisteredAccount(message.SenderAccount))
             {
                 var decision = new CaseDecisionPayload(message.Id, caseId, p.AccountId, caseId == 0 ? 0 : QualifyingReprimandCount(p.AccountId, processingTick), reason, nextCase - 1, validationVersion);
                 long reply = PostAuthorityWork(new MessageDraft(MessageKind.CaseDecision, RecipientKind.Account, message.SenderAccount, message.Draft.Subject,

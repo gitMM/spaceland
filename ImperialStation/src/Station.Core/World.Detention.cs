@@ -63,7 +63,7 @@ namespace Station.Core
         {
             var p = message.Draft.DetentionRequest!;
             if (Personnel == null) return "PersonnelUnavailable";
-            if (!actors.TryGetValue(message.PhysicalSender, out var sender) || sender.Role != Personnel.SupervisorRole || sender.Account != message.SenderAccount || message.SubmittedTick < 0 || message.TerminalId < 1 || message.SessionId < 1) return "RequesterPermissionDenied";
+            if (RegisteredSender(message)?.Role != Personnel.SupervisorRole || message.SubmittedTick < 0 || message.TerminalId < 1 || message.SessionId < 1) return "RequesterPermissionDenied";
             if (!messages.TryGetValue(p.CaseReplyMessageId, out var source) || source.Draft.Kind != MessageKind.CaseDecision || source.SenderAccount.Value != 0 || source.Draft.Recipient != message.SenderAccount ||
                 source.DeliveryTick > message.SubmittedTick || source.Draft.CaseDecision?.Accepted != true || source.Draft.CaseDecision.CaseId != p.CaseId || source.Draft.CaseDecision.AccountId != p.AccountId ||
                 !caseReplies.TryGetValue(source.Draft.CaseDecision.FilingMessageId, out long issuedReply) || issuedReply != source.Id ||
@@ -105,10 +105,11 @@ namespace Station.Core
             if (!detentionRequestKeys.ContainsKey(key)) detentionRequestKeys.Add(key, message.Id);
             var result = new DetentionDecisionPayload(message.Id, p.AccountId, authorization, state, reason, count, expires, nextCase - 1);
             var request = new DetentionRequestSnapshot { MessageId = message.Id, ReceivedTick = processingTick, ValidationRecordVersion = validationVersion, Decision = result }; detentionRequests.Add(message.Id, request);
-            if (actors.Values.Any(a => a.Account == message.SenderAccount))
+            bool registered = RegisteredAccount(message.SenderAccount);
+            if (registered)
                 request.ReplyMessageId = PostAuthorityWork(new MessageDraft(MessageKind.DetentionDecision, RecipientKind.Account, message.SenderAccount, message.Draft.Subject,
                     new FactValue(FactValueKind.Text, text: reason), processingTick, relatedMessageId: message.Id, operationKey: "detention-reply/" + message.Id, detentionDecision: result), cause);
-            if (message.SenderAccount.Value > 0 && actors.Values.Any(a => a.Account == message.SenderAccount))
+            if (message.SenderAccount.Value > 0 && registered)
                 records.Append(RecordKind.DetentionRequest, message.Id, message.SenderAccount.Value, processingTick, "detention-request/" + message.Id, new[] {
                     Number(AttributeKind.ActorId, message.PhysicalSender.Value), Number(AttributeKind.SubjectAccountId, p.AccountId), Number(AttributeKind.CaseId, p.CaseId), Number(AttributeKind.AuthorizationId, authorization),
                     Number(AttributeKind.QualifyingCount, count), Text(AttributeKind.DetentionStatus, state.ToString()), Text(AttributeKind.WorkStatus, reason) });
