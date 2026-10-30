@@ -102,10 +102,28 @@ namespace Station.Core
         {
             if (!needServices.TryGetValue(action.ServiceId, out var service)) { Fail(actor, action.Id, FailureReason.RequiredServiceNotPresent); return; }
             var failure = NeedServiceAccess(actor, action, service); if (failure != FailureReason.None) { Fail(actor, action.Id, failure); return; }
+            service = TakeVisiblyFreeIdentical(actor, action, service);
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
             ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
+        }
+        // Arriving at a service that visibly has someone ahead, a citizen uses an identical
+        // service on the same tile that it may use and that stands free (for example
+        // another facility bed). Plans made in the same tick cannot see each other's
+        // choice; this decision uses only what is visible here and now.
+        private NeedService TakeVisiblyFreeIdentical(Actor actor, ActiveAction action, NeedService chosen)
+        {
+            if (VisibleWait(chosen) == 0) return chosen;
+            var d = chosen.Definition;
+            var free = needServices.Values.FirstOrDefault(s => s != chosen && s.Definition.Position == d.Position && s.Definition.Kind == d.Kind && s.Definition.DetentionFacilityId == d.DetentionFacilityId &&
+                s.Definition.DurationTicks == d.DurationTicks && VisibleWait(s) == 0 && NeedServiceAccess(actor, action, s) == FailureReason.None);
+            if (free == null) return chosen;
+            action.ServiceId = free.Definition.Id;
+            foreach (var goal in DailyFor(actor.Id.Value).Where(g => g.ActiveActionId == action.Id.Value)) goal.ServiceId = free.Definition.Id;
+            if (needAgents.TryGetValue(actor.Id.Value, out var agent) && agent.ActiveActionId == action.Id.Value) agent.ServiceId = free.Definition.Id;
+            Emit("NeedServiceSwitched", actor, action.Id, detail: "from=" + d.Id + "; to=" + free.Definition.Id + "; " + d.Kind);
+            return free;
         }
         private void RequestNeedGrant(NeedService service)
         {

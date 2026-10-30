@@ -45,27 +45,47 @@ public sealed class ServiceEstimateTests
         Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
     }
 
-    // Two identical one-seat cafeterias share the diners' tile. The second diner gets
-    // hungry while the lower-numbered one is occupied and takes the free one it can see.
-    [Fact]
-    public void DinerTakesAVisiblyFreeIdenticalServiceOnTheSameTile()
+    // Two identical one-seat cafeterias share the diners' tile.
+    private static World SameTile(long secondHunger)
     {
         var tiles = new[] { new Tile(new(1), "Habitat", new Coord(0, 0, 0)) };
         var actors = Enumerable.Range(1, 2).Select(i => new ActorSeed(new(i), "Diner " + i, "worker", new Coord(0, 0, 0))).ToArray();
         var items = new List<Item> { new(new(10), "meal", 20, new(LocationKind.TileContainer, 1)) };
         items.AddRange(actors.Select(a => new Item(new(a.Id.Value), "card", 1, new(LocationKind.ActorInventory, a.Id.Value))));
-        var w = new World("identical-services", 42, new WorldConfig(tickDurationMs: 60000, itemActionTicks: 1), Fixtures.Catalog, tiles, actors, items, true,
+        return new World("identical-services", 42, new WorldConfig(tickDurationMs: 60000, itemActionTicks: 1), Fixtures.Catalog, tiles, actors, items, true,
             information: new InformationSeed(TerminalFixtures.Tiny(), new[] { new TerminalSeed(1, new Coord(0, 0, 0), new[] { "worker" }) },
                 credentials: actors.Select(a => new CredentialSeed(a.Id.Value, a.Id, a.Account, new(a.Id.Value)))),
-            needs: new NeedSeed(initial: new[] { new NeedInitialValue(new(1), NeedKind.Hunger, 699 * H), new NeedInitialValue(new(2), NeedKind.Hunger, 689 * H) },
+            needs: new NeedSeed(initial: new[] { new NeedInitialValue(new(1), NeedKind.Hunger, 699 * H), new NeedInitialValue(new(2), NeedKind.Hunger, secondHunger * H) },
                 services: new[] { new NeedServiceDefinition(1, NeedServiceKind.Cafeteria, new Coord(0, 0, 0), capacity: 1, durationTicks: 60),
                     new NeedServiceDefinition(2, NeedServiceKind.Cafeteria, new Coord(0, 0, 0), capacity: 1, durationTicks: 60) }));
-        w.AdvanceTo(120);
+    }
+
+    // The second diner gets hungry while the lower-numbered seat is occupied and plans
+    // for the free one it can see.
+    [Fact]
+    public void DinerTakesAVisiblyFreeIdenticalServiceOnTheSameTile()
+    {
+        var w = SameTile(689); w.AdvanceTo(120);
         var first = Meals(w, 1)[0]; var second = Meals(w, 2)[0];
         Assert.Equal(1, first.ServiceId);
         Assert.True(second.RequestedTick > first.StartedTick && second.RequestedTick < first.EndedTick, "The second diner decides while the first seat is taken.");
         Assert.Equal(2, second.ServiceId);
         Assert.True(second.StartedTick <= second.RequestedTick + 1, "No wait beyond the ordinary one-tick grant.");
         Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+    }
+
+    // Both diners plan in the same tick and pick the same seat; the one who finds it
+    // taken on arrival uses the free identical seat instead of queueing a full round.
+    [Fact]
+    public void SameTickChoosersSpreadOverIdenticalServicesOnArrival()
+    {
+        var w = SameTile(699); w.AdvanceTo(120);
+        var first = Meals(w, 1)[0]; var second = Meals(w, 2)[0];
+        Assert.Equal(first.RequestedTick, second.RequestedTick);
+        Assert.NotEqual(first.ServiceId, second.ServiceId);
+        Assert.All(new[] { first, second }, m => Assert.True(m.StartedTick <= m.RequestedTick + 1));
+        Assert.Single(w.Trace, e => e.Type == "NeedServiceSwitched");
+        var copy = World.Restore(w.Serialize()); Assert.Equal(w.Serialize(), copy.Serialize());
+        w.AdvanceTo(200); copy.AdvanceTo(200); Assert.Equal(w.Serialize(), copy.Serialize());
     }
 }
