@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -25,7 +26,7 @@ namespace Station.Core
         private readonly SortedDictionary<(long Actor, long Terminal), TerminalOutageSnapshot> terminalOutages = new SortedDictionary<(long Actor, long Terminal), TerminalOutageSnapshot>();
         // A learned outage redirects planning to eligible alternatives until its recheck.
         // The delay starts at the planner's maximum retry delay and doubles to a bound.
-        private long OutageRecheckLimit => checked(planner.MaximumBackoff * 8);
+        private long OutageRecheckLimit => TerminalAvoidance.RecheckLimit(planner.MaximumBackoff);
         public IReadOnlyList<TerminalOutageSnapshot> InspectTerminalOutages(Id<ActorTag> actor) =>
             terminalOutages.Values.Where(o => o.ActorId == actor.Value).Select(o => o.Copy()).ToArray();
         private void LearnTerminalOutage(Actor actor, Terminal terminal)
@@ -34,11 +35,11 @@ namespace Station.Core
             var key = (actor.Id.Value, terminal.Definition.Id);
             if (!terminalOutages.TryGetValue(key, out var outage))
             {
-                outage = new TerminalOutageSnapshot { ActorId = actor.Id.Value, TerminalId = terminal.Definition.Id, FirstObservedTick = processingTick, RecheckDelay = planner.MaximumBackoff };
+                outage = new TerminalOutageSnapshot { ActorId = actor.Id.Value, TerminalId = terminal.Definition.Id, FirstObservedTick = processingTick, RecheckDelay = TerminalAvoidance.InitialRecheckDelay(planner.MaximumBackoff) };
                 terminalOutages.Add(key, outage);
             }
             else if (outage.ObservedTick == processingTick) return;
-            else outage.RecheckDelay = Math.Min(OutageRecheckLimit, checked(outage.RecheckDelay * 2));
+            else outage.RecheckDelay = TerminalAvoidance.NextRecheckDelay(outage.RecheckDelay, planner.MaximumBackoff);
             outage.Failures++; outage.ObservedTick = processingTick; outage.RecheckAt = checked(processingTick + outage.RecheckDelay);
             Emit("TerminalOutageLearned", actor, terminalId: terminal.Definition.Id, detail: "failures=" + outage.Failures + "; recheck=" + outage.RecheckAt);
         }
@@ -51,8 +52,7 @@ namespace Station.Core
         // After RecheckAt the terminal is an ordinary candidate again. With no alternative,
         // planning falls back to all terminals and the agent's own bounded retry backoff.
         // Ordered by recheck time so a fallback rechecks the oldest observation first.
-        private long[] AvoidedTerminals(Id<ActorTag> actor) => terminalOutages.Values.Where(o => o.ActorId == actor.Value && o.RecheckAt > NeedNow)
-            .OrderBy(o => o.RecheckAt).ThenBy(o => o.TerminalId).Select(o => o.TerminalId).ToArray();
+        private long[] AvoidedTerminals(Id<ActorTag> actor) => TerminalAvoidance.Avoided(terminalOutages.Values.Where(o => o.ActorId == actor.Value).Select(o => (o.TerminalId, o.RecheckAt)), NeedNow);
         private void WriteTerminalOutages(BinaryWriter w)
         {
             w.Write(terminalOutages.Count);

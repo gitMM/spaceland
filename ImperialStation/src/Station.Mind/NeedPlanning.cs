@@ -5,6 +5,16 @@ using Station.Contracts;
 
 namespace Station.Mind
 {
+    // The selected relief plan, the need it serves (null when none was tried), whether
+    // it is the rest fallback for unmet sleep, and all node expansions spent.
+    public sealed class ReliefChoice
+    {
+        public PlanResult Plan { get; }
+        public NeedValue? Need { get; }
+        public bool Fallback { get; }
+        public long Expansions { get; }
+        public ReliefChoice(PlanResult plan, NeedValue? need, bool fallback, long expansions) { Plan = plan; Need = need; Fallback = fallback; Expansions = expansions; }
+    }
     public static class NeedPlanning
     {
         public static bool Serves(NeedServiceKind service, NeedKind need) =>
@@ -53,6 +63,43 @@ namespace Station.Mind
                     new ActionIntent(view.Actor, service.Action, service.Position, serviceId: service.Id)));
             }
             return GoapPlanner.Search(new PlanningProblem(2, 1, names, steps), depth, budget);
+        }
+
+        // Urgent relief: tries each candidate need in order under one shared node budget,
+        // then, with no plan for urgent sleep pressure, falls back to rest (rest never
+        // satisfies sleep; a real alternative need wins first).
+        public static ReliefChoice PlanUrgent(IActorView view, IReadOnlyList<NeedValue> candidates, NeedValue? urgentSleep, bool sleepFallbackDue, IEnumerable<long> avoidedServices, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits)
+        {
+            var plan = new PlanResult(PlanOutcome.NoPlan); int remaining = budget; long expansions = 0; NeedValue? need = null;
+            foreach (var candidate in candidates)
+            {
+                need = candidate;
+                plan = Plan(view, need.Kind, avoidedServices, candidateLimit, depth, remaining, expectedWaits);
+                expansions += plan.Expansions; remaining -= plan.Expansions;
+                if (plan.Outcome != PlanOutcome.NoPlan) break;
+                if (remaining <= 0) { plan = new PlanResult(PlanOutcome.BudgetExhausted); break; }
+            }
+            bool fallback = false;
+            if (plan.Outcome == PlanOutcome.NoPlan && urgentSleep != null && remaining > 0 && sleepFallbackDue)
+            {
+                need = urgentSleep;
+                plan = Plan(view, NeedKind.WorkStrain, avoidedServices, candidateLimit, depth, remaining);
+                expansions += plan.Expansions; fallback = plan.Outcome == PlanOutcome.PlanFound;
+            }
+            return new ReliefChoice(plan, need, fallback, expansions);
+        }
+        // Relief for one need; unmet sleep pressure may fall back to rest with the budget left.
+        public static ReliefChoice PlanWithRestFallback(IActorView view, NeedKind need, IEnumerable<long> avoidedServices, bool sleepFallbackDue, int candidateLimit, int depth, int budget, SortedDictionary<long, long>? expectedWaits)
+        {
+            var plan = Plan(view, need, avoidedServices, candidateLimit, depth, budget, expectedWaits);
+            long expansions = plan.Expansions; bool fallback = false;
+            if (plan.Outcome == PlanOutcome.NoPlan && need == NeedKind.SleepPressure && sleepFallbackDue && plan.Expansions < budget)
+            {
+                int remaining = budget - plan.Expansions;
+                plan = Plan(view, NeedKind.WorkStrain, avoidedServices, candidateLimit, depth, remaining);
+                expansions += plan.Expansions; fallback = plan.Outcome == PlanOutcome.PlanFound;
+            }
+            return new ReliefChoice(plan, null, fallback, expansions);
         }
     }
 }

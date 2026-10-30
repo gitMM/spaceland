@@ -7,6 +7,8 @@ namespace Station.Mind
 {
     public static class ReportPlanning
     {
+        // A report that cannot be planned retries after a delay that doubles up to the bound.
+        public static long NextBackoff(long backoff, long maximumBackoff) => Math.Min(maximumBackoff, checked(backoff * 2));
         public static PlanResult PlanInbox(IActorView view, long loginTicks, long readTicks, int candidates = 3, int maxDepth = 8, int nodeBudget = 512, IEnumerable<long>? avoidedTerminals = null)
             => PlanTerminal(view, null, null, 0, loginTicks, readTicks, candidates, maxDepth, nodeBudget, true, avoidedTerminals);
         public static PlanResult PlanRecords(IActorView view, RecordQuery query, long terminalId, long loginTicks, long queryTicks, int maxDepth = 8, int nodeBudget = 512)

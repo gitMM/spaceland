@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -11,7 +12,6 @@ namespace Station.Core
         internal long Sequence { get; }
         internal GoalStamp(long due, long sequence) { Due = due; Sequence = sequence; }
     }
-    internal enum DueSource { None, Report, CheckIn, Routine, Toilet }
     public sealed partial class World
     {
         private long nextGoalSequence = 1;
@@ -21,11 +21,35 @@ namespace Station.Core
         {
             if (command.Value == 0) return true;
             var actor = actors[command.Intent.Actor]; var source = (DueSource)(command.Value - 1);
-            if (actor.Action != null) { Emit("PlanDeferred", actor, detail: "CommittedAction", causeId: command.CauseId); return false; }
-            if (source != DueSource.Report && KnownUrgentOrder(actor.Id))
-            { WakeGuard(actor); WakePatrol(actor); Emit("PlanDeferred", actor, detail: "KnownUrgentOrder", causeId: command.CauseId); return false; }
-            if (DeferToNeed(actor) || DeferToDueGoal(actor, source)) { Emit("PlanDeferred", actor, detail: "HigherPriorityGoal", causeId: command.CauseId); return false; }
-            return true;
+            var gate = GoalPriority.FirstDeferring(GoalPriority.StartGates(source), g => Defers(actor, g, source));
+            if (gate == PriorityGate.None) return true;
+            if (gate == PriorityGate.KnownUrgentOrder) { WakeGuard(actor); WakePatrol(actor); }
+            Emit("PlanDeferred", actor, detail: GoalPriority.DeferralDetail(gate), causeId: command.CauseId); return false;
+        }
+        // Evaluates one shared priority check for a citizen. Checks that defer to another
+        // goal schedule that goal's decision; Mind decides which checks apply and in what order.
+        private bool Defers(Actor actor, PriorityGate gate, DueSource source = DueSource.None, long id = 0)
+        {
+            switch (gate)
+            {
+                case PriorityGate.EscortControls: return EscortControls(actor.Id);
+                case PriorityGate.CommittedAction: return actor.Action != null;
+                case PriorityGate.UrgentNeed: return DeferToNeed(actor);
+                case PriorityGate.CredentialRecovery: return PrepareCredentialGoal(actor);
+                case PriorityGate.Recovery: return DeferToRecovery(actor);
+                case PriorityGate.KnownUrgentOrder: return KnownUrgentOrder(actor.Id);
+                case PriorityGate.CriticalNeed: return HasCriticalNeed(actor.Id);
+                case PriorityGate.StaffClaimed: return resourceClaims.Any(c => c.Kind == ClaimKind.Staff && c.ResourceId == actor.Id.Value);
+                case PriorityGate.RoutineForbidsCheckIn: return !RoutineAllowsCheckIn(actor.Id);
+                case PriorityGate.GuardPriority: return GuardHasPriority(actor.Id);
+                case PriorityGate.DueGoal: return DeferToDueGoal(actor, source, id);
+                case PriorityGate.DueGoalSelected: return SelectedDueGoal(actor).Source != DueSource.None;
+                case PriorityGate.AlreadyPlanned: return AlreadyPlanned(actor, source);
+                case PriorityGate.ReportQueueFirst: return GoalPriority.ReportQueueFirst(needAgents.ContainsKey(actor.Id.Value), reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0);
+                case PriorityGate.OrdinaryWork: return OrdinaryWorkReady(actor);
+                case PriorityGate.OptionalRest: return DeferToOptionalRest(actor);
+                default: throw new ArgumentOutOfRangeException(nameof(gate), gate, "This priority check needs the deciding goal's own state.");
+            }
         }
         private GoalStamp NewGoalStamp(long due) => new GoalStamp(due, nextGoalSequence++);
         private void QueueReport(ReportAgent agent, MessageDraft draft)
@@ -40,30 +64,31 @@ namespace Station.Core
             if (!agent.Due) { agent.Stamp = NewGoalStamp(NeedNow); agent.BlockedUntil = 0; }
             agent.Due = true;
         }
-        private (DueSource Source, long Id) SelectedDueGoal(Actor actor)
+        // Gathers the citizen's own due goals; Mind selects the one with priority.
+        private DueOption SelectedDueGoal(Actor actor)
         {
-            var options = new List<(DueSource Source, long Id, GoalStamp Stamp)>();
-            if (reportAgents.TryGetValue(actor.Id, out var report) && report.Pending.Count > 0 && !(report.BlockedReason.Length > 0 && report.NextDecision > NeedNow))
-            {
-                // The retained FIFO reporting protocol must be able to post the
-                // acknowledgment/outcome that lets an urgent order progress.
-                if (KnownUrgentOrder(actor.Id)) return (DueSource.Report, 0);
-                options.Add((DueSource.Report, 0, report.PendingStamps[0]));
-            }
-            if (checkIns.TryGetValue(actor.Id, out var checkIn) && checkIn.Due && checkIn.BlockedUntil <= NeedNow && RoutineAllowsCheckIn(actor.Id))
-                options.Add((DueSource.CheckIn, 0, checkIn.Stamp));
-            foreach (var goal in DailyFor(actor.Id.Value).Where(DailyGoalEligible))
-                options.Add((DueSource.Routine, goal.Id, new GoalStamp(goal.DueTick, goal.Id)));
-            if (needAgents.TryGetValue(actor.Id.Value, out var needs) && needs.ToiletSequence > 0 && needs.RetryAt <= NeedNow)
-                options.Add((DueSource.Toilet, 0, new GoalStamp(needs.ToiletDueTick, needs.ToiletSequence)));
-            var selected = options.OrderBy(o => o.Stamp.Due).ThenBy(o => o.Stamp.Sequence).FirstOrDefault();
-            return (selected.Source, selected.Id);
+            DueOption? report = null;
+            if (reportAgents.TryGetValue(actor.Id, out var reports) && GoalPriority.ReportCompetes(reports.Pending.Count, reports.BlockedReason.Length > 0, reports.NextDecision, NeedNow))
+                report = new DueOption(DueSource.Report, 0, reports.PendingStamps[0].Due, reports.PendingStamps[0].Sequence);
+            return GoalPriority.SelectDue(report, () => KnownUrgentOrder(actor.Id), CompetingDueGoals(actor));
         }
+        // Own due goals other than the report queue, in arbitration order (read lazily).
+        private IEnumerable<DueOption> CompetingDueGoals(Actor actor)
+        {
+            if (checkIns.TryGetValue(actor.Id, out var checkIn) && GoalPriority.CheckInCompetes(checkIn.Due, checkIn.BlockedUntil, NeedNow, RoutineAllowsCheckIn(actor.Id)))
+                yield return new DueOption(DueSource.CheckIn, 0, checkIn.Stamp.Due, checkIn.Stamp.Sequence);
+            foreach (var goal in DailyFor(actor.Id.Value).Where(DailyGoalEligible))
+                yield return new DueOption(DueSource.Routine, goal.Id, goal.DueTick, goal.Id);
+            if (needAgents.TryGetValue(actor.Id.Value, out var needs) && GoalPriority.ToiletCompetes(needs.ToiletSequence, needs.RetryAt, NeedNow))
+                yield return new DueOption(DueSource.Toilet, 0, needs.ToiletDueTick, needs.ToiletSequence);
+        }
+        // Wakes the selected due goal when it takes priority over the requesting one.
         private bool DeferToDueGoal(Actor actor, DueSource requesting = DueSource.None, long id = 0)
         {
-            if (DeferToRecovery(actor)) return true; if (!needAgents.ContainsKey(actor.Id.Value)) return false;
+            if (GoalPriority.FirstDeferring(GoalPriority.DueArbitrationGates, g => Defers(actor, g)) != PriorityGate.None) return true;
+            if (!GoalPriority.ArbitratesDueGoals(needAgents.ContainsKey(actor.Id.Value))) return false;
             var selected = SelectedDueGoal(actor);
-            if (selected.Source == DueSource.None || selected.Source == requesting && selected.Id == id) return false;
+            if (!GoalPriority.Supersedes(selected, requesting, id)) return false;
             switch (selected.Source)
             {
                 case DueSource.Report: RequestReportDecision(reportAgents[actor.Id], NeedNow); break;
