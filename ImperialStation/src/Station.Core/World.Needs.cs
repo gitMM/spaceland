@@ -48,7 +48,7 @@ namespace Station.Core
         }
         private void InitializeNeeds(NeedSeed seed)
         {
-            Needs = seed.Config; InitializeNeedServices(seed.Services);
+            Needs = seed.Config; InitializeNeedServices(seed.Services); foreach (var actor in actors.Values) PerceiveLocalServices(actor);
             var initial = new SortedDictionary<(long Actor, NeedKind Kind), long>();
             foreach (var value in seed.Initial)
             { if (!actors.ContainsKey(value.Actor)) throw new ArgumentException("Initial need refers to an unknown actor."); initial.Add((value.Actor.Value, value.Kind), value.Q); }

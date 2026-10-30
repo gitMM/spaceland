@@ -50,7 +50,7 @@ namespace Station.Core
         private void ObserveServiceQueue(Actor actor, NeedService service) => LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedQueue, wait: VisibleWait(service));
         private long MealsVisible(NeedService service) => AvailableItemsAt(service.Definition.Position).Where(i => i.Resource == service.Definition.MealResource)
             .Sum(i => Math.Max(0, i.Quantity - (mealReservations.TryGetValue(i.Id.Value, out var claims) ? claims.Count : 0)));
-        // Gathers this citizen's learned estimates and the services it can use on its own
+        // Gathers this citizen's learned estimates and what it sees of the services on its own
         // tile; Mind turns them into expected extra waits for its planning only.
         private SortedDictionary<long, long> KnownServiceWaits(Id<ActorTag> actor)
         {
@@ -60,17 +60,43 @@ namespace Station.Core
                 long extra = ServicePreference.LearnedExtraWait(NeedNow, EstimateStaleTicks, e.WaitObservedTick, e.WaitTicks, e.StockObservedTick, e.MealsSeen, needServices[e.ServiceId].Definition.DurationTicks);
                 if (extra > 0) waits[e.ServiceId] = extra;
             }
-            var position = actors[actor].Position;
-            var here = needServices.Values.Where(s => s.Definition.Position == position && s.Enabled && (s.Definition.Kind != NeedServiceKind.Bed || s.AssignedActorId == 0 || s.AssignedActorId == actor.Value))
-                .Select(s => (s.Definition.Id, s.Definition.Kind, s.Definition.DetentionFacilityId, (Func<long>)(() => VisibleWait(s)))).ToArray();
-            ServicePreference.CompareVisibleQueues(waits, here);
+            if (seenServiceWaits.TryGetValue(actor.Value, out var seen))
+            {
+                var here = seen.Select(p => (p.Key, needServices[p.Key].Definition.Kind, needServices[p.Key].Definition.DetentionFacilityId, (Func<long>)(() => p.Value))).ToArray();
+                ServicePreference.CompareVisibleQueues(waits, here);
+            }
             return waits;
         }
+        // Local perception of the services on a citizen's own tile: for each one it may use
+        // (in service, and not a bed labelled for someone else), the visible wait. A citizen
+        // sees them on arrival and sees every later queue, seat, label or power change while
+        // it stands there; deciders read only this, never the live queues.
+        private readonly SortedDictionary<long, SortedDictionary<long, long>> seenServiceWaits = new SortedDictionary<long, SortedDictionary<long, long>>();
+        private readonly SortedDictionary<Coord, List<NeedService>> servicesAt = new SortedDictionary<Coord, List<NeedService>>();
+        private void IndexNeedService(NeedService service)
+        { if (!servicesAt.TryGetValue(service.Definition.Position, out var list)) { list = new List<NeedService>(); servicesAt.Add(service.Definition.Position, list); } list.Add(service); }
+        private void PerceiveLocalServices(Actor actor)
+        {
+            seenServiceWaits.Remove(actor.Id.Value);
+            if (servicesAt.TryGetValue(actor.Position, out var here)) foreach (var service in here) SeeService(actor.Id.Value, service);
+        }
+        private void SeeService(long actor, NeedService service)
+        {
+            bool usable = service.Enabled && (service.Definition.Kind != NeedServiceKind.Bed || service.AssignedActorId == 0 || service.AssignedActorId == actor);
+            if (!seenServiceWaits.TryGetValue(actor, out var seen)) { if (!usable) return; seen = new SortedDictionary<long, long>(); seenServiceWaits.Add(actor, seen); }
+            if (usable) seen[service.Definition.Id] = VisibleWait(service); else { seen.Remove(service.Definition.Id); if (seen.Count == 0) seenServiceWaits.Remove(actor); }
+        }
+        // Everyone standing on the service's tile sees the change.
+        private void ServiceVisiblyChanged(NeedService service)
+        { if (localActors.TryGetValue(service.Definition.Position, out var bucket)) foreach (long id in bucket) SeeService(id, service); }
+        private long SeenWait(Actor actor, NeedService service) => seenServiceWaits.TryGetValue(actor.Id.Value, out var seen) && seen.TryGetValue(service.Definition.Id, out long wait) ? wait : 0;
         private void WriteServiceEstimates(BinaryWriter w)
         {
             w.Write(serviceEstimates.Count);
             foreach (var e in serviceEstimates.Values)
             { w.Write(e.ActorId); w.Write(e.ServiceId); w.Write(e.WaitObservedTick); w.Write(e.WaitTicks); w.Write((int)e.WaitSource); w.Write(e.StockObservedTick); w.Write(e.MealsSeen); w.Write((int)e.StockSource); }
+            w.Write(seenServiceWaits.Count);
+            foreach (var actor in seenServiceWaits) { w.Write(actor.Key); w.Write(actor.Value.Count); foreach (var seen in actor.Value) { w.Write(seen.Key); w.Write(seen.Value); } }
         }
         private void ReadServiceEstimates(BinaryReader r)
         {
@@ -84,6 +110,17 @@ namespace Station.Core
                     !Valid(e.WaitObservedTick) || !Valid(e.StockObservedTick) || e.WaitObservedTick < 0 && e.StockObservedTick < 0 || e.WaitTicks < 0 || e.MealsSeen < -1 || (e.StockObservedTick < 0) != (e.MealsSeen < 0) ||
                     !serviceEstimates.TryAdd((e.ActorId, e.ServiceId), e))
                     throw new ArgumentException("Invalid learned service estimate.");
+            }
+            seenServiceWaits.Clear(); count = Count(r);
+            for (int i = 0; i < count; i++)
+            {
+                long actor = r.ReadInt64(); int n = Count(r); var seen = new SortedDictionary<long, long>();
+                if (n == 0 || !actors.TryGetValue(new Id<ActorTag>(actor), out var who) || !seenServiceWaits.TryAdd(actor, seen)) throw new ArgumentException("Invalid seen service waits.");
+                for (int j = 0; j < n; j++)
+                {
+                    long service = r.ReadInt64(), wait = r.ReadInt64();
+                    if (!needServices.TryGetValue(service, out var s) || s.Definition.Position != who.Position || wait < 0 || !seen.TryAdd(service, wait)) throw new ArgumentException("Invalid seen service waits.");
+                }
             }
         }
     }

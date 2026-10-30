@@ -43,7 +43,7 @@ namespace Station.Core
         private void RelocateActor(Actor actor, Coord position)
         {
             var old = localActors[actor.Position]; old.Remove(actor.Id.Value); if (old.Count == 0) localActors.Remove(actor.Position);
-            actor.Position = position; RegisterLocalActor(actor);
+            actor.Position = position; RegisterLocalActor(actor); PerceiveLocalServices(actor);
         }
         private void InitializeConversations(ConversationConfig config)
         {

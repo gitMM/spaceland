@@ -97,4 +97,15 @@ public sealed class DecisionInputIsolationTests
         Assert.EndsWith("partner=1", Choice(plain)); Assert.Equal(Choice(plain), Choice(changed));
         Assert.Contains(changed.Trace, e => e.Type == "ActionFailed" && e.ActorId == 2 && e.Detail.Contains("ConsentDeclined"));
     }
+
+    [Fact]
+    public void T08_SameTileServiceChoiceUsesWhatTheDinerSawNotTheLiveQueues()
+    {
+        static NeedActivitySnapshot FirstMeal(World w) => w.InspectNeedActivities().First(a => a.ActorId == 2 && a.Kind == ActionKind.Eat);
+        var probe = ServiceEstimateTests.SameTile(689); probe.AdvanceTo(120); long decided = FirstMeal(probe).RequestedTick;
+        // A seat-2 occupancy appears without any visible event, so nobody on the tile saw it.
+        var (plain, changed) = Twin(() => ServiceEstimateTests.SameTile(689), decided - 1, w => ((SortedSet<long>)Get(Entry(w, "needServices", 2L), "Occupants")).Add(999_999), decided);
+        Assert.Equal(2, FirstMeal(plain).ServiceId); Assert.Equal(FirstMeal(plain).ServiceId, FirstMeal(changed).ServiceId);
+        Assert.Equal(plain.InspectServiceEstimates(new(2)).Count, changed.InspectServiceEstimates(new(2)).Count);
+    }
 }

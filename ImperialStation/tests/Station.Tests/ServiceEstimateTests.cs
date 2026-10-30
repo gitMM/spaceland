@@ -46,7 +46,7 @@ public sealed class ServiceEstimateTests
     }
 
     // Two identical one-seat cafeterias share the diners' tile.
-    private static World SameTile(long secondHunger)
+    internal static World SameTile(long secondHunger)
     {
         var tiles = new[] { new Tile(new(1), "Habitat", new Coord(0, 0, 0)) };
         var actors = Enumerable.Range(1, 2).Select(i => new ActorSeed(new(i), "Diner " + i, "worker", new Coord(0, 0, 0))).ToArray();
