@@ -379,3 +379,8 @@ the result, so no snapshot schema change is needed.
 | Measure response stages from the recorded trace and final snapshots only | The report cannot influence decisions or replay; declared targets are assessment targets, not gates. |
 | Classify missed targets from published rosters, recorded need activities and terminal state | Separates detection delay from institutional response, and off-duty or asleep responders from occupied ones. |
 | Use 256 citizens (four 64-citizen groups) for population runs and tests instead of 2,048 | User decision. 256 keeps several groups, districts and cross-group dispatch while each run fits an iteration cycle; 2,048 results remain historical evidence. |
+| Learn a terminal outage only when standing at the terminal; clear it only by a later successful login there | Travel or unrelated work must not erase an observation, and live terminal state is never read remotely. |
+| Use learned outages to redirect reports and check-ins to eligible alternatives, not to block them | With no alternative the existing bounded retry continues, rechecking the oldest outage first; audits keep their record-permitted terminal. |
+| Keep cafeteria estimates per citizen with separate wait and stock observation ticks, ignored after 6,000 ticks | Estimates record when and how they were learned, go stale, and never come from live remote queues or stock. |
+| Count only a wait beyond one service duration in cafeteria choice | Ordinary queues do not cause switching between cafeterias. |
+| A read repair order supersedes an older observed belief that the machine works | The order is newer authenticated evidence; claiming completion from the older sighting closed real faults without repair. |

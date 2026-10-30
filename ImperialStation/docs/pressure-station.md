@@ -164,6 +164,35 @@ State `5d0c4526…eb01`, continuation `52125ac3…8ff3`.
 | facility resolution | 83 | 1,876 | 215,254 | 217,105 | 32 `ResponderOffDuty`, 5 work duration |
 | credential detection | 48 | 169 | 16,500 | 16,500 | 16 `LossHolderAsleep`, 8 off duty |
 
+## Terminal outages, cafeteria estimates and a stale-belief fix (2026-10-30)
+
+Items 5 and 4 are described in the
+[acceptance matrix](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
+Snapshot schema 48 adds learned terminal outages and cafeteria estimates.
+
+The first 256-citizen run with learned outages failed the clear-day gate: three
+machine-repair jobs ended authority-complete but never physically completed. A
+worker read a repair order at tick 87,012 and reported it complete three ticks later
+from its own observation at tick 74,150 that the machine worked, although wave 3 had
+broken it at 87,000. The fault was older than item 5; item 5's timing exposed it.
+A repair order is the authority's authenticated statement that the machine needed
+repair when the order was posted, so on reading it an older *observed* belief that the
+machine works is superseded and the worker must go and look. Fresher observations
+still win; seeded fixture knowledge (no observation time) is unchanged.
+`StaleRepairBeliefTests` fails before and passes after.
+
+| Run | Gate | Clear from | Failed actions (max per citizen) | Missed windows |
+| --- | --- | --- | --- | --- |
+| `p32-default` (before items 5/4) | passes | 288,000 | 449 (20) | 19 |
+| `p32-item54` | passes, exact replay, audit | 288,000 | 350 (22) | 20 |
+| `pressure-256-staggered` (before items 5/4) | passes | 288,000 | 2,685 (23) | 136 |
+| `pressure-256-item5` (outages only) | **fails**: 3 jobs never physically complete | — | 2,659 (21) | 129 |
+| `pressure-256-item54` (outages, estimates, fix) | passes, exact replay, audit | 288,000 | 2,663 (23) | 129 |
+
+`pressure-256-item54`: 16 reprimands, all 8 qualifying subjects released and back at
+work, 371 audited assignments with no duplicate. State `2e472671…`, continuation
+`01756634…`. The population clear tick is still exactly the required margin.
+
 ## Workload
 
 The generator uses nine shortened configured days, each 36,000 ticks at 100 ms.

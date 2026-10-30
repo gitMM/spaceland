@@ -66,7 +66,7 @@ namespace Station.Core
                 }
                 plan = ConversationPolicy.Plan(ActorView(actor.Id), partners, Conversations!.DurationTicks, planner.MaximumDepth, planner.NodeBudget);
             }
-            else plan = NeedPlanning.Plan(ActorView(actor.Id), goal, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            else plan = NeedPlanning.Plan(ActorView(actor.Id), goal, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actor.Id));
             PlannerExpansions += plan.Expansions; agent.LastOutcome = plan.Outcome; agent.LastCost = plan.Cost;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {

@@ -149,7 +149,7 @@ namespace Station.Core
             if (goal.Kind == RoutineOpportunityKind.Sleep && PreSleepRelief(actorId).HasValue) { RequestNeedDecision(needAgents[actorId.Value], NeedNow); return; }
             if (!SpendPlanningRequest()) { RequestDailyDecision(actorId, checked(processingTick + 1)); return; }
             var memory = needAgents[actorId.Value];
-            var plan = NeedPlanning.Plan(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            var plan = NeedPlanning.Plan(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId));
             PlannerExpansions += plan.Expansions; bool fallback = false;
             if (plan.Outcome == PlanOutcome.NoPlan && goal.Need == NeedKind.SleepPressure && memory.SleepFallbackRetryAt <= processingTick && plan.Expansions < planner.NodeBudget)
             {

@@ -126,7 +126,7 @@ namespace Station.Core
             foreach (var candidate in candidates)
             {
                 need = candidate; agent.Goal = need.Kind;
-                plan = NeedPlanning.Plan(view, need.Kind, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining);
+                plan = NeedPlanning.Plan(view, need.Kind, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining, KnownServiceWaits(actorId));
                 PlannerExpansions += plan.Expansions; remaining -= plan.Expansions;
                 if (plan.Outcome != PlanOutcome.NoPlan) break;
                 if (remaining <= 0) { plan = new PlanResult(PlanOutcome.BudgetExhausted); break; }

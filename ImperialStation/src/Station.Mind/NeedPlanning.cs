@@ -13,10 +13,12 @@ namespace Station.Mind
             service == NeedServiceKind.Bed && need == NeedKind.SleepPressure ||
             service == NeedServiceKind.RestSpot && need == NeedKind.WorkStrain;
 
-        // Stock, occupancy and current availability are deliberately absent. The
-        // service executor checks them locally; a failed attempt informs retries.
-        public static PlanResult Plan(IActorView view, NeedKind need, IEnumerable<long>? avoidedServices = null, int candidates = 3, int depth = 8, int budget = 512)
+        // Live stock, occupancy and availability are deliberately absent. The service
+        // executor checks them locally; a failed attempt informs retries. expectedWaits
+        // holds only the citizen's own fresh learned estimates (extra ticks per service).
+        public static PlanResult Plan(IActorView view, NeedKind need, IEnumerable<long>? avoidedServices = null, int candidates = 3, int depth = 8, int budget = 512, SortedDictionary<long, long>? expectedWaits = null)
         {
+            long Wait(long service) => expectedWaits != null && expectedWaits.TryGetValue(service, out long wait) ? wait : 0;
             if (candidates < 1 || candidates > 30) throw new ArgumentOutOfRangeException(nameof(candidates));
             if (!view.CurrentTile.HasValue || view.NeedCustodyFacilityId == 0) return new PlanResult(PlanOutcome.NoPlan);
             var avoided = new SortedSet<long>(avoidedServices ?? Array.Empty<long>());
@@ -28,7 +30,7 @@ namespace Station.Mind
                 (view.NeedCustodyFacilityId < 0 ? s.DetentionFacilityId == 0 : s.DetentionFacilityId == view.NeedCustodyFacilityId && s.Position == view.CurrentTile.Value) &&
                 (s.Kind != NeedServiceKind.Bed || view.OwnBerthId == s.Id || s.AssignedActorId == 0 && (s.DetentionFacilityId > 0 || view.OwnBerthId == 0 && (!s.AllocationRequiresCredential || credential))))
                 .Select(s => (Service: s, Travel: s.Position == view.CurrentTile.Value ? 0 : distances.To(s.Position)))
-                .Where(s => s.Travel.HasValue).OrderBy(s => checked(s.Travel!.Value + s.Service.DurationTicks + (RequiresAllocation(s.Service) ? s.Service.AllocationTicks : 0))).ThenBy(s => s.Service.Id).Take(candidates).ToArray();
+                .Where(s => s.Travel.HasValue).OrderBy(s => checked(s.Travel!.Value + s.Service.DurationTicks + Wait(s.Service.Id) + (RequiresAllocation(s.Service) ? s.Service.AllocationTicks : 0))).ThenBy(s => s.Service.Id).Take(candidates).ToArray();
             var names = new List<string> { "ReliefCompleted", "AtOrigin" }; var steps = new List<SymbolicAction>();
             foreach (var option in options)
             {
@@ -46,7 +48,7 @@ namespace Station.Mind
                     steps.Add(new SymbolicAction("AllocateBerth:" + service.Id, at, permission, permission, 0, service.AllocationTicks,
                         new ActionIntent(view.Actor, ActionKind.AllocateBerth, service.Position, serviceId: service.Id)));
                 }
-                steps.Add(new SymbolicAction("UseRelief:" + service.Id, at | permission, 1, 1, 0, service.DurationTicks,
+                steps.Add(new SymbolicAction("UseRelief:" + service.Id, at | permission, 1, 1, 0, checked(service.DurationTicks + Wait(service.Id)),
                     new ActionIntent(view.Actor, service.Action, service.Position, serviceId: service.Id)));
             }
             return GoapPlanner.Search(new PlanningProblem(2, 1, names, steps), depth, budget);

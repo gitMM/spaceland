@@ -105,7 +105,7 @@ namespace Station.Core
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
-            service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
+            ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
         }
         private void RequestNeedGrant(NeedService service)
         {
@@ -124,7 +124,11 @@ namespace Station.Core
                 var failure = NeedServiceAccess(actor, action, service); Item? meal = null;
                 if (failure == FailureReason.None && action.Kind == ActionKind.Eat) { meal = AvailableMeal(actor, action, service); if (meal == null) failure = FailureReason.InsufficientMaterials; }
                 if (failure != FailureReason.None)
-                { activity.Status = NeedActivityStatus.Rejected; activity.EndedTick = processingTick; activity.Reason = failure.ToString(); actor.Action = null; Fail(actor, action.Id, failure); continue; }
+                {
+                    if (failure == FailureReason.InsufficientMaterials) LearnServiceEstimate(actor, service, ServiceEstimateSource.ServiceFailure, meals: 0);
+                    activity.Status = NeedActivityStatus.Rejected; activity.EndedTick = processingTick; activity.Reason = failure.ToString(); actor.Action = null; Fail(actor, action.Id, failure); continue;
+                }
+                LearnServiceEstimate(actor, service, ServiceEstimateSource.ExperiencedWait, wait: checked(processingTick - activity.RequestedTick));
                 if (meal != null) { action.Item = meal.Id; activity.MealItemId = meal.Id.Value; }
                 activity.Status = NeedActivityStatus.Active; activity.StartedTick = processingTick; service.Occupants.Add(action.Id.Value);
                 ReserveMeal(activity);
@@ -143,6 +147,7 @@ namespace Station.Core
                 mealSinks.TryGetValue(meal.Resource, out long consumed); mealSinks[meal.Resource] = checked(consumed + 1);
                 ObserveItemDescription(actor, meal, action.CauseId); RelieveNeed(actor, NeedKind.Hunger, 500, false);
                 Emit("MealConsumed", actor, action.Id, meal.Id, detail: meal.Resource, quantity: 1);
+                LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedStock, meals: MealsVisible(service));
             }
             else if (action.Kind == ActionKind.UseToilet) RelieveNeed(actor, NeedKind.Bladder, 0, true);
             ReleaseMeal(activity); activity.Status = NeedActivityStatus.Completed; activity.EndedTick = processingTick;

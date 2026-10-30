@@ -129,6 +129,16 @@ namespace Station.Core
                 Kind = draft.WorkOrder.Kind, TileId = draft.WorkOrder.Tile.Value, ProjectId = draft.WorkOrder.Construction?.ProjectId ?? 0,
                 OrderMessageId = message.Id, ReadTick = processingTick, Expires = draft.WorkOrder.Expires, Status = LocalOrderStatus.Read, Backoff = planner.InitialBackoff };
             localOrders.Add(order.AttemptId, order);
+            // A repair order is the authority's authenticated claim that the machine needed
+            // repair when it was posted. An older private belief that it works cannot close
+            // the order; the worker must observe the machine again. Fresher observations win.
+            if (order.Kind == WorkKind.RepairMachine && order.MachineId > 0)
+            {
+                var condition = new FactKey(SubjectKind.Machine, order.MachineId, AttributeKind.Operational);
+                // Seeded knowledge has no observation time; only an older actual sighting is superseded.
+                if (actor.Knowledge.Entries.TryGetValue(condition, out var known) && known.Fact.SourceKind != EvidenceKind.Seeded && known.Fact.Value.Equals(FactValue.Boolean(true)) && known.Fact.ObservedTick < draft.ObservedTick)
+                    Learn(actor, condition, FactValue.Boolean(false), EvidenceKind.MessageRead, message.Id, draft.ObservedTick, 0);
+            }
             // A late inbox read must not restart an assignment the citizen already
             // reported complete through their own authenticated session. This is
             // memory of their submission, not the authority's assessment or physical truth.

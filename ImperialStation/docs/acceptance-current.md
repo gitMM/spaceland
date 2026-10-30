@@ -53,9 +53,9 @@ station layout and population fixed; expansion remains deferred.
 
 **Status 2026-10-30: items 6, 1 and 3 implemented and verified at 32 citizens;
 the 256-citizen population gate passes (clear from 288,000, exact replay, independent
-audit); items 5, 4 and 2 are addressed below.**
-The suite passes **849 tests**, zero failures or skips
-(`artifacts/pressure-tests/staffing-timing-all.trx`). Snapshot schema is 46.
+audit). Items 5 and 4 are done (32 and 256 pass with them); item 2 is next.**
+The suite passes **853 tests**, zero failures or skips
+(`artifacts/pressure-tests/items-5-4-all.trx`). Snapshot schema is 48.
 Details, evidence and limitations are in the
 [pressure report](pressure-station.md#staffing-daily-timing-and-response-times-2026-10-30).
 
@@ -99,7 +99,7 @@ baseline's own all-daytime schedule the `daytime` control clears at 198,000.
    an inbox message must not wake a sleeper. Add that mechanism only if the
    staffing and response-time evidence shows it is necessary.
 
-   *Not started.* The response report now separates posting, delivery, reading and
+   *Not started yet (next).* The response report now separates posting, delivery, reading and
    acknowledgment, and counts escort re-dispatches. With staggered guards no escort
    or patrol order waited for a sleeping team at 32 citizens. Facility work orders
    still wait up to 24,889 ticks for acknowledgment because the assigned cleaner is
@@ -132,9 +132,17 @@ baseline's own all-daytime schedule the `daytime` control clears at 198,000.
    must not read live remote stock or queues. Verify useful alternatives without
    repeated switching between cafeterias.
 
-   *Not started.* Related finding: with distance-only choice, every district except
-   the last walked to its neighbour's cafeteria, which is why the corridor fix in the
-   pressure report was needed.
+   *Done (32 and 256).* Each citizen keeps private cafeteria estimates learned in
+   person: the queue seen on arrival, the wait actually experienced, and meals seen
+   remaining after eating (or none after a failed meal), each with its own tick and
+   source. Estimates older than 6,000 ticks are ignored. A fresh wait adds only its
+   excess over one service duration to that cafeteria's cost, so ordinary queues cause
+   no switching; a cafeteria last seen empty is least preferred but still chosen when
+   nothing else is known, so restocking is discovered. Live remote queues and stock are
+   never read; the existing per-service failure backoff remains the bounded
+   reconsideration after a local failure. Received (told) estimates are not modelled.
+   `ServiceEstimateTests`: only the diner who waited about two rounds moves to the
+   farther cafeteria; one-round waits do not switch. Fails before, passes after.
 
 5. **Remember terminal outages consistently.** Some retry-delay resets are fixed,
    but reporting, audits and credential recovery need consistent tests for learned
@@ -142,8 +150,18 @@ baseline's own all-daytime schedule the `daytime` control clears at 198,000.
    must not erase an observed failure. Respect terminal capabilities and record
    permissions; use bounded rechecks or new observations to discover restoration.
 
-   *Not started.* `TerminalOutage` is now a classified cause of missed reporting and
-   acknowledgment targets (2 in the default run, 4 in the overnight control).
+   *Done (32 and 256).* A citizen whose login, post, read or query fails at a disabled
+   or disconnected terminal *while standing at it* records a private learned outage
+   (first/last observed tick, failures, recheck time). Travel and unrelated actions
+   never clear it; only a later successful login there (a new local observation)
+   does. Report and check-in planning prefer eligible alternatives (same capability
+   and permitted role) while the recheck is pending; the delay starts at the planner's
+   1,000-tick maximum backoff and doubles to 8,000. If every eligible terminal is
+   known to be out, the citizen keeps its ordinary bounded retry and rechecks the
+   oldest outage first. Records audits keep their assigned terminal (record
+   permissions); credential recovery keeps its existing per-desk retry memory.
+   `TerminalOutageTests` fail before and pass after. At 32 citizens failed actions
+   fell from 449 to 350 and the median facility acknowledgment from 5,757 to 542 ticks.
 
 6. **Test response times, including overnight incidents.** Eventual completion is
    insufficient. Measure physical incident to discovery, received report to order,

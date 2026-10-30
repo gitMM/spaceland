@@ -53,7 +53,7 @@ namespace Station.Core
             if (EscortControls(actorId) || !agent.Due || actor.Action != null || DeferToNeed(actor) || PrepareCredentialGoal(actor) || !RoutineAllowsCheckIn(actorId) || GuardHasPriority(actorId) || DeferToDueGoal(actor, DueSource.CheckIn) || AlreadyPlanned(actor, DueSource.CheckIn) || !needAgents.ContainsKey(actorId.Value) && reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0) return;
             if (needAgents.ContainsKey(actorId.Value) && agent.BlockedUntil > processingTick) { RequestCheckInDecision(agent, agent.BlockedUntil); return; }
             if (!SpendPlanningRequest()) { RequestCheckInDecision(agent, checked(processingTick + 1)); return; }
-            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget, AvoidedTerminals(actorId));
             PlannerExpansions += result.Expansions;
             if (result.Outcome == PlanOutcome.PlanFound && result.Steps.Count > 0)
             {
