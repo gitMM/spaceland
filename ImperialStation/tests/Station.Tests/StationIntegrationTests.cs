@@ -53,9 +53,9 @@ public sealed class StationIntegrationTests
         // Schema 46 budgets an hour before sleep, relieves needs forecast to become
         // critical during sleep and forecasts meal need across sleep, so daily timing
         // (not only the schema byte) changes. Status, workers and rests are unchanged.
-        // Schema 48 adds learned terminal outages (none here) and cafeteria estimates,
-        // which can change meal choice; workers, rests and the 422 meals are unchanged.
-        Assert.Equal("d47063a38d0f44405a0142fd2195a8970535c003ef67b4c59002846295be135c", measured.Digest);
+        // Schema 49 (escort acknowledgment deadlines) follows 48 (learned terminal outages,
+        // cafeteria estimates). Workers, rests and the 422 meals are unchanged.
+        Assert.Equal("cdb5e1e424cf86ccf5fc6fb16835811c89da25826ec2251b2261acb1fcd5803a", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

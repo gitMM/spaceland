@@ -164,7 +164,7 @@ State `5d0c4526…eb01`, continuation `52125ac3…8ff3`.
 | facility resolution | 83 | 1,876 | 215,254 | 217,105 | 32 `ResponderOffDuty`, 5 work duration |
 | credential detection | 48 | 169 | 16,500 | 16,500 | 16 `LossHolderAsleep`, 8 off duty |
 
-## Terminal outages, cafeteria estimates and a stale-belief fix (2026-10-30)
+## Terminal outages, cafeteria estimates, escort deadlines and a stale-belief fix (2026-10-30)
 
 Items 5 and 4 are described in the
 [acceptance matrix](acceptance-current.md#next-step--staffing-daily-timing-and-response-times).
@@ -188,6 +188,13 @@ still win; seeded fixture knowledge (no observation time) is unchanged.
 | `pressure-256-staggered` (before items 5/4) | passes | 288,000 | 2,685 (23) | 136 |
 | `pressure-256-item5` (outages only) | **fails**: 3 jobs never physically complete | — | 2,659 (21) | 129 |
 | `pressure-256-item54` (outages, estimates, fix) | passes, exact replay, audit | 288,000 | 2,663 (23) | 129 |
+
+`pressure-256-item2` adds escort acknowledgment deadlines (schema 49) and also passes
+with exact replay and the independent audit (371 assignments). No team went entirely
+silent, so no reassignment fired; its continuation-event hash equals
+`pressure-256-item54`'s and only the schema-dependent state digest differs
+(`5a0bd3f4…`). The slowest escort acknowledgments (6,993 ticks, `TerminalOutage`) were
+partly acknowledged teams.
 
 `pressure-256-item54`: 16 reprimands, all 8 qualifying subjects released and back at
 work, 371 audited assignments with no duplicate. State `2e472671…`, continuation

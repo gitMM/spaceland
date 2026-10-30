@@ -10,7 +10,7 @@ namespace Station.Core
 {
     public sealed partial class World
     {
-        public const int SnapshotVersion = 48;
+        public const int SnapshotVersion = 49;
         public const string MovementModel = "orthogonal-mean-ceiling-frozen-v1";
         public const string RandomModel = "pcg-xsh-rr64-32-fnv1a-splitmix-v1";
         // Explicit in-memory encoding. File access belongs to Runner.

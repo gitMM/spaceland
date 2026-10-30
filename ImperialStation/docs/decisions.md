@@ -384,3 +384,6 @@ the result, so no snapshot schema change is needed.
 | Keep cafeteria estimates per citizen with separate wait and stock observation ticks, ignored after 6,000 ticks | Estimates record when and how they were learned, go stale, and never come from live remote queues or stock. |
 | Count only a wait beyond one service duration in cafeteria choice | Ordinary queues do not cause switching between cafeterias. |
 | A read repair order supersedes an older observed belief that the machine works | The order is newer authenticated evidence; claiming completion from the older sighting closed real faults without repair. |
+| Give escort dispatches a two-configured-hour acknowledgment deadline and reassign only a completely silent team | A partly acknowledged team may already be moving; revoking it could interrupt custody. Its partner wait is bounded by `TeamNotReady`. |
+| Record a reply after reassignment as late and restore no commitment | Late replies cannot create duplicate active assignments or custody effects. |
+| Do not add a physical emergency alarm | With staggered guards no escort or patrol order went unacknowledged at 32 or 256 citizens. |

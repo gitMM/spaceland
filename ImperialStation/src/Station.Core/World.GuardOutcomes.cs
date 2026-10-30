@@ -62,13 +62,13 @@ namespace Station.Core
         {
             if (message.Draft.Kind != MessageKind.EscortRevoked || message.SenderAccount.Value != 0 || message.Draft.Recipient != actor.Account ||
                 !localGuardOrders.TryGetValue(message.Draft.RelatedMessageId, out var local) || local.ActorId != actor.Id.Value) return;
-            LearnGuardRevocation(local, message.Id, 0, 0);
+            LearnGuardRevocation(local, message.Id, 0, 0, message.Draft.Claim.Text == "AcknowledgmentOverdue" ? "KnownOrderReassigned" : "KnownAuthorizationRevoked");
         }
-        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility)
+        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility, string reason = "KnownAuthorizationRevoked")
         {
             if (knownGuardRevocations.ContainsKey(local.OrderMessageId)) return;
             knownGuardRevocations.Add(local.OrderMessageId, new KnownGuardRevocationSnapshot { OrderMessageId = local.OrderMessageId, LearnedTick = processingTick, MessageId = message, ServiceActionId = serviceAction, FacilityId = facility });
-            local.Status = GuardOrderStatus.Revoked; local.Reason = "KnownAuthorizationRevoked"; RemoveGuardDecision(local); WithdrawGuardJoin(local);
+            local.Status = GuardOrderStatus.Revoked; local.Reason = reason; RemoveGuardDecision(local); WithdrawGuardJoin(local);
             foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.ExpireGuardOrder && e.Value == local.OrderMessageId).ToArray()) scheduled.Remove(e);
             var actor = actors[new Id<ActorTag>(local.ActorId)];
             var key = new FactKey(SubjectKind.Order, local.OrderMessageId, AttributeKind.DetentionStatus);

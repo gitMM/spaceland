@@ -51,11 +51,12 @@ Requested after the user's review of the 32-person logs (2026-10-29). This is th
 next implementation and verification step, not a completed milestone. Keep the
 station layout and population fixed; expansion remains deferred.
 
-**Status 2026-10-30: items 6, 1 and 3 implemented and verified at 32 citizens;
+**Status 2026-10-30: all six items implemented and verified at 32 and 256 citizens;
+items 6, 1 and 3 first (below), then 5, 4 and 2;
 the 256-citizen population gate passes (clear from 288,000, exact replay, independent
-audit). Items 5 and 4 are done (32 and 256 pass with them); item 2 is next.**
-The suite passes **853 tests**, zero failures or skips
-(`artifacts/pressure-tests/items-5-4-all.trx`). Snapshot schema is 48.
+audit). Items 5, 4 and 2 are done as well; 32 and 256 pass with all six.**
+The suite passes **854 tests**, zero failures or skips
+(`artifacts/pressure-tests/items-all.trx`). Snapshot schema is 49.
 Details, evidence and limitations are in the
 [pressure report](pressure-station.md#staffing-daily-timing-and-response-times-2026-10-30).
 
@@ -99,11 +100,23 @@ baseline's own all-daytime schedule the `daytime` control clears at 198,000.
    an inbox message must not wake a sleeper. Add that mechanism only if the
    staffing and response-time evidence shows it is necessary.
 
-   *Not started yet (next).* The response report now separates posting, delivery, reading and
-   acknowledgment, and counts escort re-dispatches. With staggered guards no escort
-   or patrol order waited for a sleeping team at 32 citizens. Facility work orders
-   still wait up to 24,889 ticks for acknowledgment because the assigned cleaner is
-   off duty; that is the evidence item 2 should act on. No alarm was added.
+   *Done (32 and 256), conservative scope.* Each escort dispatch now carries an
+   acknowledgment deadline of two configured hours (3,000 ticks here). If *no* team
+   member's acknowledgment has been received by then, the authority posts a reassignment
+   notice (`EscortRevoked`, claim `AcknowledgmentOverdue`) for every order, records the
+   assignments as `Unacknowledged`, releases those guards and dispatches a replacement
+   from guards who did not go silent. A team in which someone acknowledged is not
+   revoked, because it may already be moving; its partner wait stays bounded by the
+   existing `TeamNotReady` deadline. Posting, delivery, actual reading and receipt of the
+   acknowledgment are separate events and response stages. A reply after reassignment
+   is recorded as `GuardAcknowledgmentLate` and restores no commitment; the guard who
+   reads the notice drops the order (`KnownOrderReassigned`) and reports it, which
+   changes nothing for the current team. `EscortDispatchTests` covers a silent first
+   team, the replacement, both late replies, snapshot round trip and identical
+   continuation. Work orders keep their existing acknowledgment watches.
+   Overnight coverage was tested with ordinary awake staff only: with staggered guards
+   no escort or patrol order went unacknowledged at 32 or 256 citizens (no escalation
+   fired), so **no physical emergency alarm was added**; it stays a deferred scope item.
 
 3. **Align sleep and meal opportunities.** Sleep currently overlaps some pre-duty
    meal windows, and critical hunger/bladder needs interrupt sleep. Budget time
