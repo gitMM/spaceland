@@ -40,7 +40,49 @@ also completes all 63 required releases, but first clears its backlogs at tick
 318,000, leaving only 6,000 clear ticks. It fails the unchanged 36,000-tick clear-day
 requirement; replay cannot turn that primary failure into a passing population gate.
 
-## Next step — staffing, daily timing and response times
+## Next step — repair evidence, work-order deadlines and measurement
+
+Requested 2026-10-30 after reviewing the 32- and 256-citizen runs of the staffing step
+([evidence](staffing-response-progress.md)). In priority order:
+
+1. **Quality checks blame the repairer for a later fault.** Verification inspects the
+   machine's current state, so a correct repair followed by a new fault is recorded as a
+   discrepancy against the repairer (seen at tick 42,318 at 32 citizens). Fix: judge the
+   claim by what the repair installed (part and rating), not by whether the machine
+   works now.
+2. **Ordinary work orders are never reassigned when unacknowledged.** This causes 33 of
+   48 machine-fault misses at 256 (orders read only after the terminal outage and shift
+   end). Fix: reuse the escort pattern: an acknowledgment deadline that withdraws the
+   order and re-dispatches it to the next shift's on-duty responder.
+3. **The evidence hold is a tuned one-hour rule** that protects only the misconduct
+   fixture, which depended on every cleaner being busy. Fix: with item 1, the wrong part
+   stays as evidence after a repair, so remove the hold; until then, hold only machines
+   whose claim the authority knows is under review.
+4. **Misleading miss cause.** `ResponderOffDuty` often means the order could not be read
+   during a terminal outage. Fix: a separate cause for orders delivered during an outage
+   and read only after it.
+5. **Unattributed incidents at 256.** Two missing-report stages are `UnknownResponder`.
+   Fix: link the responder through the replacement order, then require no unknown cause
+   at 256 as the 32-citizen gate already does.
+6. **Outage memory never expires.** One auditor remembered 13 long-restored terminals as
+   down. Fix: after a declared age, a remembered outage becomes unknown rather than down,
+   like stale cafeteria estimates.
+7. **One cafeteria takes most of the load.** At 32 citizens, 950 of 1,047 meals are eaten
+   at district 2's cafeteria (10 meals left at the end); at 256, district 1's serves only
+   22 while the others serve about 300–730. Bedrooms shifted two tiles sit nearer the
+   next district's cafeteria. Fix: place each district's beds and rest tiles beside its
+   own cafeteria, and report stock use per cafeteria in the result.
+8. **Two definitions of an hour.** Rosters and response limits use Day / 24 (1,500
+   ticks); incident admission buckets use a real hour (36,000 ticks). Fix: one configured
+   hour, or a distinct name for the real-time bucket.
+9. **Pinned digests change on every schema change.** Fix: also pin a hash of the counted
+   results and events, so a format-only change is visibly behavior-neutral.
+
+Order: items 1–3 together (one evidence question), item 2 alone if item 1 is deferred,
+then the quick measurement fixes 4–5, then cleanup 6–9. Verify with targeted controls,
+the 32-citizen gate and the 256-citizen gate, keeping exact state/event continuation.
+
+## Completed step — staffing, daily timing and response times
 
 Requested after the user's review of the 32-person logs (2026-10-29). Keep the
 station layout and population fixed; expansion remains deferred.
@@ -51,7 +93,7 @@ See [staffing and response progress](staffing-response-progress.md). Summary:
 cleaners; zero team-gap coverage samples. (2) Bounded escort acknowledgment deadlines
 with withdrawal, reassignment and rejected late replies. (3) Sleep ends at the known
 wake time, with sleep preparation from the citizen's own rates; missed windows
-189 → 6, critical interruptions 168 → 1. (4) Cafeteria choice from fresh learned queue
+189 → 10, critical interruptions 168 → 1. (4) Cafeteria choice from fresh learned queue
 and stock estimates with hysteresis. (5) Remembered terminal outages shared by
 reporting, check-ins, audits and recovery. (6) Response-time stages, declared limits,
 causes and an overnight control. Follow-up: repairs may pre-empt cleanup commitments

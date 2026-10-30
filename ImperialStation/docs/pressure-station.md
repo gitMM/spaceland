@@ -4,7 +4,8 @@ Requested 2026-10-29. Status: implementation and verification in progress.
 
 Staffing, daily timing and response times: the six issues from the user's 32-person
 log review are implemented ([progress](staffing-response-progress.md), requirements in
-[acceptance-current.md](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)).
+[acceptance-current.md](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times)).
+Next: [repair evidence, work-order deadlines and measurement](acceptance-current.md#next-step--repair-evidence-work-order-deadlines-and-measurement).
 Expansion and physical emergency alarms remain deferred.
 
 Completion clarification approved by the user: insufficient evidence is a valid

@@ -1,8 +1,10 @@
 # Staffing, daily timing and response times — progress
 
-Implemented 2026-10-29 for the [next step](acceptance-current.md#next-step--staffing-daily-timing-and-response-times)
+Implemented 2026-10-29 for the [staffing step](acceptance-current.md#completed-step--staffing-daily-timing-and-response-times)
 requested after the 32-person log review. Layout and population stay fixed; expansion
 and physical emergency alarms remain deferred. Snapshot schema is **47**.
+
+Next: [repair evidence, work-order deadlines and measurement](acceptance-current.md#next-step--repair-evidence-work-order-deadlines-and-measurement).
 
 Status: all six items are implemented with targeted controls and pass the 32-person
 pressure gate, including exact state and continuation-event replay. A follow-up adds
