@@ -102,10 +102,28 @@ namespace Station.Core
         {
             if (!needServices.TryGetValue(action.ServiceId, out var service)) { Fail(actor, action.Id, FailureReason.RequiredServiceNotPresent); return; }
             var failure = NeedServiceAccess(actor, action, service); if (failure != FailureReason.None) { Fail(actor, action.Id, failure); return; }
+            service = TakeVisiblyFreeIdentical(actor, action, service);
             EndSession(actor.Id, "NeedActivity");
             var activity = new NeedActivitySnapshot { ActionId = action.Id.Value, ActorId = actor.Id.Value, ServiceId = service.Definition.Id, Kind = action.Kind, RequestedTick = processingTick, Status = NeedActivityStatus.Queued };
             needActivities.Add(activity.ActionId, activity); action.Waiting = true; actor.Action = action; actor.LastStatus = ActionStatus.Running; actor.LastFailure = FailureReason.None;
-            service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
+            ObserveServiceQueue(actor, service); service.Queue.Add(action.Id.Value); Emit("NeedServiceQueued", actor, action.Id, detail: service.Definition.Kind.ToString()); RequestNeedGrant(service);
+        }
+        // Arriving at a service that visibly has someone ahead, a citizen uses an identical
+        // service on the same tile that it may use and that stands free (for example
+        // another facility bed). Plans made in the same tick cannot see each other's
+        // choice; this decision uses only what is visible here and now.
+        private NeedService TakeVisiblyFreeIdentical(Actor actor, ActiveAction action, NeedService chosen)
+        {
+            if (VisibleWait(chosen) == 0) return chosen;
+            var d = chosen.Definition;
+            var free = needServices.Values.FirstOrDefault(s => s != chosen && s.Definition.Position == d.Position && s.Definition.Kind == d.Kind && s.Definition.DetentionFacilityId == d.DetentionFacilityId &&
+                s.Definition.DurationTicks == d.DurationTicks && VisibleWait(s) == 0 && NeedServiceAccess(actor, action, s) == FailureReason.None);
+            if (free == null) return chosen;
+            action.ServiceId = free.Definition.Id;
+            foreach (var goal in DailyFor(actor.Id.Value).Where(g => g.ActiveActionId == action.Id.Value)) goal.ServiceId = free.Definition.Id;
+            if (needAgents.TryGetValue(actor.Id.Value, out var agent) && agent.ActiveActionId == action.Id.Value) agent.ServiceId = free.Definition.Id;
+            Emit("NeedServiceSwitched", actor, action.Id, detail: "from=" + d.Id + "; to=" + free.Definition.Id + "; " + d.Kind);
+            return free;
         }
         private void RequestNeedGrant(NeedService service)
         {
@@ -124,7 +142,11 @@ namespace Station.Core
                 var failure = NeedServiceAccess(actor, action, service); Item? meal = null;
                 if (failure == FailureReason.None && action.Kind == ActionKind.Eat) { meal = AvailableMeal(actor, action, service); if (meal == null) failure = FailureReason.InsufficientMaterials; }
                 if (failure != FailureReason.None)
-                { activity.Status = NeedActivityStatus.Rejected; activity.EndedTick = processingTick; activity.Reason = failure.ToString(); actor.Action = null; Fail(actor, action.Id, failure); continue; }
+                {
+                    if (failure == FailureReason.InsufficientMaterials) LearnServiceEstimate(actor, service, ServiceEstimateSource.ServiceFailure, meals: 0);
+                    activity.Status = NeedActivityStatus.Rejected; activity.EndedTick = processingTick; activity.Reason = failure.ToString(); actor.Action = null; Fail(actor, action.Id, failure); continue;
+                }
+                LearnServiceEstimate(actor, service, ServiceEstimateSource.ExperiencedWait, wait: checked(processingTick - activity.RequestedTick));
                 if (meal != null) { action.Item = meal.Id; activity.MealItemId = meal.Id.Value; }
                 activity.Status = NeedActivityStatus.Active; activity.StartedTick = processingTick; service.Occupants.Add(action.Id.Value);
                 ReserveMeal(activity);
@@ -143,6 +165,7 @@ namespace Station.Core
                 mealSinks.TryGetValue(meal.Resource, out long consumed); mealSinks[meal.Resource] = checked(consumed + 1);
                 ObserveItemDescription(actor, meal, action.CauseId); RelieveNeed(actor, NeedKind.Hunger, 500, false);
                 Emit("MealConsumed", actor, action.Id, meal.Id, detail: meal.Resource, quantity: 1);
+                LearnServiceEstimate(actor, service, ServiceEstimateSource.ObservedStock, meals: MealsVisible(service));
             }
             else if (action.Kind == ActionKind.UseToilet) RelieveNeed(actor, NeedKind.Bladder, 0, true);
             ReleaseMeal(activity); activity.Status = NeedActivityStatus.Completed; activity.EndedTick = processingTick;

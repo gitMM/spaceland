@@ -23,6 +23,10 @@ namespace Station.Core
                 foreach (var o in outcomes.Values) { w.Write(o.OrderMessageId); w.Write(o.ActorId); w.Write(o.Outcome); w.Write(o.ObservedTick); w.Write(o.MessageId); w.Write(o.ReceivedTick); }
             }
         }
+        // An acknowledgment-deadline reassignment notice for an order the authority recorded as unacknowledged.
+        private bool ReassignmentNotice(MessageSnapshot m) => m.Draft.Kind == MessageKind.EscortRevoked && !m.Seeded && m.SenderAccount.Value == 0 && m.Draft.Claim.Text == "AcknowledgmentOverdue" &&
+            guardAssignments.TryGetValue(m.Draft.RelatedMessageId, out var a) && a.Response == "Unacknowledged" && m.Draft.OperationKey == "escort-unacknowledged/" + a.OrderMessageId &&
+            m.Draft.Recipient == messages[a.OrderMessageId].Draft.Recipient;
         private void ReadGuardOutcomes(BinaryReader r)
         {
             int count = Count(r);
@@ -51,13 +55,16 @@ namespace Station.Core
             }
             if (scheduled.Any(e => e.Kind == ScheduledKind.RevokeDetention && !detentionRevocations.ContainsKey(e.Value)) ||
                 detentionAuthorizations.Values.Any(a => a.Status == DetentionAuthorizationStatus.Revoked && !detentionRevocations.ContainsKey(a.Id)) ||
-                messages.Values.Any(m => m.Draft.Kind == MessageKind.EscortRevoked && !detentionRevocations.Values.Any(v => v.Notices.Contains(m.Id)))) throw new ArgumentException("Unregistered revocation state.");
+                messages.Values.Any(m => m.Draft.Kind == MessageKind.EscortRevoked && !detentionRevocations.Values.Any(v => v.Notices.Contains(m.Id)) && !ReassignmentNotice(m))) throw new ArgumentException("Unregistered revocation state.");
             count = Count(r);
             for (int i = 0; i < count; i++)
             {
                 var v = new KnownGuardRevocationSnapshot { OrderMessageId = r.ReadInt64(), LearnedTick = r.ReadInt64(), MessageId = r.ReadInt64(), ServiceActionId = r.ReadInt64(), FacilityId = r.ReadInt64() };
-                if (!localGuardOrders.TryGetValue(v.OrderMessageId, out var local) || local.Status != GuardOrderStatus.Revoked || local.Reason != "KnownAuthorizationRevoked" || v.LearnedTick < local.ReadTick || v.LearnedTick > LastProcessedTick ||
-                    !detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Revoked || v.LearnedTick < authorization.RevokedTick) throw new ArgumentException("Invalid private revocation proof.");
+                localGuardOrders.TryGetValue(v.OrderMessageId, out var local);
+                bool reassignment = local != null && local.Reason == "KnownOrderReassigned" && v.MessageId != 0 && messages.TryGetValue(v.MessageId, out var reassigned) && ReassignmentNotice(reassigned);
+                if (local == null || local.Status != GuardOrderStatus.Revoked || !(local.Reason is "KnownAuthorizationRevoked" or "KnownOrderReassigned") || v.LearnedTick < local.ReadTick || v.LearnedTick > LastProcessedTick ||
+                    !detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || !reassignment && (local.Reason != "KnownAuthorizationRevoked" || authorization.Status != DetentionAuthorizationStatus.Revoked || v.LearnedTick < authorization.RevokedTick))
+                    throw new ArgumentException("Invalid private revocation proof.");
                 if (v.MessageId != 0)
                 {
                     if (v.ServiceActionId != 0 || v.FacilityId != 0 || !messages.TryGetValue(v.MessageId, out var notice) || notice.Draft.Kind != MessageKind.EscortRevoked || notice.Draft.RelatedMessageId != local.OrderMessageId ||

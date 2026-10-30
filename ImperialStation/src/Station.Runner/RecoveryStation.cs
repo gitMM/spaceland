@@ -35,7 +35,9 @@ public static partial class RecoveryStation
                 if (e.Type is "CardLost" or "MachineFaulted" or "FacilityTaskCreated" or "FacilityTaskResponse" or "CredentialRecoveryCompleted" or "ReplacementCardIssued" or "MissingWorkReportOpened" or "IncidentResponseChanged" or "PatrolResultReceived" or "ReportExpectationSatisfied") institutionalTrace?.WriteLine(Runs.EventJson(e));
                 trace?.WriteLine(Runs.EventJson(e));
             }
-            if (tick % 6000 != 0 && tick != scenario.Scenario.InitialState.Horizon) return;
+            // Also sample the first observation after the burst, so a quickly repaired
+            // fault is still measured as a disruption phase.
+            if (tick % 6000 != 0 && tick != scenario.Scenario.InitialState.Horizon && !(tick >= BurstStart && tick - 1000 < BurstStart)) return;
             var incidents = w.InspectMissingReports();
             var phase = new Phase(tick, w.InspectDirt().Sum(d => d.Units), w.InspectMachines().Count(m => !m.Operational),
                 w.InspectJobs().Count(j => j.PhysicalStatus == WorkExecution.CompletedPhysically),

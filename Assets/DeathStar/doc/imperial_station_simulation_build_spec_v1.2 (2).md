@@ -21,10 +21,23 @@ The next milestone combines finite recovery and concurrent institutional chains
 in one fixed station: competing repairs, lost credentials and disciplinary cases,
 shared personnel and terminals, continued meals/sleep/shifts, explained blocked work,
 bounded retries, and drained backlogs after disruptions stop. Prove the same
-multiday workload at 32 then 2,048 citizens, with conservation and exact checkpoint
+multiday workload at 32 then 256 citizens (2,048 before the 2026-10-30 amendment), with conservation and exact checkpoint
 continuation. This milestone does not silently close other release gates.
 
 ## Implementation status — 2026-10-29
+
+**Update 2026-10-30.** Population gate amended to 256 citizens. The fixed-station
+[pressure workload](../../../ImperialStation/docs/pressure-station.md) passes at 32
+and 256 citizens for seeds 42, 7, 91, 1234 and 2026, including exact checkpoint
+replay and an independent audit. Delivered since the entry below: staggered guard
+shifts, sleep budgeted against meals and toilet use, learned terminal outages and
+cafeteria waits, escort and facility acknowledgment deadlines, repair priority with
+an evidence hold, cleanup helpers, per-stage response times, classified missed
+routine windows, bounded check-in gaps, an unread-roster control and spreading over identical
+services on one tile. Complete suite: **858 passed, 0 failed**; snapshot schema 49. Open: calibration, roster-aware sleep
+start and broader institutional load; see the
+[acceptance matrix](../../../ImperialStation/docs/acceptance-current.md). The rest of
+this section is the 2026-10-29 record.
 
 This section records delivered work; it does not change the requirements below or
 certify completion of all H1–H4 gates. **The first release is still in progress.**
@@ -342,7 +355,7 @@ This is a specification correction. Tests described here must still be implement
 11. Wrong-cartridge inspection, records audit, distinct reprimands, detention request and approval, armed escort, intake and release.
 12. Daily routines: shifts, cafeteria meals, sleep, rest, toilets, conversation.
 13. Deterministic snapshots, replay, digest, batches, inspection, tracing, viewer, benchmarks and tuning sweeps.
-14. Population runs with at least 2,048 persistent citizens.
+14. Population runs with at least 256 persistent citizens (amended 2026-10-30 from 2,048 by user decision).
 
 ### 3.2 Deferred
 
@@ -1681,7 +1694,7 @@ Include an unread cancellation and a delayed service reply. Only gameplay action
 *R-LIF-01, R-RES-02, R-ACT-15, R-AUT-15*
 
 Setup:
-- At least 2,048 registered citizens; declared active workforce at least 1,024; horizon 36,000 ticks.
+- At least 256 registered citizens (amended 2026-10-30 from 2,048); declared active workforce at least 128; horizon 36,000 ticks.
 - The start tick is chosen so a cohort shift boundary falls inside the window.
 - Terminal ratio declared.
 - Enough work, facilities and supplies are provisioned.
@@ -1950,7 +1963,7 @@ Wall-clock values are diagnostics. They never affect decisions or digests.
 1. Tiny exact fixtures.
 2. Small generated stations, at least 1,000 seeds.
 3. Medium interaction scenarios.
-4. Population: at least 2,048 citizens (T15/T26).
+4. Population: at least 256 citizens (T15/T26; amended 2026-10-30 from 2,048).
 5. Endurance runs (multi-day), invoked separately.
 
 ### 9.3 Performance reporting
@@ -2035,7 +2048,7 @@ A handoff is done when:
 
 H4 additionally requires:
 - T00–T27 pass with needs enabled, subject to declared fixture thresholds and the stage applicability rules.
-- At least 1,000 small seeded runs and one 2,048-citizen workload measured, if the environment supports them; otherwise state why.
+- At least 1,000 small seeded runs and one 256-citizen workload measured (amended 2026-10-30 from 2,048), if the environment supports them; otherwise state why.
 - Unity compatibility verified or precise instructions provided.
 
 ### 11.2 Report-back contents

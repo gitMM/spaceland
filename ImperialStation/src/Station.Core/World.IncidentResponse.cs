@@ -75,13 +75,18 @@ namespace Station.Core
             // Commitments are reread after every dispatch, including within a review.
             var committed = new SortedSet<long>(workAttempts.Values.Where(a => a.Expires > processingTick &&
                 (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))).Select(a => a.ActorId));
+            // Commitments other than routine cleanup; those cannot be interrupted by a repair.
+            var binding = new SortedSet<long>(workAttempts.Values.Where(a => a.Expires > processingTick && jobs[a.JobId].Kind != WorkKind.CleanTile &&
+                (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))).Select(a => a.ActorId));
             committed.UnionWith(patrolOrders.Values.Where(p => p.Payload.Expires > processingTick && p.ResultMessageId == 0).Select(p => p.ActorId));
+            binding.UnionWith(patrolOrders.Values.Where(p => p.Payload.Expires > processingTick && p.ResultMessageId == 0).Select(p => p.ActorId));
             var services = new SortedDictionary<long, Coord>();
             foreach (var service in view.Publication.Services) services.Add(service.Id, service.Position);
             foreach (var person in view.Personnel)
             {
                 Coord? origin = latestAuthorityVisit.TryGetValue(person.AccountId, out var message) && services.TryGetValue(message.TerminalId, out var position) ? position : (Coord?)null;
-                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, committed.Contains(person.ActorId) || EscortCommitted(person.ActorId));
+                bool escort = EscortCommitted(person.ActorId);
+                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, committed.Contains(person.ActorId) || escort, !binding.Contains(person.ActorId) && !escort);
             }
         }
         private void SetIncidentResponse(MissingReportIncident incident, IncidentWorkResponse state, string reason)

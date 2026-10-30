@@ -50,7 +50,7 @@ for (const dir of process.argv.slice(2)) {
   require(i.stays.length === custodySubjects.size && i.stays.every(st => custodySubjects.has(st.actorId) && st.status === 'Released') && new Set(i.stays.map(st => st.actorId)).size === custodySubjects.size, 'Wrong or unreleased custody subjects');
   require(r.releasedSubjectsResumingWork > 0 && r.releasedSubjectsResumingWork + r.releasedSubjectsReturningIdle === custodySubjects.size, 'Released subjects did not return to work/duty');
   const drained = phase => ['dirt', 'brokenMachines', 'openFacilityTasks', 'unfinishedJobs', 'missingResponses', 'activeDispatches', 'occupants', 'pendingCases'].every(key => phase[key] === 0);
-  require(r.recoveryTick >= 84000 && p.horizon - r.recoveryTick >= p.dayTicks && r.phases.filter(x => x.tick >= r.recoveryTick).every(drained), 'Sustained recovery unproven');
+  require(r.recoveryTick >= Math.max(...s.disturbances.map(d => d.tick)) && p.horizon - r.recoveryTick >= p.dayTicks && r.phases.filter(x => x.tick >= r.recoveryTick).every(drained), 'Sustained recovery unproven');
   require(r.terminalQueuesRecovered && r.needQueuesRecovered, 'Service queues did not recover');
   require(i.jobs.every(j => j.physicalStatus === 'CompletedPhysically' && j.authorityStatus === 'WorkCompleted'), 'Final work backlog remains');
   require(i.repairs.every(a => a.pendingMachines.length === 0), 'Pending repairs remain');

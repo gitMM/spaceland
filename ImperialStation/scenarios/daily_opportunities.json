@@ -210,20 +210,20 @@
     },
     {
       "state": "Occupants",
-      "tick": 152,
+      "tick": 142,
       "entityId": 3,
       "quantity": 1,
       "kind": "NeedService"
     },
     {
       "state": "Pending",
-      "tick": 181,
+      "tick": 171,
       "quantity": 1,
       "kind": "DailyGoals"
     },
     {
       "state": "Completed",
-      "tick": 182,
+      "tick": 172,
       "quantity": 3,
       "kind": "DailyGoals"
     },

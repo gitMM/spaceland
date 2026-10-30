@@ -46,7 +46,7 @@ namespace Station.Core
             if(planningBudgetTick!=processingTick){planningBudgetTick=processingTick;planningRequestsThisTick=0;}
             if(planningRequestsThisTick>=planner.RequestsPerTick){RequestReportDecision(agent,checked(processingTick+1));return;}
             planningRequestsThisTick++;PlannerRequests++;
-            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget);
+            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget,avoidedTerminals:AvoidedTerminals(actorId));
             PlannerExpansions+=result.Expansions;agent.LastOutcome=result.Outcome;agent.LastCost=result.Cost;
             if(result.Outcome==PlanOutcome.PlanFound&&result.Steps.Count>0)
             {

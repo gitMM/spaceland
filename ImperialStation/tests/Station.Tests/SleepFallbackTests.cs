@@ -82,7 +82,7 @@ public sealed class SleepFallbackTests
     {
         var w = Make(daily: true); w.AdvanceTo(180); var goal = SleepGoal(w);
         Assert.Equal(DailyGoalStatus.Pending, goal.Status); Assert.Equal(0, goal.CompletedActionId); Assert.Equal(Reason, goal.Reason); Assert.True(goal.RetryAt > 180);
-        Assert.Contains(w.Trace, e => e.Type == "SleepUnmet" && e.Tick >= 150); Assert.DoesNotContain(w.InspectNeedActivities(), a => a.Kind == ActionKind.Sleep); RoundTrip(w);
+        Assert.Contains(w.Trace, e => e.Type == "SleepUnmet" && e.Tick >= 140); Assert.DoesNotContain(w.InspectNeedActivities(), a => a.Kind == ActionKind.Sleep); RoundTrip(w);
         w.AdvanceTo(230); Assert.Equal(DailyGoalStatus.MissedWindow, SleepGoal(w).Status); Assert.Contains(Reason, SleepGoal(w).Reason); RoundTrip(w);
     }
     [Fact]

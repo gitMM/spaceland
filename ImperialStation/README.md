@@ -4,7 +4,8 @@ First-release scope now uses a **fixed layout and population**. Expansion and
 construction acceptance are deferred; existing beds, allocation and occupancy stay
 in scope. The active milestone is [a fixed station under sustained pressure](docs/pressure-station.md).
 Run it with `dotnet run --project src/Station.Runner -c Release -- benchmark pressure --count 32 --out artifacts/pressure-32`;
-use `--count 2048` for the population workload. Its acceptance result is
+use `--count 256` for the population workload (the population gate since 2026-10-30;
+2,048-citizen runs are no longer used). Its acceptance result is
 `pressure-result.json`, including exact state and event continuation checks.
 
 Independent headless station simulation, based on build specification **1.2.2** (fixed-station scope amendment).
@@ -14,24 +15,25 @@ Current institutional milestone: [specialized station and recovery controls](doc
 Completed recovery milestone and evidence: [finite disruption and recovery](docs/recovery-station.md).
 
 Run `dotnet run --project src/Station.Runner -c Release -- benchmark recovery --count 32 --out artifacts/recovery-32`
-for the small recovery gate; use `--count 2048` for the same population workload.
+for the small recovery gate; use `--count 256` for the same population workload.
 Use the small gate for frequent behavior edits and the population gate for scale
 checks. A [bounded performance probe](tools/Station.Profile/README.md) can continue
 an existing checkpoint when investigating a particular slow phase.
 For audit, detention and escort changes, run `benchmark institutional --count 32`;
 its `--variant` controls and population command are documented in the institutional report.
-The measured complete small institutional command takes **3.309 seconds**; the
-2,048-citizen command takes **213.815 seconds** including checkpoint continuation,
+The measured complete small institutional command takes **3.309 seconds**
+(the historical 2,048-citizen command took 213.815 seconds; population runs now use 256),
 excluding compilation. Use the small command for iteration and population runs at
-verification boundaries. The [next verification priorities](docs/acceptance-current.md#remaining-daily-life-verification)
-are missed ordinary routine windows and the remaining daily-life priority/roster
-checks, followed by broader concurrent institutional load.
+verification boundaries. Missed routine windows, check-in priority and unread rosters now have integrated
+evidence ([remaining daily-life verification](docs/acceptance-current.md#remaining-daily-life-verification)).
+Next: calibration of response targets, roster-aware sleep start and broader
+concurrent institutional load.
 Older increment reports describe their verification date, not the current backlog.
 This folder is a standalone .NET solution: it has no dependency on spaceland,
 DeathStar assets, Unity, an editor process, rendering, or network services at runtime.
 It can be copied out of this repository and built on its own.
 
-Current status (2026-10-29): **843 tests passed; first release still incomplete**. The combined nine-day pressure gate and exact checkpoint replay pass at 32 and 512 citizens. The latest completed 2,048-citizen trial released every qualifying subject but cleared its last report too late for the required full observation day; the unchanged gate is being rerun after fixing retention of locally completed cleanup. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
+Current status (2026-10-30): **858 tests passed; first release still incomplete**. All six staffing/timing/response steps are in: guard shifts are staggered (a declared redistribution of five cleaners per 64-citizen group), sleep is budgeted against meals and toilet use, citizens remember terminal outages and cafeteria waits, silent escort teams are reassigned after a deadline, and `pressure-result.json` reports response times per stage with the cause of every missed target; see [staffing, daily timing and response times](docs/pressure-station.md#staffing-daily-timing-and-response-times-2026-10-30). Pressure controls: `--variant single-cohort-guards|daytime|overnight|roster-change`. Every missed routine window is now classified (the gate fails on an unexplained one), check-in gaps are bounded under sustained work, and unread roster changes are checked against the roster each citizen knew. The gate passes at 32 and 256 citizens for five seeds, with exact replay and the independent audit; see [remaining daily-life verification](docs/acceptance-current.md#remaining-daily-life-verification). Population runs and tests use 256 citizens; 2,048-citizen results are historical. Documented evidence-based review outcomes follow the user's clarified completion rule. See the [consolidated implementation status](<../Assets/DeathStar/doc/imperial_station_simulation_build_spec_v1.2 (2).md#implementation-status--2026-10-29>) for delivered systems and remaining gates. The user has [cancelled the shutdown instruction](docs/completion-instruction.md); keep the computer running.
 
 **Implemented:** the H1 foundation plus parts of H2, H3 and H4: bounded GOAP search, knowledge,
 local sensing, physical terminal sessions, delayed messages, authority beliefs and
@@ -159,7 +161,7 @@ Its views include `actor`, `knowledge`, `mailbox`, `sessions`, `beliefs`, `agent
 A focused replay accepts `--trace focused --chain EVENT_ID` and writes the
 causal event chain alongside the ordinary replay verification.
 `benchmark daily` runs the integrated two-day station; `benchmark population` runs
-2,048 citizens for 36,000 ticks. Both use the ordinary World, with scaled daily-life
+256 citizens by default for 36,000 ticks. Both use the ordinary World, with scaled daily-life
 configuration documented in `docs/integration-baseline.md`. Optional `--count`,
 `--seed` and `--out` select population, seed and artifact directory. For example:
 

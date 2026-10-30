@@ -362,3 +362,44 @@ the result, so no snapshot schema change is needed.
 | Keep authorization administrative | Guards must still read, form a team, travel, establish custody and complete intake. |
 | Persist count and record cutoffs as well as ticks | Later events in the same tick must not rewrite a prior institutional decision. |
 | Validate expiry arithmetic before allocating an authorization ID | Overflow cannot leave a partial authorization or corrupt its sequence. |
+
+## Staffing, daily timing and response-time decisions (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Convert five existing cleaners per 64-citizen group (b+21..b+25) into guards and rotate guards through all three cohorts | Three guards per interval keep a two-guard escort team plus one for patrols, breaks or ongoing custody. Population and duty lengths are unchanged; misconduct and card-loss actors are never converted. |
+| Keep the old four-guard, cohort-0 staffing as the `single-cohort-guards` control | The same schedule can then show which delays the staffing change removes. |
+| Use a mixed wave schedule (day duty, the 24,000 shift boundary and the evening) for the acceptance workload | Overnight and shift-boundary incidents are part of the gate; the earlier all-daytime schedule remains the `daytime` control. |
+| Apply workload-exercise gates (overlap, overdue work, shared guard duty) only to the acceptance schedule | Timing controls report these as limitations without being presented as a passing acceptance workload. |
+| Open bedrooms onto each district's maintenance corridor | At x+2 every district except the last slept beside its neighbour's services and stopped crossing the corridor where spills land. |
+| Open the sleep opportunity one configured hour early, keeping its close | Pre-sleep travel, queues, toilet and meals fit before a full sleep, which then ends before the pre-duty meal. |
+| Relieve hunger or bladder forecast to become critical during the known bed duration before sleeping | Uses only own needs, configured sleeping rates and known beds; a failed relief backs off and sleep proceeds, so a citizen is never kept awake indefinitely. |
+| Treat a meal below seek as needed when hunger would become critical before the next known meal window | Prevents skipping the after-duty meal and waking critically hungry. Actual service durations and relief are unchanged. |
+| Record why a routine window was missed | `CommittedAction`, `TravelAcrossBoundary`, a blocked reason or `NeverSelected` distinguish delays from defects; nothing is reset or hidden. |
+| Measure response stages from the recorded trace and final snapshots only | The report cannot influence decisions or replay; declared targets are assessment targets, not gates. |
+| Classify missed targets from published rosters, recorded need activities and terminal state | Separates detection delay from institutional response, and off-duty or asleep responders from occupied ones. |
+| Use 256 citizens (four 64-citizen groups) for population runs and tests instead of 2,048 | User decision. 256 keeps several groups, districts and cross-group dispatch while each run fits an iteration cycle; 2,048 results remain historical evidence. |
+| Learn a terminal outage only when standing at the terminal; clear it only by a later successful login there | Travel or unrelated work must not erase an observation, and live terminal state is never read remotely. |
+| Use learned outages to redirect reports and check-ins to eligible alternatives, not to block them | With no alternative the existing bounded retry continues, rechecking the oldest outage first; audits keep their record-permitted terminal. |
+| Keep cafeteria estimates per citizen with separate wait and stock observation ticks, ignored after 6,000 ticks | Estimates record when and how they were learned, go stale, and never come from live remote queues or stock. |
+| Count only a wait beyond one service duration in cafeteria choice | Ordinary queues do not cause switching between cafeterias. |
+| A read repair order supersedes an older observed belief that the machine works | The order is newer authenticated evidence; claiming completion from the older sighting closed real faults without repair. |
+| Give escort dispatches a two-configured-hour acknowledgment deadline and reassign only a completely silent team | A partly acknowledged team may already be moving; revoking it could interrupt custody. Its partner wait is bounded by `TeamNotReady`. |
+| Record a reply after reassignment as late and restore no commitment | Late replies cannot create duplicate active assignments or custody effects. |
+| Do not add a physical emergency alarm | With staggered guards no escort or patrol order went unacknowledged at 32 or 256 citizens. |
+| Let a repair take a responder committed only to routine cleanup | A broken machine outranks cleaning; uncommitted responders are still preferred, and escort, patrol, repair and verification commitments still bind. |
+| Hold repair dispatch for a machine under the authority's own pending quality check or undecided discrepancy | Repair priority otherwise destroyed misconduct evidence before inspection or filing; the hold is bounded to one configured day after a reported discrepancy. |
+| Add up to two cleanup helpers when a reported spill exceeds one cleaner's duty period | Uses only received reports and published durations; at most four helpers per task over its life. |
+| Reassign a facility order unacknowledged after two configured hours | Uses the ordinary superseding dispatch, so late replies affect only the old attempt. |
+
+## Routine windows, check-ins and unread rosters (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Give every missed routine window exactly one category, checked in a fixed order, and fail the pressure gate on `Unexplained` | Allowed delays (fixture start, custody, escort/custody duty, credential recovery, hunger reaching seek only at the close) are separated from timing defects; nothing is reset or hidden. |
+| Count custody from the escort taking the subject, not from intake | A subject waiting under escort for intake capacity cannot eat at its own cafeteria; intake alone missed that wait. |
+| Treat a meal as late-eligible when hunger had not reached seek, with no meal since, 500 ticks before the close | A meal below seek is not needed by design, so cleaning through such a window is not a priority defect. A one-day look-back wrongly used the previous day's crossing. |
+| Bound on-duty time between check-in reads at two periodic intervals, excluding declared outages, custody, escort duty, credential recovery and sleep | Sustained cleaning, meals and travel may delay a check-in but must not starve it; the measurement uses only the trace, rosters and declared disturbances. |
+| Add a `roster-change` control instead of changing the acceptance schedule | Three cleaners per group get a new cohort at tick 42,000; each boundary and roster check-in is checked against the roster the citizen knew. The acceptance workload and its digests are unchanged. |
+| Allow one fewer duty period per roster change in the shift-cycling gate | A citizen that reads its new roster while off duty correctly skips the new shift already in progress. |
+| Compare identical services on the citizen's own tile by their visible queues, and switch to a free one on arrival | Same-cost choices broke ties by service ID, so detainees queued at one facility bed beside free identical beds. Only local, present-tense perception is used; plans made in the same tick are resolved at the service. |

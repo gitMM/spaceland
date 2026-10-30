@@ -15,6 +15,8 @@ namespace Station.Core
         public string Reason { get; internal set; } = "AwaitingGuardTeam";
         public EscortOrderPayload? Payload { get; internal set; }
         public IReadOnlyList<long> OrderMessageIds { get; internal set; } = Array.Empty<long>();
+        public long AcknowledgmentDeadline { get; internal set; } = -1;
+        public int Reassignments { get; internal set; }
         internal EscortDispatchSnapshot Copy() { var copy = (EscortDispatchSnapshot)MemberwiseClone(); copy.OrderMessageIds = OrderMessageIds.ToArray(); return copy; }
     }
     public sealed class GuardAssignmentSnapshot

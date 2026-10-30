@@ -119,10 +119,14 @@ namespace Station.Core
             var view = ActorView(actorId); var plan = new PlanResult(PlanOutcome.NoPlan); int remaining = planner.NodeBudget;
             // One bounded policy request can reject an unavailable higher need
             // and seek useful relief for another. All searches share its node cap.
-            foreach (var candidate in view.Needs.Where(v => v.Band >= NeedBand.Urgent && (v.Band == NeedBand.Critical || !KnownUrgentOrder(actorId))).OrderByDescending(v => v.Band).ThenBy(v => v.Kind))
+            var candidates = view.Needs.Where(v => v.Band >= NeedBand.Urgent && (v.Band == NeedBand.Critical || !KnownUrgentOrder(actorId))).OrderByDescending(v => v.Band).ThenBy(v => v.Kind).ToList();
+            // Urgent (not critical) sleep first relieves a need forecast to become critical in bed.
+            var preSleep = candidates.FirstOrDefault()?.Kind == NeedKind.SleepPressure && candidates[0].Band != NeedBand.Critical ? PreSleepRelief(actorId) : null;
+            if (preSleep.HasValue) candidates.Insert(0, view.Needs.Single(v => v.Kind == preSleep.Value));
+            foreach (var candidate in candidates)
             {
                 need = candidate; agent.Goal = need.Kind;
-                plan = NeedPlanning.Plan(view, need.Kind, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining);
+                plan = NeedPlanning.Plan(view, need.Kind, agent.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining, KnownServiceWaits(actorId));
                 PlannerExpansions += plan.Expansions; remaining -= plan.Expansions;
                 if (plan.Outcome != PlanOutcome.NoPlan) break;
                 if (remaining <= 0) { plan = new PlanResult(PlanOutcome.BudgetExhausted); break; }
@@ -142,7 +146,7 @@ namespace Station.Core
                 PlansFound++; agent.BlockedReason = fallback ? UnmetSleepReason : ""; agent.RetryAt = 0; agent.UrgentRetryAt = 0; agent.PlannedTick = processingTick;
                 var step = plan.Steps[0].Intent; agent.ServiceId = step.ServiceId;
                 if (fallback) Emit("SleepUnmet", actor, detail: UnmetSleepReason + "; planning rest; service=" + step.ServiceId);
-                long cause = Emit("PlanSelected", actor, detail: "urgent-need/v1; need=" + need.Kind + "; band=" + need.Band + "; service=" + step.ServiceId + "; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
+                long cause = Emit("PlanSelected", actor, detail: (preSleep == need.Kind ? "pre-sleep-relief/v1" : "urgent-need/v1") + "; need=" + need.Kind + "; band=" + need.Band + "; service=" + step.ServiceId + "; cost=" + plan.Cost + "; " + string.Join(" -> ", plan.Steps.Select(s => s.Name)));
                 Schedule(new ScheduledEvent { Tick = processingTick, Phase = EventPhase.Intent, Kind = ScheduledKind.NeedCommand, Intent = step, CauseId = cause }); return;
             }
             if (plan.Outcome == PlanOutcome.BudgetExhausted) { PlansExhausted++; agent.BlockedReason = "PlanBudgetExhausted"; }
@@ -160,7 +164,7 @@ namespace Station.Core
         {
             var actor = actors[command.Intent.Actor]; var agent = needAgents[actor.Id.Value];
             if (actor.Action != null) return;
-            var need = NeedValues(actor.Id.Value).FirstOrDefault(n => n.Kind == agent.Goal && n.Band >= NeedBand.Seek);
+            var need = NeedValues(actor.Id.Value).FirstOrDefault(n => n.Kind == agent.Goal && (n.Band >= NeedBand.Seek || PreSleepRelief(actor.Id) == n.Kind));
             if (need == null || (need.Band >= NeedBand.Urgent ? need.Band != NeedBand.Critical && KnownUrgentOrder(actor.Id) : !LowerNeedMayStart(actor, agent.Goal))) { WakeNeed(actor); WakeAfterNeed(actor); return; }
             if (GuardJourneyNeedsRelief(actor.Id))
                 foreach (var local in localGuardOrders.Values.Where(l => l.ActorId == actor.Id.Value && l.Status == GuardOrderStatus.TargetLocated)) local.Reason = "PreparingForEscort";

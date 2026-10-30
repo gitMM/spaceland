@@ -14,6 +14,8 @@ public static partial class PressureStation
     public sealed class Result
     {
         public string Status { get; set; } = "completed";
+        public string Variant { get; set; } = "";
+        public List<string> ControlLimitations { get; set; } = new();
         public StationBaseline.Result Participation { get; set; } = new();
         public List<Phase> Phases { get; set; } = new();
         public SortedDictionary<string, long> Events { get; set; } = new(StringComparer.Ordinal);
@@ -38,6 +40,11 @@ public static partial class PressureStation
         public long DuplicateActiveAssignments { get; set; }
         public int CitizensWithContinuingShifts { get; set; }
         public double ReplaySeconds { get; set; }
+        public ResponseReport Responses { get; set; } = new();
+        public IReadOnlyList<GuardCoverage> GuardCoverage { get; set; } = Array.Empty<GuardCoverage>();
+        public MissedWindowReport MissedWindows { get; set; } = new();
+        public CheckInReport CheckIns { get; set; } = new();
+        public List<RosterChangeCheck> RosterChanges { get; set; } = new();
         public List<string> Failures { get; set; } = new();
     }
     public static Result Execute(LoadedScenario scenario, string? output = null)
@@ -45,6 +52,7 @@ public static partial class PressureStation
         const long checkpointTick = 12000;
         var result = new Result(); World? final = null; byte[]? checkpoint = null;
         var s = scenario.Scenario.InitialState;
+        result.Variant = Variants.Where(v => v.Length > 0).FirstOrDefault(v => s.Id.EndsWith("-" + v, StringComparison.Ordinal)) ?? "";
         var roles = s.Actors.ToDictionary(a => a.Id, a => a.Role);
         var subjects = scenario.Scenario.ScriptedActors.Select(a => a.ActorId).ToHashSet();
         var repairTriggers = scenario.Scenario.ScriptedActors.SelectMany(a => a.Commands)
@@ -60,6 +68,8 @@ public static partial class PressureStation
         var offDuty = new Dictionary<long, int>();
         long previous = 0, failures = 0;
         var protocolCauses = new Dictionary<long, string>();
+        var responses = new ResponseTracker(scenario);
+        var routineMisses = new RoutineMissTracker(scenario);
         using var originalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         void Hash(IncrementalHash hash, TraceEvent e) => hash.AppendData(Encoding.UTF8.GetBytes(Runs.EventJson(e) + "\n"));
         if (output != null) Directory.CreateDirectory(output);
@@ -84,6 +94,7 @@ public static partial class PressureStation
                 foreach (var e in w.Trace)
                 {
                     if (e.Id != previous + 1) result.TraceGaps++; previous = e.Id;
+                    responses.Observe(e); routineMisses.Observe(e);
                     result.Events[e.Type] = result.Events.GetValueOrDefault(e.Type) + 1;
                     if (e.Type is "CustodyBegan" or "DetentionReleaseDue" or "ConversationConsented") protocolCauses.Add(e.Id, e.Type);
                     if (e.Type == "ActionRequested" && !IsTrigger(e) && (e.CauseId <= 0 || e.CauseId >= e.Id || e.Origin is not (ActionOrigin.Autonomous or ActionOrigin.SystemProtocol))) result.InvalidCauses++;
@@ -128,6 +139,24 @@ public static partial class PressureStation
         result.Reprimands = world.InspectReprimands().Count;
         var stays = world.InspectDetentionStays(); result.Released = stays.Count(st => st.Status == DetentionStayStatus.Released);
         result.CaseOutcomes = InspectCaseOutcomes(world, repairTriggers);
+        result.Responses = responses.Finish(world, result.CaseOutcomes);
+        result.GuardCoverage = responses.Coverage();
+        result.MissedWindows = routineMisses.Finish(world);
+        result.CheckIns = routineMisses.FinishCheckIns(world, 2 * s.Routines!.Configuration.PeriodicCheckInTicks);
+        result.RosterChanges = routineMisses.FinishRosterChanges(world);
+        Require(result.MissedWindows.Categories.GetValueOrDefault("Unexplained") == 0, "A missed routine window has no recorded explanation.");
+        Require(result.CheckIns.GapsOverBound == 0, "A citizen went more than two check-in intervals of available duty time without reading its inbox.");
+        Require(result.RosterChanges.All(c => c.Read > c.Published && c.Inconsistent == 0), "A roster change was unread or a duty boundary did not follow the roster the citizen knew.");
+        Require(result.RosterChanges.Count == 0 || result.RosterChanges.Sum(c => c.OldRosterOnlyEvents) > 0, "No duty boundary distinguished an unread roster change from the old roster.");
+        // Staggered staffing must leave every cohort a complete escort team plus one
+        // guard for patrols, breaks or ongoing custody. The single-cohort control is exempt.
+        if (s.Actors.Count(a => a.Role == "guard") > 4 * ((s.Actors.Count + 63) / 64))
+        {
+            int team = s.Detention?.Escort?.GuardCount ?? 2;
+            Require(result.GuardCoverage.All(g => g.GuardsPerCohort.Count == s.Routines!.Configuration.Cohorts && g.GuardsPerCohort.Values.All(n => n >= team + 1)),
+                "A cohort lacks a complete escort team plus one reserve guard.");
+            Require(result.GuardCoverage.All(g => g.SamplesWithoutTeamFromRoster == 0), "A duty interval had no rostered escort team.");
+        }
         Require(repairTriggers.Length == subjects.Count * 2 && result.CaseOutcomes.All(c => c.Outcome != CaseOutcomeKind.Pending),
             "Every declared case must have a completed verification and an accepted or explicit evidence-based outcome.");
         Require(result.Reprimands == result.CaseOutcomes.Count(c => c.Outcome == CaseOutcomeKind.Accepted) &&
@@ -140,7 +169,10 @@ public static partial class PressureStation
         Require(world.InspectDetentionAuthorizations().Count == custodySubjects.Count &&
             world.InspectDetentionAuthorizations().Select(a => a.ActorId).Order().SequenceEqual(custodySubjects.Order()), "Duplicate, unexpected or missing detention authorizations.");
         Require(result.TraceGaps == 0 && result.InvalidCauses == 0 && result.Participation.ExternalActions == triggers.Count, "Trace or autonomous response provenance failed.");
-        Require(result.OverlappingPressure, "Recovery and multiple institutional chains did not overlap.");
+        // Workload-exercise gates belong to the acceptance schedule. Timing controls
+        // report them without claiming that their shifted waves exercise every chain.
+        void Exercise(bool ok, string reason) { if (!ok) { if (result.Variant.Length == 0) result.Failures.Add(reason); else result.ControlLimitations.Add(reason); } }
+        Exercise(result.OverlappingPressure, "Recovery and multiple institutional chains did not overlap.");
         Require(result.Participation.MaxTerminalQueue > 0, "Shared terminal contention was not exercised.");
         // Capacity waiting is reported, not required: shared guards may serialize
         // arrivals before intake. Staffing contention is measured independently.
@@ -148,9 +180,9 @@ public static partial class PressureStation
         Require(result.Events.GetValueOrDefault("CredentialRecoveryCompleted") == result.Events.GetValueOrDefault("CardLost"), "Lost credentials did not all recover.");
         Require(s.Actors.All(a => CredentialPlanning.KnownUsableCredential(world.ActorView(new(a.Id)))), "Final usable credential missing.");
         Require(result.Events.GetValueOrDefault("MachineFaulted") == scenario.Scenario.Disturbances.Count(d => d.Type == "MachineFault"), "Some declared fault disturbances did not execute.");
-        Require(result.Events.GetValueOrDefault("MissingWorkReportOpened") > 0, "Overdue work was not exercised.");
+        Exercise(result.Events.GetValueOrDefault("MissingWorkReportOpened") > 0, "Overdue work was not exercised.");
         result.SharedGuardDuties = world.InspectPatrolOrders().Any(p => world.InspectGuardAssignments().Any(g => g.ActorId == p.ActorId));
-        Require(result.SharedGuardDuties, "No guard performed both patrol and escort duties.");
+        Exercise(result.SharedGuardDuties, "No guard performed both patrol and escort duties.");
         foreach (long subject in custodySubjects)
         {
             long release = stays.Where(st => st.ActorId == subject && st.Status == DetentionStayStatus.Released).Select(st => st.ReleaseTick).DefaultIfEmpty(long.MaxValue).Max();
@@ -169,13 +201,21 @@ public static partial class PressureStation
         }
         Require(result.Participation.ScheduledRestsOverdue == 0, "Scheduled rests remained overdue.");
         int days = (int)(s.Horizon / StationBaseline.Day);
-        result.CitizensWithContinuingShifts = s.Actors.Count(a => onDuty.GetValueOrDefault(a.Id) >= days && offDuty.GetValueOrDefault(a.Id) >= days);
+        // A roster change may move one duty period past the run, or skip it if read off duty.
+        int Changes(long actor) => scenario.Scenario.Disturbances.Count(d => d.Type == "RosterChange" && d.Roster!.ActorId == actor);
+        result.CitizensWithContinuingShifts = s.Actors.Count(a => onDuty.GetValueOrDefault(a.Id) >= days - Changes(a.Id) && offDuty.GetValueOrDefault(a.Id) >= days - Changes(a.Id));
         Require(result.CitizensWithContinuingShifts == s.Actors.Count, "Some citizens stopped cycling through known duty and off-duty periods.");
         Require(result.DuplicateActiveAssignments == 0, "A job had duplicate active assignments.");
         Require(failures < s.Actors.Count * 100L, "Retry storm exceeded 100 failed actions per citizen.");
         bool Drained(Phase p) => p.Dirt == 0 && p.BrokenMachines == 0 && p.OpenFacilityTasks == 0 && p.UnfinishedJobs == 0 && p.MissingResponses == 0 && p.ActiveDispatches == 0 && p.Occupants == 0 && p.PendingCases == 0;
-        var recovered = result.Phases.FindIndex(p => p.Tick >= PressureEnd && Drained(p));
-        if (recovered >= 0 && result.Phases.Skip(recovered).All(Drained)) result.RecoveryTick = result.Phases[recovered].Tick;
+        // The last declared disturbance (84,000 for the default schedule) starts recovery.
+        long pressureEnd = scenario.Scenario.Disturbances.Select(d => d.Tick).DefaultIfEmpty(PressureEnd).Max();
+        // Recovery starts at the earliest sample after which every sample stays drained.
+        // Routine work that opens and closes between samples is not a backlog; work still
+        // open at any later sample moves the recovery tick past it.
+        int recovered = result.Phases.Count;
+        while (recovered > 0 && result.Phases[recovered - 1].Tick >= pressureEnd && Drained(result.Phases[recovered - 1])) recovered--;
+        if (recovered < result.Phases.Count) result.RecoveryTick = result.Phases[recovered].Tick;
         Require(result.RecoveryTick >= 0 && s.Horizon - result.RecoveryTick >= StationBaseline.Day, "Backlogs did not drain and remain drained for a configured day.");
         Require(world.InspectDetentionFacilities().All(f => f.Occupants == 0 && f.Reservations == 0), "Custody capacity leaked.");
         Require(world.InspectRepairAgents().All(a => a.PendingMachines.Count == 0), "A repair agent retained unfinished work after recovery.");

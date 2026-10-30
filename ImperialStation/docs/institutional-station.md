@@ -1,5 +1,8 @@
 # Integrated institutional station
 
+> **2026-10-30:** population runs now use **256 citizens**; 2,048-citizen runs are no
+> longer used. 2,048 results below are historical evidence, not a current gate.
+
 Milestone requested and planned on 2026-10-29: a station with specialized workers,
 a supervisor and guards must complete a genuine institutional response while daily
 life continues. This extends the earlier finite recovery workload. The first
@@ -15,7 +18,7 @@ release and the full T15/T20/T22 gates remain open.
    escort; require explained waiting and legitimate recovery or reassignment.
 4. Check daily participation, finite resources, causal origins and checkpoint replay;
    fix exposed failures and add regressions.
-5. Run the same generator at 2,048 citizens and report its actual scope and timing.
+5. Run the same generator at 256 citizens (2,048 before 2026-10-30) and report its actual scope and timing.
 
 ## Workload and evidence boundaries
 
@@ -113,7 +116,7 @@ From `ImperialStation/`:
 dotnet build src/Station.Runner -c Release -m:1
 dotnet src/Station.Runner/bin/Release/net8.0/Station.Runner.dll benchmark institutional --count 32 --out artifacts/institutional-32
 dotnet src/Station.Runner/bin/Release/net8.0/Station.Runner.dll benchmark institutional --count 32 --variant interrupted-escort --out artifacts/institutional-interrupted
-dotnet src/Station.Runner/bin/Release/net8.0/Station.Runner.dll benchmark institutional --count 2048 --out artifacts/institutional-2048
+dotnet src/Station.Runner/bin/Release/net8.0/Station.Runner.dll benchmark institutional --count 256 --out artifacts/institutional-256
 dotnet test tests/Station.Tests -c Release -m:1
 ```
 
