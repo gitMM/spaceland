@@ -30,9 +30,9 @@ namespace Station.Core
             long bucket = HourBucket(processingTick); var view = AuthorityView();
             for (int cohort = -1; cohort < (Routines?.Cohorts ?? 0); cohort++)
             {
-                long count = view.Personnel.LongCount(p => p.Roster != null && p.Roster.Cohort == cohort && p.Roster.OnDuty(processingTick));
+                long count = IncidentPolicy.KnownOnDutyHeadcount(view, cohort, processingTick);
                 var entry = new IncidentAdmissionBucket { Bucket = bucket, Cohort = cohort, OpenedTick = processingTick, KnownOnDutyHeadcount = count,
-                    Budget = Math.Max(1, checked(count * Authority!.IncidentAdmissionPermille) / 1000) };
+                    Budget = IncidentPolicy.AdmissionBudget(count, Authority!) };
                 admissionBuckets.Add((bucket, cohort), entry);
                 Emit("IncidentBudgetOpened", detail: "bucket=" + bucket + "; cohort=" + cohort + "; headcount=" + count + "; budget=" + entry.Budget);
             }
@@ -75,13 +75,18 @@ namespace Station.Core
             // Commitments are reread after every dispatch, including within a review.
             var committed = new SortedSet<long>(workAttempts.Values.Where(a => a.Expires > processingTick &&
                 (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))).Select(a => a.ActorId));
+            // Commitments other than routine cleanup; those cannot be interrupted by a repair.
+            var binding = new SortedSet<long>(workAttempts.Values.Where(a => a.Expires > processingTick && jobs[a.JobId].Kind != WorkKind.CleanTile &&
+                (a.Assignment == AssignmentStatus.PendingDispatch || a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))).Select(a => a.ActorId));
             committed.UnionWith(patrolOrders.Values.Where(p => p.Payload.Expires > processingTick && p.ResultMessageId == 0).Select(p => p.ActorId));
+            binding.UnionWith(patrolOrders.Values.Where(p => p.Payload.Expires > processingTick && p.ResultMessageId == 0).Select(p => p.ActorId));
             var services = new SortedDictionary<long, Coord>();
             foreach (var service in view.Publication.Services) services.Add(service.Id, service.Position);
             foreach (var person in view.Personnel)
             {
                 Coord? origin = latestAuthorityVisit.TryGetValue(person.AccountId, out var message) && services.TryGetValue(message.TerminalId, out var position) ? position : (Coord?)null;
-                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, committed.Contains(person.ActorId) || EscortCommitted(person.ActorId));
+                bool escort = EscortCommitted(person.ActorId);
+                yield return new DispatchCandidate(person, origin ?? person.Roster?.RestTile, committed.Contains(person.ActorId) || escort, !binding.Contains(person.ActorId) && !escort);
             }
         }
         private void SetIncidentResponse(MissingReportIncident incident, IncidentWorkResponse state, string reason)
@@ -104,18 +109,17 @@ namespace Station.Core
             }
             foreach (var incident in missingReports.Values.Where(NeedsIncidentResponse).OrderBy(i => i.OpenedTick).ThenBy(i => i.OpeningSequence).ToArray())
             {
-                if (NeedsWorkResponse(incident) && incident.ReplacementDepth >= Authority!.MaximumReplacementDepth)
+                if (NeedsWorkResponse(incident) && IncidentPolicy.DepthLimited(incident.ReplacementDepth, Authority!))
                     SetIncidentResponse(incident, IncidentWorkResponse.DepthLimited, "MaximumReplacementDepth");
-                var job = jobs[incident.JobId];
-                long selected = !NeedsWorkResponse(incident) ? 0 : job.Kind == WorkKind.ConstructHabitat ? SelectConstructionWorker(view, job.ProjectId, incident.ActorId) : job.Kind == WorkKind.VerifyMachine ? SelectVerification(view, job.MachineId, incident.ActorId) : job.Kind == WorkKind.RepairMachine ? AuthorityDispatch.Replacement(view, job.MachineId, incident.ActorId, ReviewCandidates()) :
-                    AuthorityDispatch.CleanupReplacement(view, new Id<TileTag>(job.TileId), incident.ActorId, ReviewCandidates());
+                var job = JobTarget(jobs[incident.JobId]);
+                long selected = !NeedsWorkResponse(incident) ? 0 : IncidentPolicy.Responder(view, job, incident.ActorId, SupervisorRole, Candidate, ReviewCandidates());
                 var locations = PatrolCandidates(incident, view);
                 long guard = NeedsPatrolResponse(incident) ? SelectPatrol(incident, view, locations, ReviewCandidates()) : 0;
                 if (NeedsWorkResponse(incident) && selected == 0) SetIncidentResponse(incident, IncidentWorkResponse.NoEligibleResponder, "NoKnownQualifiedOnDutyUncommittedResponderWithLocation");
                 if (NeedsPatrolResponse(incident)) incident.PatrolReason = guard == 0 ? "NoKnownEligiblePatrolOrSearchLocation" : "";
                 if (selected == 0 && guard == 0) continue;
                 var budget = admissionBuckets[(bucket, incident.Cohort)];
-                if (incident.AdmissionBucket < 0 && budget.Used >= budget.Budget)
+                if (IncidentPolicy.AdmissionDeferred(incident.AdmissionBucket, budget.Used, budget.Budget))
                 {
                     if (selected != 0) SetIncidentResponse(incident, IncidentWorkResponse.EscalationDeferred, "CohortHourBudgetExhausted");
                     if (guard != 0) incident.PatrolReason = "EscalationDeferred";

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -102,16 +103,19 @@ namespace Station.Core
                     reply.Draft.Kind != MessageKind.CaseDecision || reply.SenderAccount.Value != 0 || reply.Draft.Recipient != filing.SenderAccount || reply.Draft.RelatedMessageId != filingId || reply.SubmittedTick != filing.DeliveryTick ||
                     reply.Draft.CaseDecision == null || reply.Draft.CaseDecision.FilingMessageId != filingId || reply.Draft.CaseDecision.AccountId != filing.Draft.CaseSubmission!.AccountId) throw new ArgumentException("Invalid case service reply.");
                 var decision = reply.Draft.CaseDecision;
-                string expectedReason = ValidateCaseSubmission(filing, reply.SubmittedTick, decision.ValidationRecordVersion);
+                string validation = ValidateCaseSubmission(filing, reply.SubmittedTick, decision.ValidationRecordVersion);
                 string operation = filing.SenderAccount.Value + "/" + filing.Draft.OperationKey;
                 if (!filingKeys.TryGetValue(operation, out long original)) throw new ArgumentException("Missing case operation key.");
-                if (!SameDraft(messages[original].Draft, filing.Draft)) expectedReason = "IdempotencyConflict";
-                if (expectedReason.Length == 0)
+                bool conflict = !SameDraft(messages[original].Draft, filing.Draft);
+                DisciplinaryCaseSnapshot? canonical = null;
+                if (!conflict && validation.Length == 0)
                 {
                     if (!caseKeys.TryGetValue(filing.Draft.CaseSubmission!.CanonicalKey, out long accepted)) throw new ArgumentException("Missing accepted canonical case.");
-                    expectedReason = cases[accepted].Submission.AccountId != decision.AccountId ? "CanonicalCaseAccountConflict" : cases[accepted].FilingMessageId == filingId ? "Accepted" : "AlreadyAccepted";
+                    canonical = cases[accepted];
                 }
-                if (decision.Reason != expectedReason || decision.Accepted != (expectedReason is "Accepted" or "AlreadyAccepted")) throw new ArgumentException("Invalid personnel decision reason.");
+                // Re-run the desk's acceptance choice so restore cannot drift from live decisions.
+                string expectedReason = CasePolicy.Decide(validation, conflict, canonical != null, canonical?.Submission.AccountId ?? 0, canonical?.FilingMessageId ?? 0, decision.AccountId, filingId).Reason;
+                if (decision.Reason != expectedReason || decision.Accepted != CasePolicy.Accepts(expectedReason)) throw new ArgumentException("Invalid personnel decision reason.");
                 if (decision.ValidationRecordVersion < 0 || decision.ValidationRecordVersion > records.Version || decision.CountThroughCaseId >= nextCase || decision.CountThroughCaseId < decision.CaseId || (decision.Accepted ? !cases.TryGetValue(decision.CaseId, out var c) || c.Submission.CanonicalKey != filing.Draft.CaseSubmission!.CanonicalKey || c.Submission.AccountId != decision.AccountId || decision.QualifyingCount != QualifyingReprimandCases(decision.AccountId, reply.SubmittedTick, decision.CountThroughCaseId, decision.ValidationRecordVersion).Length : decision.QualifyingCount != 0))
                     throw new ArgumentException("Invalid case count reply.");
                 caseReplies.Add(filingId, replyId);

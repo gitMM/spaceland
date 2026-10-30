@@ -1,5 +1,8 @@
 # Integrated station and population baseline
 
+> **2026-10-30:** population runs now use **256 citizens**; 2,048-citizen runs are no
+> longer used. 2,048 results below are historical evidence, not a current gate.
+
 2026-10-29. This work implements the stabilization/integration/scale sequence in
 the build specification. It does not claim full first-release completion. See
 `acceptance-current.md` for current requirement and gate status.

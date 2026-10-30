@@ -126,7 +126,10 @@ public sealed class DailyGoalTests
         var roster = new RosterPayload(1, 1, 0, 864000, 0, 288000, 1234, Fixtures.B);
         var windows = DailyRoutine.Around(roster, 0).Where(w => w.Opens >= 0 && w.Opens < roster.DayTicks).OrderBy(w => w.Opens).ToArray(); Assert.Equal(5, windows.Length);
         Assert.Equal(145234, windows.Single(w => w.Kind == RoutineOpportunityKind.DutyMeal).Opens); Assert.Equal(217234, windows.Single(w => w.Kind == RoutineOpportunityKind.ScheduledRest).Opens);
-        Assert.Equal(288000, windows.Single(w => w.Kind == RoutineOpportunityKind.Sleep).Closes - windows.Single(w => w.Kind == RoutineOpportunityKind.Sleep).Opens);
+        // The sleep opportunity opens one configured hour early so a full sleep fits before the pre-duty meal.
+        var sleep = windows.Single(w => w.Kind == RoutineOpportunityKind.Sleep);
+        Assert.Equal(288000 + 36000, sleep.Closes - sleep.Opens); Assert.Equal(roster.DayTicks - 36000, sleep.Closes);
+        Assert.True(sleep.Opens + 288000 <= windows.Single(w => w.Kind == RoutineOpportunityKind.PreDutyMeal).Opens - 36000);
         for (int i = 1; i < windows.Length; i++) Assert.True(windows[i - 1].Closes <= windows[i].Opens);
     }
     [Fact]

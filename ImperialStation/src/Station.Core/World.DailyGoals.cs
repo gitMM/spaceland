@@ -63,12 +63,16 @@ namespace Station.Core
             goal.Status = status; goal.EndedTick = NeedNow; goal.Reason = reason;
             Emit("DailyGoalResolved", actors[new Id<ActorTag>(goal.ActorId)], detail: "goal=" + goal.Id + "; " + status + "; " + reason);
         }
-        private string ClosedDailyReason(DailyGoalSnapshot goal) => goal.Need == NeedKind.SleepPressure && goal.Reason == UnmetSleepReason ? "OpportunityClosed/" + UnmetSleepReason : "OpportunityClosed";
+        // Missed windows keep the reason they were not met: a commitment when the window
+        // opened, travel that crossed the close, a blocked plan or failure, or a goal that
+        // was never selected (for example a meal that only became needed late).
+        private static string ClosedDailyReason(DailyGoalSnapshot goal, bool travelling = false) => "OpportunityClosed" +
+            (travelling ? "/TravelAcrossBoundary" : goal.Reason.Length > 0 ? "/" + goal.Reason : goal.ServiceId == 0 ? "/NeverSelected" : "/SelectedNotStarted");
         private void UpdateDailyCalendar(Id<ActorTag> actorId)
         {
             var schedule = dailySchedules[actorId.Value]; var roster = routines[actorId].KnownRoster!; long now = NeedNow;
             foreach (var goal in DailyFor(actorId.Value).Where(g => g.Status == DailyGoalStatus.Pending && g.Kind != RoutineOpportunityKind.ScheduledRest && g.Closes <= now && g.ActiveActionId == 0).ToArray())
-                EndDailyGoal(goal, goal.Need == NeedKind.Hunger && !MealNeeded(actorId) ? DailyGoalStatus.Unnecessary : DailyGoalStatus.MissedWindow, ClosedDailyReason(goal));
+                EndDailyGoal(goal, DailyPolicy.MealUnnecessary(goal.Need, () => MealNeeded(actorId, goal)) ? DailyGoalStatus.Unnecessary : DailyGoalStatus.MissedWindow, ClosedDailyReason(goal));
             var windows = DailyRoutine.Around(roster, now);
             foreach (var window in windows.Where(w => w.Opens <= now && now < w.Closes))
             {
@@ -85,9 +89,25 @@ namespace Station.Core
             Schedule(new ScheduledEvent { Tick = schedule.NextBoundary, Phase = EventPhase.Decision, Kind = ScheduledKind.DailyBoundary, Intent = new ActionIntent(actorId, ActionKind.Inspect, default) });
             WakeDaily(actors[actorId]); WakeNeed(actors[actorId]);
         }
-        private bool MealNeeded(Id<ActorTag> actor) => Needs!.Rules[(int)NeedKind.Hunger].Seek > 0 && NeedValues(actor.Value).Single(n => n.Kind == NeedKind.Hunger).Q >= Needs.Rules[(int)NeedKind.Hunger].Seek * NeedAccumulator.HourMilliseconds;
-        private bool DailyGoalEligible(DailyGoalSnapshot goal) => goal.Status == DailyGoalStatus.Pending && goal.DueTick <= NeedNow && goal.RetryAt <= NeedNow &&
-            (goal.Kind == RoutineOpportunityKind.ScheduledRest || goal.Closes > NeedNow) && (goal.Need != NeedKind.Hunger || MealNeeded(new Id<ActorTag>(goal.ActorId)));
+        // Gathers own hunger and the known roster; Mind decides whether a meal is needed.
+        private bool MealNeeded(Id<ActorTag> actor, DailyGoalSnapshot goal) =>
+            DailyPolicy.MealNeeded(Needs!.Rules[(int)NeedKind.Hunger], () => NeedValues(actor.Value).Single(n => n.Kind == NeedKind.Hunger).Q,
+                routines.TryGetValue(actor, out var routine) ? routine.KnownRoster : null, goal.RosterVersion, goal.Closes, NeedNow, Config.TickDurationMs);
+        // Gathers own hunger and the open duty-meal goal; Mind forecasts when the meal is needed.
+        private long DutyMealComingDue(Actor actor)
+        {
+            if (Needs == null || !dailySchedules.ContainsKey(actor.Id.Value)) return -1;
+            var goal = DailyFor(actor.Id.Value).FirstOrDefault(g => g.Kind == RoutineOpportunityKind.DutyMeal && g.Status == DailyGoalStatus.Pending && g.Opens <= NeedNow && NeedNow < g.Closes);
+            return goal == null ? -1 : DailyPolicy.DutyMealComingDue(Needs.Rules[(int)NeedKind.Hunger], NeedValues(actor.Id.Value).Single(n => n.Kind == NeedKind.Hunger).Q, goal.Closes, NeedNow, Config.TickDurationMs);
+        }
+        private bool DailyGoalEligible(DailyGoalSnapshot goal) => DailyPolicy.Eligible(goal.Status == DailyGoalStatus.Pending, goal.Kind, goal.Need, goal.DueTick, goal.RetryAt, goal.Closes, NeedNow,
+            () => MealNeeded(new Id<ActorTag>(goal.ActorId), goal));
+        private NeedKind? PreSleepRelief(Id<ActorTag> actor)
+        {
+            if (Needs == null || !needAgents.TryGetValue(actor.Value, out var agent)) return null;
+            return NeedPriority.PreSleepRelief(agent.RetryAt, NeedNow, actors[actor].Action?.Kind == ActionKind.Sleep,
+                () => DailyFor(actor.Value).Any(g => g.Kind == RoutineOpportunityKind.Sleep && DailyGoalEligible(g)), () => NeedValues(actor.Value), () => ActorView(actor), Needs.Rules, Config.TickDurationMs);
+        }
         private void RequestDailyDecision(Id<ActorTag> actor, long tick)
         {
             if (!dailySchedules.TryGetValue(actor.Value, out var state)) return;
@@ -99,26 +119,22 @@ namespace Station.Core
         private void WakeDaily(Actor actor)
         {
             if (actor.Action != null || !dailySchedules.ContainsKey(actor.Id.Value)) return;
-            var pending = DailyFor(actor.Id.Value).Where(g => g.Status == DailyGoalStatus.Pending && (g.Kind == RoutineOpportunityKind.ScheduledRest || g.Closes > NeedNow) && (g.Need != NeedKind.Hunger || MealNeeded(actor.Id))).ToArray();
+            var pending = DailyFor(actor.Id.Value).Where(g => DailyPolicy.Open(g.Status == DailyGoalStatus.Pending, g.Kind, g.Need, g.Closes, NeedNow, () => MealNeeded(actor.Id, g))).ToArray();
             if (pending.Length > 0) RequestDailyDecision(actor.Id, Math.Max(NeedNow, pending.Min(g => g.RetryAt)));
         }
         private void EvaluateDaily(Id<ActorTag> actorId)
         {
             dailySchedules[actorId.Value].NextDecision = -1; var actor = actors[actorId];
-            if (actor.Action != null || scheduled.ForActor(actorId.Value).Any(e => e.Tick == processingTick && e.Kind == ScheduledKind.DailyCommand) || DeferToNeed(actor) || DeferToRecovery(actor) || KnownUrgentOrder(actorId)) return;
+            if (GoalPriority.FirstDeferring(GoalPriority.DailyGates, g => g == PriorityGate.PlannedThisTick ? scheduled.ForActor(actorId.Value).Any(e => e.Tick == processingTick && e.Kind == ScheduledKind.DailyCommand) : Defers(actor, g)) != PriorityGate.None) return;
             var selection = SelectedDueGoal(actor);
             if (selection.Source != DueSource.Routine) { DeferToDueGoal(actor); return; }
             var goal = dailyGoals[selection.Id];
+            if (DailyPolicy.YieldsToPreSleepRelief(goal.Kind, () => PreSleepRelief(actorId))) { RequestNeedDecision(needAgents[actorId.Value], NeedNow); return; }
             if (!SpendPlanningRequest()) { RequestDailyDecision(actorId, checked(processingTick + 1)); return; }
             var memory = needAgents[actorId.Value];
-            var plan = NeedPlanning.Plan(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
-            PlannerExpansions += plan.Expansions; bool fallback = false;
-            if (plan.Outcome == PlanOutcome.NoPlan && goal.Need == NeedKind.SleepPressure && memory.SleepFallbackRetryAt <= processingTick && plan.Expansions < planner.NodeBudget)
-            {
-                int remaining = planner.NodeBudget - plan.Expansions;
-                plan = NeedPlanning.Plan(ActorView(actorId), NeedKind.WorkStrain, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), planner.Candidates, planner.MaximumDepth, remaining);
-                PlannerExpansions += plan.Expansions; fallback = plan.Outcome == PlanOutcome.PlanFound;
-            }
+            var choice = NeedPlanning.PlanWithRestFallback(ActorView(actorId), goal.Need, memory.KnownFailures.Values.Where(f => f.RetryAt > processingTick).Select(f => f.ServiceId), memory.SleepFallbackRetryAt <= processingTick,
+                planner.Candidates, planner.MaximumDepth, planner.NodeBudget, KnownServiceWaits(actorId), SleptThisWindow(actorId));
+            PlannerExpansions += choice.Expansions; var plan = choice.Plan; bool fallback = choice.Fallback;
             if (plan.Outcome == PlanOutcome.PlanFound && plan.Steps.Count > 0)
             {
                 PlansFound++; goal.Reason = fallback ? UnmetSleepReason : ""; var step = plan.Steps[0].Intent; goal.ServiceId = step.ServiceId;
@@ -135,8 +151,10 @@ namespace Station.Core
         private void StartDailyIntent(ScheduledEvent command)
         {
             var goal = dailyGoals[command.Value]; var actor = actors[new Id<ActorTag>(goal.ActorId)];
-            if (actor.Action != null) return;
-            if (!DailyGoalEligible(goal) || DeferToNeed(actor) || DeferToRecovery(actor) || KnownUrgentOrder(actor.Id) || DeferToDueGoal(actor, DueSource.Routine, goal.Id)) { WakeDaily(actor); return; }
+            var gate = GoalPriority.FirstDeferring(GoalPriority.DailyStartGates, g => g == PriorityGate.Inactive ? !DailyGoalEligible(goal) : Defers(actor, g, DueSource.Routine, goal.Id));
+            if (gate == PriorityGate.CommittedAction) return;
+            if (gate != PriorityGate.None) { WakeDaily(actor); return; }
+            if (DailyPolicy.YieldsToPreSleepRelief(goal.Kind, () => PreSleepRelief(actor.Id))) { RequestNeedDecision(needAgents[actor.Id.Value], NeedNow); return; }
             goal.ActiveActionId = nextAction; Start(command.Intent, command.CauseId);
         }
         private bool TravellingForDailyNeed(Actor actor, NeedKind? kind = null) => (actor.Action?.Kind is ActionKind.Move or ActionKind.AllocateBerth or ActionKind.Rest) && DailyFor(actor.Id.Value).Any(g => g.ActiveActionId == actor.Action.Id.Value && (!kind.HasValue || g.Need == kind.Value));
@@ -156,7 +174,8 @@ namespace Station.Core
                 if (IsSleepFallback(goal.Need, goal.ServiceId)) { goal.Reason = UnmetSleepReason; goal.RetryAt = CompleteSleepFallback(actor, action); }
                 else { goal.CompletedActionId = action; EndDailyGoal(goal, DailyGoalStatus.Completed, "PhysicalActivityCompleted"); }
             }
-            if (goal.Status == DailyGoalStatus.Pending && goal.Kind != RoutineOpportunityKind.ScheduledRest && goal.Closes <= NeedNow) EndDailyGoal(goal, DailyGoalStatus.MissedWindow, ClosedDailyReason(goal));
+            if (goal.Status == DailyGoalStatus.Pending && goal.Kind != RoutineOpportunityKind.ScheduledRest && goal.Closes <= NeedNow)
+                EndDailyGoal(goal, DailyGoalStatus.MissedWindow, ClosedDailyReason(goal, failure == FailureReason.None && !needActivities.ContainsKey(action)));
             WakeDaily(actor);
         }
     }

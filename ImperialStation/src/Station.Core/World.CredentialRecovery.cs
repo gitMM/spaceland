@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -26,7 +27,18 @@ namespace Station.Core
                     throw new ArgumentException("Recovery capability must name a unique registered actor and their own account.");
                 recoveryCapabilities.Add(capability.ActorId, capability);
             }
-            foreach (var desk in seed.Desks) RegisterRecoveryDesk(desk); InitializeRecoveryAgents(seed);
+            foreach (var desk in seed.Desks) RegisterRecoveryDesk(desk); PublishRecoveryDesks(); InitializeRecoveryAgents(seed);
+            // Each citizen is told at enrolment whether it holds an alternate identity proof.
+            foreach (var agent in recoveryAgents.Values)
+                agent.RetainsAlternateIdentity = recoveryCapabilities.TryGetValue(agent.ActorId, out var capability) && capability.Retained && capability.AccountId == actors[new Id<ActorTag>(agent.ActorId)].Account.Value;
+        }
+        // The desk directory citizens may know: desks whose terminal, printer and recipe are all in the publication.
+        private void PublishRecoveryDesks()
+        {
+            var p = publicKnowledge!;
+            publicKnowledge = p.WithRecoveryDesks(recoveryDesks.Values.Where(d => p.Work != null && p.Work.Recipes.Any(r => r.Id == d.RecipeId) &&
+                p.Work.Workstations.Any(w => w.Id == d.WorkstationId && p.Services.Any(t => t.Id == d.TerminalId && t.Position == w.Position)))
+                .Select(d => new PublicRecoveryDesk(d.TerminalId, p.Services.Single(t => t.Id == d.TerminalId).Position, p.Work!.Recipes.Single(r => r.Id == d.RecipeId).Duration)));
         }
 
         private void RegisterRecoveryDesk(RecoveryDeskSeed desk)
@@ -157,7 +169,8 @@ namespace Station.Core
             if (!ValidRecoveryDraft(message.Draft) || message.Draft.Kind != MessageKind.LostCardReport || !RecoveryTransportAuthentic(message) ||
                 !credentials.TryGetValue(message.Draft.Subject.SubjectId, out var credential) || credential.Definition.Holder != message.PhysicalSender || credential.Definition.Account != message.SenderAccount)
                 throw new InvalidOperationException("Invalid authenticated recovery report.");
-            if (!recoveryCaseByCredential.TryGetValue(credential.Definition.Id, out long caseId))
+            bool open = recoveryCaseByCredential.TryGetValue(credential.Definition.Id, out long caseId);
+            if (RecoveryCasePolicy.OnLostCardReport(open) == LostCardResponse.OpenCaseAndRevoke)
             {
                 caseId = nextRecoveryCase++;
                 var recovery = new CredentialRecoveryCaseSnapshot { Id = caseId, ActorId = message.PhysicalSender.Value, AccountId = message.SenderAccount.Value, OldCredentialId = credential.Definition.Id, FirstRequestMessageId = message.Id, AcceptedTick = processingTick };

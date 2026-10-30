@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
+using Station.Mind;
 
 namespace Station.Core
 {
@@ -62,13 +63,13 @@ namespace Station.Core
         {
             if (message.Draft.Kind != MessageKind.EscortRevoked || message.SenderAccount.Value != 0 || message.Draft.Recipient != actor.Account ||
                 !localGuardOrders.TryGetValue(message.Draft.RelatedMessageId, out var local) || local.ActorId != actor.Id.Value) return;
-            LearnGuardRevocation(local, message.Id, 0, 0);
+            LearnGuardRevocation(local, message.Id, 0, 0, GuardOutcomePolicy.RevocationReason(message.Draft.Claim.Text));
         }
-        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility)
+        private void LearnGuardRevocation(LocalGuardOrderSnapshot local, long message, long serviceAction, long facility, string reason = "KnownAuthorizationRevoked")
         {
             if (knownGuardRevocations.ContainsKey(local.OrderMessageId)) return;
             knownGuardRevocations.Add(local.OrderMessageId, new KnownGuardRevocationSnapshot { OrderMessageId = local.OrderMessageId, LearnedTick = processingTick, MessageId = message, ServiceActionId = serviceAction, FacilityId = facility });
-            local.Status = GuardOrderStatus.Revoked; local.Reason = "KnownAuthorizationRevoked"; RemoveGuardDecision(local); WithdrawGuardJoin(local);
+            local.Status = GuardOrderStatus.Revoked; local.Reason = reason; RemoveGuardDecision(local); WithdrawGuardJoin(local);
             foreach (var e in scheduled.Where(e => e.Kind == ScheduledKind.ExpireGuardOrder && e.Value == local.OrderMessageId).ToArray()) scheduled.Remove(e);
             var actor = actors[new Id<ActorTag>(local.ActorId)];
             var key = new FactKey(SubjectKind.Order, local.OrderMessageId, AttributeKind.DetentionStatus);
@@ -90,12 +91,20 @@ namespace Station.Core
         private void ObserveRevokedIntake(Actor actor, ActiveAction action)
         {
             if (!localGuardOrders.TryGetValue(action.GuardOrderId, out var local) || local.ActorId != actor.Id.Value || local.Payload.Leader != actor.Id.Value || !escorts.TryGetValue(local.Payload.DispatchId, out var escort) || escort.Status != EscortStatus.AwaitingIntake ||
-                !detentionAuthorizations.TryGetValue(local.Payload.AuthorizationId, out var authorization) || authorization.Status != DetentionAuthorizationStatus.Revoked ||
+                !(PublishedAuthorization(local.Payload.AuthorizationId) is RecordEntry authorization) || RecordText(authorization, AttributeKind.DetentionStatus) != nameof(DetentionAuthorizationStatus.Revoked) ||
                 !detentionFacilities.TryGetValue(action.ServiceId, out var facility) || !facility.Powered || !facility.Connected || actor.Position != facility.Definition.Position || action.ServiceId != local.Payload.Dispatch.FacilityId) return;
             LearnGuardRevocation(local, 0, action.Id.Value, action.ServiceId); ApplyLearnedGuardRevocation(actor);
         }
-        private static bool GuardOutcomeTerminal(string outcome) => outcome is "TargetNotLocated" or "EscortInterrupted" or "KnownOrderExpired" or "AuthorizationRevoked" or "TeamNotReady";
-        private static bool ValidGuardOutcome(string outcome) => GuardOutcomeTerminal(outcome) || outcome is "EquipmentUnavailable" or "RendezvousUnreachable" or "SearchUnreachable";
+        private static bool GuardOutcomeTerminal(string outcome) => GuardOutcomePolicy.Terminal(outcome);
+        private static bool ValidGuardOutcome(string outcome) => GuardOutcomePolicy.Valid(outcome);
+        private static EscortDispatchProgress DispatchProgress(EscortDispatchStatus status) => status switch
+        {
+            EscortDispatchStatus.AwaitingGuards => EscortDispatchProgress.AwaitingGuards, EscortDispatchStatus.AwaitingReaders => EscortDispatchProgress.AwaitingReaders,
+            EscortDispatchStatus.TeamForming => EscortDispatchProgress.TeamForming, EscortDispatchStatus.Blocked => EscortDispatchProgress.Blocked, EscortDispatchStatus.Expired => EscortDispatchProgress.Expired,
+            EscortDispatchStatus.Detained => EscortDispatchProgress.Detained, EscortDispatchStatus.Released => EscortDispatchProgress.Released, EscortDispatchStatus.Cancelled => EscortDispatchProgress.Cancelled,
+            EscortDispatchStatus.NeedsAttention => EscortDispatchProgress.NeedsAttention,
+            _ => throw new ArgumentOutOfRangeException(nameof(status))
+        };
         private void QueueGuardOutcome(LocalGuardOrderSnapshot local, string outcome, long observed)
         {
             var key = (local.OrderMessageId, outcome); if (localGuardOutcomes.ContainsKey(key)) return;
@@ -127,11 +136,12 @@ namespace Station.Core
             records.Append(RecordKind.GuardOutcome, message.Id, message.SenderAccount.Value, processingTick, d.OperationKey, new[] { Number(AttributeKind.ActorId, assignment.ActorId),
                 Number(AttributeKind.AuthorizationId, assignment.AuthorizationId), Number(AttributeKind.GuardOrderMessageId, assignment.OrderMessageId), Number(AttributeKind.MessageId, message.Id), Number(AttributeKind.ObservedTick, d.ObservedTick), Text(AttributeKind.WorkStatus, d.Claim.Text) });
             var dispatch = escortDispatches[assignment.AuthorizationId];
-            if (dispatch.OrderMessageIds.Contains(assignment.OrderMessageId) && !(dispatch.Status is EscortDispatchStatus.Blocked or EscortDispatchStatus.Expired or EscortDispatchStatus.Cancelled or EscortDispatchStatus.Detained or EscortDispatchStatus.Released))
+            if (GuardOutcomePolicy.NeedsAttention(dispatch.OrderMessageIds.Contains(assignment.OrderMessageId), DispatchProgress(dispatch.Status)))
             { dispatch.Status = EscortDispatchStatus.NeedsAttention; dispatch.Reason = "GuardReported/" + d.Claim.Text; }
             Emit("GuardOutcomeReceived", messageId: message.Id, detail: "authorization=" + assignment.AuthorizationId + "; " + d.Claim.Text);
-            if (dispatch.Status == EscortDispatchStatus.NeedsAttention && dispatch.OrderMessageIds.All(id => receivedGuardOutcomes.Values.Any(o => o.OrderMessageId == id && GuardOutcomeTerminal(o.Outcome))) &&
-                detentionAuthorizations[assignment.AuthorizationId].Status == DetentionAuthorizationStatus.Authorized && detentionAuthorizations[assignment.AuthorizationId].Expires > processingTick)
+            var authorization = detentionAuthorizations[assignment.AuthorizationId];
+            if (GuardOutcomePolicy.RequestReplacementTeam(DispatchProgress(dispatch.Status), dispatch.OrderMessageIds.Select(id => receivedGuardOutcomes.Values.Where(o => o.OrderMessageId == id).Select(o => o.Outcome)),
+                authorization.Status == DetentionAuthorizationStatus.Authorized && authorization.Expires > processingTick))
             {
                 dispatch.Status = EscortDispatchStatus.AwaitingGuards; dispatch.Reason = "AwaitingReplacementTeam";
                 Emit("EscortReplacementRequested", messageId: message.Id, detail: "authorization=" + assignment.AuthorizationId);

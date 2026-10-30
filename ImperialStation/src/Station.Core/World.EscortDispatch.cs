@@ -37,35 +37,22 @@ namespace Station.Core
                 var authorization = detentionAuthorizations[dispatch.AuthorizationId];
                 if (authorization.Status != DetentionAuthorizationStatus.Authorized || authorization.Expires <= processingTick) continue;
                 var subject = view.Personnel.Single(p => p.ActorId == authorization.ActorId);
-                var candidates = new List<Coord>(); var origin = Candidate(subject).KnownOrigin;
+                var origin = Candidate(subject).KnownOrigin;
                 bool searchedSinceVisit = origin.HasValue && latestAuthorityVisit.TryGetValue(subject.AccountId, out var visit) &&
-                    receivedGuardOutcomes.Values.Any(o => o.Outcome == "TargetNotLocated" && o.ObservedTick >= visit.SubmittedTick &&
-                        messages[o.OrderMessageId].Draft.EscortOrder is EscortOrderPayload old && old.SubjectActorId == subject.ActorId && old.Candidates.Contains(origin.Value));
-                if (origin.HasValue && !searchedSinceVisit) candidates.Add(origin.Value);
-                // Received terminal outcomes and administrative cancellation mean
-                // an old assignment is no longer a current work destination.
-                // The last reported terminal visit remains independent evidence.
-                foreach (var attempt in workAttempts.Values.Where(a => a.ActorId == subject.ActorId && a.Expires > processingTick &&
-                    a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected")).OrderByDescending(a => a.Id))
-                {
-                    var job = jobs[attempt.JobId]; Coord? site = job.Kind == WorkKind.ConstructHabitat ? ConstructionSpecification(job.ProjectId).Site : job.Kind == WorkKind.CleanTile ? view.Publication.Work?.Cleanable.SingleOrDefault(c => c.Tile.Value == job.TileId)?.Position : view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == job.MachineId)?.Position;
-                    if (site.HasValue) candidates.Add(site.Value);
-                }
-                if (subject.Roster?.RestTile is Coord rest) candidates.Add(rest);
-                // A received negative search lowers an older terminal clue's
-                // priority. Keep it as a possibility; absence was only local.
-                // A newer authenticated visit restores its original priority.
-                if (origin.HasValue && searchedSinceVisit) candidates.Add(origin.Value);
-                var sites = candidates.Distinct().Take(8).ToArray();
+                    EscortPolicy.SearchedSinceVisit(subject.ActorId, origin.Value, visit.SubmittedTick,
+                        receivedGuardOutcomes.Values.Select(o => new GuardSearchEvidence(o.Outcome, o.ObservedTick, messages[o.OrderMessageId].Draft.EscortOrder)));
+                // Open assignments the authority itself issued and has no terminal outcome for.
+                var assignments = workAttempts.Values.Where(a => a.ActorId == subject.ActorId && a.Expires > processingTick &&
+                    a.Assignment == AssignmentStatus.Active && !(a.AuthorityStatus is "WorkCompleted" or "WorkBlocked" or "UnableToContinue" or "OrderRejected"))
+                    .Select(a => new KnownAssignmentSite(a.Id, IncidentPolicy.JobSite(view, JobTarget(jobs[a.JobId]))));
+                var sites = EscortPolicy.SearchSites(origin, searchedSinceVisit, assignments, subject.Roster?.RestTile);
                 if (sites.Length == 0) { dispatch.Reason = "NoKnownSubjectSearchLocation"; continue; }
                 // An interrupted team is not silently reused. Received terminal outcomes
                 // release its commitments; a replacement uses other registered guards.
                 // Match the policy's cheap eligibility filters before reading work
                 // commitments. Pending cases otherwise rescan every citizen's work
                 // history even when the entire guard roster is off duty.
-                var guards = AuthorityDispatch.EscortTeam(view, subject.ActorId, policy, view.Personnel.Where(p =>
-                    p.ActorId != subject.ActorId && p.Role == policy.GuardRole && p.Roster != null && p.Roster.OnDuty(view.Tick) &&
-                    !guardAssignments.Values.Any(a => a.AuthorizationId == authorization.Id && a.ActorId == p.ActorId)).Select(Candidate));
+                var guards = EscortPolicy.Team(view, subject.ActorId, policy, guardAssignments.Values.Where(a => a.AuthorizationId == authorization.Id).Select(a => a.ActorId), Candidate);
                 if (guards.Count != policy.GuardCount) { dispatch.Reason = "InsufficientKnownOnDutyUncommittedGuards"; continue; }
                 var payload = new EscortOrderPayload(authorization.Id, authorization.AccountId, authorization.ActorId, authorization.Expires, authorization.SentenceTicks, policy, authorization.JustifyingCases, guards, sites, nextMessage);
                 var orders = new List<long>();
@@ -80,6 +67,8 @@ namespace Station.Core
                 }
                 dispatch.Payload = payload; dispatch.OrderMessageIds = orders.ToArray(); dispatch.DispatchedTick = processingTick;
                 dispatch.Status = EscortDispatchStatus.AwaitingReaders; dispatch.Reason = "AwaitingIndividualAcknowledgments";
+                dispatch.AcknowledgmentDeadline = checked(processingTick + EscortAcknowledgmentTicks);
+                Schedule(new ScheduledEvent { Tick = dispatch.AcknowledgmentDeadline, Phase = EventPhase.Decision, Kind = ScheduledKind.EscortAcknowledgmentDue, Value = authorization.Id, ActionId = payload.DispatchId });
                 Emit("EscortTeamDispatched", detail: "authorization=" + authorization.Id + "; guards=" + string.Join(",", guards));
             }
             var pending = escortDispatches.Values.Where(o => o.Status == EscortDispatchStatus.AwaitingGuards && detentionAuthorizations[o.AuthorizationId].Expires > processingTick).ToArray();
@@ -91,14 +80,38 @@ namespace Station.Core
             foreach (var a in detentionAuthorizations.Values.Where(a => a.Expires > processingTick)) next = Math.Min(next, a.Expires);
             RequestEscortReview(next);
         }
-        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
+        // An urgent order is bounded: two configured hours (the station day / 12), or the
+        // authority's ordinary acknowledgment interval without a roster.
+        private long EscortAcknowledgmentTicks => EscortPolicy.UrgentAcknowledgmentTicks(Routines?.DayTicks, Authority?.UnacknowledgedTicks);
+        // Escalate only when no team member has acknowledged: a partly acknowledged team may
+        // already be moving, and its partner wait is bounded by the TeamNotReady deadline.
+        // Every order is revoked with a recorded reason; silent guards are released and
+        // excluded from the replacement. The authority never reads private guard state.
+        private void EscortAcknowledgmentDue(long authorization, long dispatchId)
+        {
+            if (!escortDispatches.TryGetValue(authorization, out var dispatch) || dispatch.Payload?.DispatchId != dispatchId || dispatch.Status != EscortDispatchStatus.AwaitingReaders) return;
+            var team = dispatch.OrderMessageIds.Select(id => guardAssignments[id]).ToArray();
+            if (!EscortPolicy.ReassignUnacknowledgedTeam(team.Select(a => a.AcknowledgmentMessageId),
+                detentionAuthorizations[authorization].Status == DetentionAuthorizationStatus.Authorized && detentionAuthorizations[authorization].Expires > processingTick)) return;
+            long cause = Emit("EscortAcknowledgmentOverdue", detail: "authorization=" + authorization + "; guards=" + string.Join(",", team.Select(a => a.ActorId)));
+            foreach (var assignment in team)
+            {
+                var order = messages[assignment.OrderMessageId];
+                PostAuthorityWork(new MessageDraft(MessageKind.EscortRevoked, RecipientKind.Account, order.Draft.Recipient, order.Draft.Subject,
+                    new FactValue(FactValueKind.Text, text: "AcknowledgmentOverdue"), processingTick, relatedMessageId: order.Id, operationKey: "escort-unacknowledged/" + order.Id), cause);
+                assignment.Response = "Unacknowledged"; RecordGuardAssignment(assignment);
+            }
+            dispatch.Status = EscortDispatchStatus.AwaitingGuards; dispatch.Reason = "AcknowledgmentOverdue"; dispatch.Reassignments++; dispatch.AcknowledgmentDeadline = -1;
+            RequestEscortReview(processingTick); RequestIncidentReview(processingTick);
+        }
+        private bool EscortCommitted(long actor) => guardAssignments.Values.Any(a => a.ActorId == actor && a.Response != "Unacknowledged" && detentionAuthorizations[a.AuthorizationId].Expires > processingTick &&
             !(escortDispatches[a.AuthorizationId].Status is EscortDispatchStatus.Detained or EscortDispatchStatus.Released) && !GuardReportedFinished(actor, a.AuthorizationId, processingTick));
         private void ReadGuardOrder(Actor actor, MessageSnapshot message)
         {
             var payload = message.Draft.EscortOrder;
             if (message.Draft.Kind != MessageKind.EscortOrder || message.SenderAccount.Value != 0 || payload == null || message.Draft.Recipient != actor.Account ||
                 !payload.Guards.Contains(actor.Id.Value) || localGuardOrders.ContainsKey(message.Id)) return;
-            string response = payload.Expires <= processingTick ? "KnownOrderExpired" : actor.Role != payload.Dispatch.GuardRole ? "NotQualified" : "Accepted";
+            string response = EscortPolicy.GuardOrderResponse(payload, actor.Role, processingTick);
             var local = new LocalGuardOrderSnapshot { OrderMessageId = message.Id, ActorId = actor.Id.Value, Payload = payload, ReadTick = processingTick, Response = response, Backoff = planner.InitialBackoff,
                 Status = response == "KnownOrderExpired" ? GuardOrderStatus.Expired : response == "Accepted" ? GuardOrderStatus.AcknowledgmentPending : GuardOrderStatus.Rejected };
             localGuardOrders.Add(message.Id, local);
@@ -127,11 +140,14 @@ namespace Station.Core
             // This is an authenticated claim. The authority never consults the guard's private read state.
             if (detentionAuthorizations[assignment.AuthorizationId].Status != DetentionAuthorizationStatus.Authorized || detentionAuthorizations[assignment.AuthorizationId].Expires <= processingTick)
             { Emit("GuardAcknowledgmentRejected", messageId: message.Id, detail: "AuthorizationExpired"); return false; }
+            // A reply after reassignment is retained as evidence but restores no commitment.
+            if (assignment.Response == "Unacknowledged") { Emit("GuardAcknowledgmentLate", messageId: message.Id, detail: "authorization=" + assignment.AuthorizationId + "; " + d.Claim.Text); return false; }
             assignment.AcknowledgmentMessageId = message.Id; assignment.Response = d.Claim.Text; RecordGuardAssignment(assignment);
             var dispatch = escortDispatches[assignment.AuthorizationId];
             if (!dispatch.OrderMessageIds.Contains(assignment.OrderMessageId) || dispatch.Status == EscortDispatchStatus.AwaitingGuards) return false;
-            if (dispatch.Status is EscortDispatchStatus.Cancelled or EscortDispatchStatus.NeedsAttention or EscortDispatchStatus.Detained or EscortDispatchStatus.Released) return false; if (assignment.Response != "Accepted") { dispatch.Status = EscortDispatchStatus.Blocked; dispatch.Reason = "GuardReported/" + assignment.Response; }
-            else if (dispatch.Status != EscortDispatchStatus.Blocked && dispatch.OrderMessageIds.All(id => guardAssignments[id].Response == "Accepted"))
+            if (dispatch.Status is EscortDispatchStatus.Cancelled or EscortDispatchStatus.NeedsAttention or EscortDispatchStatus.Detained or EscortDispatchStatus.Released) return false; var teamResponse = EscortPolicy.TeamResponse(assignment.Response, dispatch.Status == EscortDispatchStatus.Blocked, dispatch.OrderMessageIds.Select(id => guardAssignments[id].Response));
+            if (teamResponse == EscortTeamResponse.Blocked) { dispatch.Status = EscortDispatchStatus.Blocked; dispatch.Reason = "GuardReported/" + assignment.Response; }
+            else if (teamResponse == EscortTeamResponse.TeamForming)
             { dispatch.Status = EscortDispatchStatus.TeamForming; dispatch.Reason = "EquipmentAndRendezvousPending"; }
             Emit("GuardAcknowledgmentReceived", messageId: message.Id, detail: "authorization=" + assignment.AuthorizationId + "; " + assignment.Response); return false;
         }
@@ -139,7 +155,7 @@ namespace Station.Core
         {
             var authorization = detentionAuthorizations[assignment.AuthorizationId];
             records.Append(RecordKind.GuardAssignment, assignment.OrderMessageId, registrations[assignment.ActorId].AccountId, processingTick,
-                "guard-assignment/" + assignment.OrderMessageId + "/" + assignment.AcknowledgmentMessageId,
+                "guard-assignment/" + assignment.OrderMessageId + "/" + assignment.AcknowledgmentMessageId + (assignment.Response == "Unacknowledged" ? "/unacknowledged" : ""),
                 new[] { Number(AttributeKind.ActorId, assignment.ActorId), Number(AttributeKind.AuthorizationId, assignment.AuthorizationId), Number(AttributeKind.SubjectAccountId, authorization.AccountId),
                     Number(AttributeKind.MessageId, assignment.AcknowledgmentMessageId), Number(AttributeKind.Expires, authorization.Expires), Text(AttributeKind.WorkStatus, assignment.Response) });
         }

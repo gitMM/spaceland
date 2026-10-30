@@ -22,7 +22,11 @@ namespace Station.Contracts
             if (tick < 0 || roster.DayTicks < 24 || roster.DutyTicks < 4) throw new ArgumentException("Daily life requires a day of at least 24 ticks and duty of at least 4 ticks.");
             long hour = roster.DayTicks / 24, sleep = Math.Min(roster.DayTicks / 3, roster.DayTicks - roster.DutyTicks - hour);
             if (sleep < 1) throw new ArgumentException("Daily life requires a sleep and pre-duty opportunity outside duty.");
-            long sleepStart = roster.DayTicks - hour - sleep;
+            // Open sleep up to one hour before its nominal start, while keeping the same close.
+            // That hour budgets pre-sleep travel, queues, toilet and meals so a full sleep
+            // normally ends before the pre-duty meal instead of running into it.
+            long buffer = Math.Min(hour, roster.DayTicks - roster.DutyTicks - hour - sleep);
+            long sleepStart = roster.DayTicks - hour - sleep - buffer;
             long stagger = roster.CheckInOffset % Math.Max(1, roster.DutyTicks / 8);
             var templates = new[] {
                 new RoutineOpportunity(RoutineOpportunityKind.PreDutyMeal, roster.DayTicks - hour, roster.DayTicks),

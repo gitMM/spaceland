@@ -53,6 +53,7 @@ public static partial class StationBaseline
         public long PathExpansions { get; set; }
         public long PendingDailyGoals { get; set; }
         public long MissedDailyGoals { get; set; }
+        public SortedDictionary<string, long> MissedDailyGoalReasons { get; set; } = new(StringComparer.Ordinal);
         public long CriticalInterruptions { get; set; }
         public long RejectedActivities { get; set; }
         public long ScheduledRestsCompleted { get; set; }
@@ -121,6 +122,8 @@ public static partial class StationBaseline
             (a.StartedTick >= 0 ? a.StartedTick : a.EndedTick >= 0 ? a.EndedTick : config.Horizon) - a.RequestedTick).DefaultIfEmpty().Max();
         result.PendingDailyGoals = w.InspectDailyGoals().Count(g => g.Status == DailyGoalStatus.Pending);
         result.MissedDailyGoals = w.InspectDailyGoals().Count(g => g.Status == DailyGoalStatus.MissedWindow);
+        foreach (var g in w.InspectDailyGoals().Where(g => g.Status == DailyGoalStatus.MissedWindow))
+            result.MissedDailyGoalReasons[g.Kind + ": " + g.Reason] = result.MissedDailyGoalReasons.GetValueOrDefault(g.Kind + ": " + g.Reason) + 1;
         result.CriticalInterruptions = w.CriticalNeedInterruptions;
         result.RejectedActivities = w.InspectNeedActivities().Count(a => a.Status == NeedActivityStatus.Rejected);
         result.ScheduledRestsCompleted = w.InspectDailyGoals().Count(g => g.Kind == RoutineOpportunityKind.ScheduledRest && g.Status == DailyGoalStatus.Completed);

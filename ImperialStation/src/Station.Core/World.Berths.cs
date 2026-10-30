@@ -52,7 +52,7 @@ namespace Station.Core
         private void GrantBerth(Actor actor, NeedService service, long action, long credential, long tick)
         {
             var allocation = new BerthAllocationSnapshot { BerthId = service.Definition.Id, ActorId = actor.Id.Value, AccountId = actor.Account.Value, GrantedTick = tick, ActionId = action, CredentialId = credential };
-            service.AssignedActorId = actor.Id.Value; ownBerths.Add(actor.Id.Value, service.Definition.Id);
+            service.AssignedActorId = actor.Id.Value; ownBerths.Add(actor.Id.Value, service.Definition.Id); ServiceVisiblyChanged(service);
             records.Append(RecordKind.BerthAllocation, service.Definition.Id, actor.Account.Value, tick, (action == 0 ? "initial/berth/" : "berth-allocation/") + service.Definition.Id,
                 new[] { Number(AttributeKind.ActorId, actor.Id.Value), Number(AttributeKind.AssignedBerth, service.Definition.Id), Number(AttributeKind.AllocationActionId, action), Number(AttributeKind.ObservedTick, tick), new RecordField(AttributeKind.Location, FactValue.At(service.Definition.Position)) });
             allocation.RecordVersion = records.Version; berthAllocations.Add(service.Definition.Id, allocation);

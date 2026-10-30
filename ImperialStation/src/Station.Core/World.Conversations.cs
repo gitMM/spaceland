@@ -43,27 +43,23 @@ namespace Station.Core
         private void RelocateActor(Actor actor, Coord position)
         {
             var old = localActors[actor.Position]; old.Remove(actor.Id.Value); if (old.Count == 0) localActors.Remove(actor.Position);
-            actor.Position = position; RegisterLocalActor(actor);
+            actor.Position = position; RegisterLocalActor(actor); PerceiveLocalServices(actor);
         }
         private void InitializeConversations(ConversationConfig config)
         {
             if (config.ExplicitConsentActors.Any(id => !actors.ContainsKey(new Id<ActorTag>(id)))) throw new ArgumentException("Unknown conversation consent actor.");
             Conversations = config;
         }
-        private bool OffDutyConversation(Id<ActorTag> actor) => routines.TryGetValue(actor, out var r) && r.KnownRoster != null && !r.KnownRoster.OnDuty(NeedNow);
-        private bool ConversationOpportunity(Id<ActorTag> actor) => AtSeek(actor, NeedKind.Social) && OffDutyConversation(actor);
-        private bool ConversationConsents(Actor actor) => Conversations != null && actor.Action == null && ActiveEscort(actor.Id) == null &&
-            !resourceClaims.Any(c => c.Kind == ClaimKind.Staff && c.ResourceId == actor.Id.Value) && !HasCriticalNeed(actor.Id) && !KnownUrgentOrder(actor.Id) &&
-            !DeferToNeed(actor) && !DeferToRecovery(actor) && SelectedDueGoal(actor).Source == DueSource.None && !OrdinaryWorkReady(actor) &&
-            // Initiating needs social pressure; consenting does not. An idle off-duty
-            // citizen can accept an invitation even after their own need was relieved.
-            (Conversations.ExplicitConsentActors.Contains(actor.Id.Value) || needAgents.ContainsKey(actor.Id.Value) && OffDutyConversation(actor.Id));
+        private bool OffDutyConversation(Id<ActorTag> actor) => ConversationPolicy.OffDuty(routines.TryGetValue(actor, out var r) ? r.KnownRoster : null, NeedNow);
+        private bool ConversationOpportunity(Id<ActorTag> actor) => ConversationPolicy.Opportunity(AtSeek(actor, NeedKind.Social), () => OffDutyConversation(actor));
+        // Evaluated once, for the invited partner, when asked: its own checks may wake its own goals.
+        private bool ConversationConsents(Actor actor) =>
+            GoalPriority.FirstDeferring(ConversationPolicy.ConsentGates, g => g == PriorityGate.Inactive ? Conversations == null : Defers(actor, g)) == PriorityGate.None &&
+            ConversationPolicy.Consents(Conversations!.ExplicitConsentActors.Contains(actor.Id.Value), needAgents.ContainsKey(actor.Id.Value), () => OffDutyConversation(actor.Id));
         private IReadOnlyList<long> LocalConversationCandidates(Actor actor, long after)
         {
             if (Conversations == null || !localActors.TryGetValue(actor.Position, out var bucket)) return Array.Empty<long>();
-            // Both views are ordered tree ranges; at most K candidates are visited.
-            var later = after == long.MaxValue ? Enumerable.Empty<long>() : bucket.GetViewBetween(after + 1, long.MaxValue);
-            return later.Concat(bucket.GetViewBetween(0, after)).Where(id => id != actor.Id.Value).Take(Conversations.PartnerCandidates).ToArray();
+            return ConversationPolicy.PartnerCandidates(bucket, actor.Id.Value, after, Conversations.PartnerCandidates);
         }
         private void StartConversation(Actor actor, ActiveAction action)
         {
@@ -89,7 +85,7 @@ namespace Station.Core
             if (c.Id != action.Id.Value || partner.Action?.Id.Value != c.SecondActionId || actor.Position != c.Position || partner.Position != c.Position) throw new InvalidOperationException("Conversation lost its coordination claims.");
             var exchanges = new List<ConversationExchange>();
             foreach (var speaker in new[] { actor, partner })
-                foreach (var fact in speaker.Knowledge.Inspect().Where(f => ConversationPolicy.MayShare(speaker.Id.Value, c.Topic, f)).OrderBy(f => f.Key).Take(Conversations!.FactsPerSpeaker))
+                foreach (var fact in ConversationPolicy.SharedFacts(speaker.Id.Value, c.Topic, speaker.Knowledge.Inspect(), Conversations!.FactsPerSpeaker))
                     exchanges.Add(new ConversationExchange { SpeakerId = speaker.Id.Value, RecipientId = speaker.Id == actor.Id ? partner.Id.Value : actor.Id.Value, Fact = fact });
             foreach (var e in exchanges)
             {

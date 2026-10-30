@@ -5,6 +5,66 @@ I/O and hosts one or many independent worlds. Neither Core nor Mind can discover
 Unity object or filesystem asset. Assembly-reference tests and banned-API compilation
 checks enforce the most important constraints.
 
+## Decision boundary (2026-10-30)
+
+All decision code lives in `Station.Mind`; Core gathers inputs, applies the returned
+choice and owns every side effect. The split follows one pattern everywhere:
+
+1. Core collects what the decider may know: an `IActorView` or `IAuthorityView`,
+   candidate lists (`DispatchCandidate`), received records and small Contracts input
+   types (`src/Station.Contracts/*Policy.cs`). Core status enums are mapped to Contracts
+   mirrors (`KnownWorkOrderStatus`, `KnownGuardOrderStatus`, `EscortDispatchProgress`,
+   `QualityCheckStage`) before they cross the boundary.
+2. Mind returns a choice: a responder, a verdict and reason, an ordered list of search
+   sites, a retry tick, a plan, or the first deferring check.
+3. Core applies it: id counters, records, messages, scheduling, wakeups and `Emit`.
+
+Short-circuiting priority checks whose evaluation wakes other goals are split the same
+way. Mind owns the order of the checks as data (`GoalPriority.ReportGates`,
+`CheckInGates`, `DailyGates`, `StartGates`; `GuardPolicy.Next` with lazily evaluated
+`IGuardPreparationInputs`). Core evaluates each check, and so performs its wake, only
+when Mind asks for it. Wake order, trace ids and the shared per-tick planning budget
+(`SpendPlanningRequest`) are therefore unchanged. Snapshot restore validators call the
+same Mind rules as live decisions (detention, cases and surveys), so the two cannot drift.
+
+| Area | Mind types |
+| --- | --- |
+| Citizen goal priority and needs | `GoalPriority`, `NeedPriority`, `NeedPlanning`, `DailyPolicy`, `OffDutyPolicy`, `RoutinePlanning`, `ServicePreference`, `TerminalAvoidance`, `ConversationPolicy`, `ReportPlanning` |
+| Citizen work, guards and recovery | `WorkOrderPolicy`, `WorkBackoff`, `RepairPolicy`, `RepairPlanning`, `CleanupPolicy`, `CleanupPlanning`, `RecoveryPolicy`, `CredentialPlanning`, `GuardPolicy`, `GuardPreparation`, `GuardSearchPolicy`, `GuardSearchPlanning` |
+| Authority dispatch | `AuthorityDispatch`, `IncidentPolicy`, `EscortPolicy`, `FacilityPolicy`, `QualityPolicy`, `PatrolPlanning`, `AuthorityEstimates`, `ConstructionPlanning`, `ExpansionPlanning`, `VerificationPlanning` |
+| Institutions | `DetentionDecisions`, `DetentionServicePolicy`, `ReprimandPolicy`, `CasePolicy`, `AccountabilityPolicy`, `AuditPlanning`, `GuardOutcomePolicy`, `RecoveryCasePolicy` |
+| Shared search | `GoapPlanner`, `KnownNavigation`, `TravelEstimates` |
+
+`StructuralTests.T00_SearchAndRankingStayInMind` fails if Core calls the planner,
+builds symbolic actions or ranks by known travel cost. Core still iterates its review
+queues in creation order, evicts least-recently-used knowledge (a memory model) and
+co-locates guard teams (a physical handshake).
+
+The move was verified as behaviour-identical: the 32-citizen pressure, recovery and
+institutional benchmarks and the 256-citizen pressure run produce byte-identical
+checkpoints and traces before and after.
+
+The follow-up audit's information leaks, where Core read world truth to build a
+decision's inputs, were closed the same day (see
+[T08 decision inputs](acceptance-current.md#follow-up--t08-decision-inputs-2026-10-30)).
+Inputs now come from four sources:
+
+- **Publications:** `PublicKnowledge.Personnel` (supervisor role, detention threshold)
+  and `PublicKnowledge.RecoveryDesks`.
+- **Institution-held records:** authority `registrations` authenticate requesters and
+  choose replies; detention intake reads the published `DetentionAuthorization` ledger
+  row.
+- **The decider's own memory:** record-grant notices, alternate-identity enrolment, own
+  completion posts, the inbox read's own result and own credential facts.
+- **Local perception:** `seenServiceWaits`, updated on arrival and on every visible
+  change at the citizen's tile.
+
+A conversation partner decides consent itself when asked. After a failed handoff, each
+guard on the leader's team list reacts on its own order copy.
+
+
+## World and execution
+
 The world owns topology, actors, physical items, configuration, seeded PRNG streams,
 sequence counters and a queue ordered by `(tick, phase, sequence)`. Construction
 does not run in H1: uncompleted cells are absent from navigation. Completed tiles

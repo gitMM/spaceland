@@ -36,10 +36,12 @@ namespace Station.Mind
         {
             var job = view.Publication.Work?.Equipment.SingleOrDefault(m => m.Id == machineId);
             if (job == null) return 0;
-            return candidates.Where(c => c.Person.ActorId != excludedActor && !c.Committed && c.KnownOrigin.HasValue &&
+            // A broken machine outranks routine cleanup: a responder committed only to
+            // cleaning may be chosen, but an uncommitted one is always preferred.
+            return candidates.Where(c => c.Person.ActorId != excludedActor && (!c.Committed || c.RoutineOnly) && c.KnownOrigin.HasValue &&
                     c.Person.Roster != null && c.Person.Roster.OnDuty(view.Tick) && job.Roles.Contains(c.Person.Role, StringComparer.Ordinal))
-                .Select(c => (Actor: c.Person.ActorId, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, job.Position, view.NominalTravelTicks)))
-                .OrderBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
+                .Select(c => (Actor: c.Person.ActorId, c.Committed, Cost: TravelEstimates.Authority(c.KnownOrigin!.Value, job.Position, view.NominalTravelTicks)))
+                .OrderBy(c => c.Committed).ThenBy(c => c.Cost).ThenBy(c => c.Actor).Select(c => c.Actor).FirstOrDefault();
         }
     }
 }

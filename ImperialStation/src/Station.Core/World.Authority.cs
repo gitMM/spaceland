@@ -23,6 +23,10 @@ namespace Station.Core
             foreach (var actor in actors.Values) registrations.Add(actor.Id.Value, new KnownPersonnel(actor.Id.Value, actor.Account.Value, actor.Role));
             Schedule(new ScheduledEvent { Tick = 0, Phase = EventPhase.Decision, Kind = ScheduledKind.OpenAdmissionBucket });
         }
+        // Institutions authenticate a posting against their own registration records, never the physical actor.
+        private KnownPersonnel? RegisteredSender(MessageSnapshot message) =>
+            registrations.TryGetValue(message.PhysicalSender.Value, out var person) && person.AccountId == message.SenderAccount.Value ? person : null;
+        private bool RegisteredAccount(Id<AccountTag> account) => registrations.Values.Any(p => p.AccountId == account.Value);
         public IReadOnlyList<ReportExpectationSnapshot> InspectExpectations() => expectations.Values.Select(e => e.Copy()).ToArray();
         public IReadOnlyList<AcknowledgmentWatchSnapshot> InspectAcknowledgmentWatches() => acknowledgmentWatches.Values.Select(e => e.Copy()).ToArray();
         public IReadOnlyList<MissingReportIncident> InspectMissingReports() => missingReports.Values.Select(e => e.Copy()).ToArray();
@@ -100,8 +104,7 @@ namespace Station.Core
                 var parentIncident = missingReports.Values.SingleOrDefault(i => i.ReplacementAttemptId == resolvedAttempt);
                 if (parentIncident == null || parentIncident.JobId != attempt.JobId) break;
                 parentIncident.ReplacementResultMessageId = message.Id;
-                parentIncident.WorkResolution = kind == MessageKind.WorkCompleted ? "ReportedComplete" : kind == MessageKind.WorkBlocked ? "ReportedBlocked" : "ReportedUnableToContinue";
-                if (resolvedAttempt != attempt.Id) parentIncident.WorkResolution += "ByReplacementChain";
+                parentIncident.WorkResolution = IncidentPolicy.WorkResolution(kind, resolvedAttempt != attempt.Id);
                 RecordIncidentResponse(parentIncident);
                 resolvedAttempt = parentIncident.AttemptId;
             }
@@ -118,8 +121,8 @@ namespace Station.Core
                 incident.ResponseMessageId = message.Id; RecordMissingReport(incident);
                 // Received replies close unposted searches, and completion removes
                 // the need for an unposted replacement. Issued orders stay independent.
-                if (incident.PatrolOrderMessageId == 0) incident.WorkerStatusResponse = "ResponseReceived";
-                if (kind == MessageKind.WorkCompleted && NeedsWorkResponse(incident))
+                if (IncidentPolicy.ReplyClosesSearch(incident.PatrolOrderMessageId)) incident.WorkerStatusResponse = "ResponseReceived";
+                if (IncidentPolicy.CancelOnOriginalResult(kind, NeedsWorkResponse(incident)))
                     SetIncidentResponse(incident, IncidentWorkResponse.Cancelled, "OriginalCompletionReceived");
                 RecordIncidentResponse(incident);
             }
@@ -131,8 +134,7 @@ namespace Station.Core
             if (expectations.ContainsKey(attempt.Id)) return;
             var view = AuthorityView(); var person = view.Personnel.Single(p => p.ActorId == attempt.ActorId);
             var job = jobs[attempt.JobId];
-            var estimate = job.Kind == WorkKind.ConstructHabitat ? AuthorityEstimates.Construction(view, attempt.ActorId, ConstructionSpecification(job.ProjectId), acknowledgment.TerminalId) : job.Kind != WorkKind.CleanTile ? AuthorityEstimates.Repair(view, attempt.ActorId, job.MachineId, acknowledgment.TerminalId, job.Kind == WorkKind.VerifyMachine) :
-                AuthorityEstimates.Cleanup(view, attempt.ActorId, new Id<TileTag>(job.TileId), job.ReportedUnits, Information!.InspectTicks, acknowledgment.TerminalId);
+            var estimate = AuthorityEstimates.ForJob(view, attempt.ActorId, JobTarget(job), acknowledgment.TerminalId, Information!.InspectTicks);
             learnedDurations.TryGetValue((person.Role, job.Kind.ToString()), out var learned);
             var e = new ReportExpectationSnapshot { AttemptId = attempt.Id, JobId = attempt.JobId, ActorId = attempt.ActorId, Role = person.Role,
                 TaskKind = job.Kind.ToString(),
@@ -168,7 +170,7 @@ namespace Station.Core
         private void CancelAuthorityExpectation(long attempt, string reason)
         {
             if (Authority == null) return;
-            if (missingReports.TryGetValue(attempt, out var incident) && incident.ReplacementAttemptId == 0 && NeedsWorkResponse(incident))
+            if (missingReports.TryGetValue(attempt, out var incident) && IncidentPolicy.CancelOnParentEnded(incident.ReplacementAttemptId, NeedsWorkResponse(incident)))
                 SetIncidentResponse(incident, IncidentWorkResponse.Cancelled, "ParentAssignment" + reason);
             RequestIncidentReview(processingTick);
             if (acknowledgmentWatches.TryGetValue(attempt, out var watch) && watch.Status is AcknowledgmentStatus.Awaiting or AcknowledgmentStatus.Overdue)
@@ -179,6 +181,9 @@ namespace Station.Core
                 Emit("ReportExpectationCancelled", attemptId: attempt, detail: reason);
             }
         }
+        // The authority's administrative view of a job; construction carries its committed specification.
+        private AuthorityJobTarget JobTarget(JobSnapshot job) =>
+            new AuthorityJobTarget(job.Kind, job.MachineId, job.TileId, job.ReportedUnits, job.Kind == WorkKind.ConstructHabitat ? ConstructionSpecification(job.ProjectId) : null);
         private void RemoveAuthorityEvent(ScheduledKind kind, long attempt)
         { foreach (var e in scheduled.Where(e => e.Kind == kind && e.Value == attempt).ToArray()) scheduled.Remove(e); }
         private void RecordExpectation(ReportExpectationSnapshot e)

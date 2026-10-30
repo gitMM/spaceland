@@ -42,11 +42,11 @@ namespace Station.Core
         private void EvaluateReport(Id<ActorTag> actorId)
         {
             var agent=reportAgents[actorId];agent.NextDecision=-1;var actor=actors[actorId];
-            if(EscortControls(actorId)||actor.Action!=null||agent.Pending.Count==0||DeferToNeed(actor)||PrepareCredentialGoal(actor)||DeferToDueGoal(actor, DueSource.Report)||AlreadyPlanned(actor, DueSource.Report))return;
+            if(GoalPriority.FirstDeferring(GoalPriority.ReportGates, g => g == PriorityGate.Inactive ? agent.Pending.Count == 0 : Defers(actor, g, DueSource.Report)) != PriorityGate.None)return;
             if(planningBudgetTick!=processingTick){planningBudgetTick=processingTick;planningRequestsThisTick=0;}
             if(planningRequestsThisTick>=planner.RequestsPerTick){RequestReportDecision(agent,checked(processingTick+1));return;}
             planningRequestsThisTick++;PlannerRequests++;
-            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget);
+            var result=ReportPlanning.Plan(ActorView(actorId),agent.Pending[0],Information!.LoginTicks,Information.PostTicks,planner.Candidates,planner.MaximumDepth,planner.NodeBudget,avoidedTerminals:AvoidedTerminals(actorId));
             PlannerExpansions+=result.Expansions;agent.LastOutcome=result.Outcome;agent.LastCost=result.Cost;
             if(result.Outcome==PlanOutcome.PlanFound&&result.Steps.Count>0)
             {
@@ -59,7 +59,7 @@ namespace Station.Core
             if(result.Outcome==PlanOutcome.BudgetExhausted){PlansExhausted++;agent.BlockedReason="PlanBudgetExhausted";}
             else{PlansUnavailable++;agent.BlockedReason="UnknownRequiredFactOrCredential";}
             Emit("PlanUnavailable",actor,detail:"report-due/v1; "+result.Outcome+"; retry="+agent.Backoff);
-            WakeDaily(actor);RequestReportDecision(agent,checked(processingTick+agent.Backoff));agent.Backoff=Math.Min(planner.MaximumBackoff,checked(agent.Backoff*2));
+            WakeDaily(actor);RequestReportDecision(agent,checked(processingTick+agent.Backoff));agent.Backoff=ReportPlanning.NextBackoff(agent.Backoff,planner.MaximumBackoff);
         }
         private static void PinReportPlan(Actor actor,ReportAgent agent)
         {

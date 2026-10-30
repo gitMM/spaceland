@@ -1,5 +1,8 @@
 # H1 implementation report — 2026-10-28
 
+> **2026-10-30:** population runs now use **256 citizens**; 2,048-citizen runs are no
+> longer used. 2,048 results below are historical evidence, not a current gate.
+
 The independent foundation is implemented in `ImperialStation/`. It builds without
 Unity, passes 27 automated tests and reproduces the exact movement fixture's digest.
 The full first-release goal remains outstanding: H2, H3 and H4 are not implemented.

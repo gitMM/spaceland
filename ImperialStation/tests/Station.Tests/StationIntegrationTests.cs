@@ -50,9 +50,19 @@ public sealed class StationIntegrationTests
         var measured = StationBaseline.Execute(StationBaseline.Create(128, days: 1), requireDaily: false);
         Assert.Equal("completed", measured.Status); Assert.Equal(128, measured.ActiveWorkers);
         Assert.Equal(0, measured.ScheduledRestsOverdue); Assert.Equal(128, measured.ScheduledRestsCompleted);
-        // Schema 45 changes the validated guard search deadline to a full roster
-        // cycle. This no-escort control differs only in its encoded schema byte.
-        Assert.Equal("2d8a319bf9682e9a394c84f678e0d06553bc17280b68ce39954dceef7f9bf67d", measured.Digest);
+        // Schema 46 budgets an hour before sleep, relieves needs forecast to become
+        // critical during sleep and forecasts meal need across sleep, so daily timing
+        // (not only the schema byte) changes. Status, workers and rests are unchanged.
+        // Schema 49 (escort acknowledgment deadlines) follows 48 (learned terminal outages,
+        // cafeteria estimates). Workers, rests and the 422 meals are unchanged.
+        // Schema 50 saves each citizen's own record-grant notices (T08 decision inputs).
+        // Conversation initiators no longer read partners' private consent, so who is asked changes.
+        // Schema 51 saves what each citizen sees of the services on its own tile; 52 saves its
+        // knowledge of its own alternate identity proof; 53 its memory of its own completion posts.
+        // Sleep is sized from own knowledge (bed duration less sleep already taken in the
+        // window, ending by the known pre-duty meal), so late sleepers no longer sleep
+        // through the pre-duty meal; workers, rests and toilets are unchanged.
+        Assert.Equal("1b3116394f56025e6d871d5ec2c5dd701fc90f8c81a6a41c4ead6e38cbf00dae", measured.Digest);
         Assert.All(measured.Citizens, p => Assert.True(p.Meals[0] > 0 && p.SleepTicks[0] > 0 && p.Toilets > 0));
     }
     [Theory]

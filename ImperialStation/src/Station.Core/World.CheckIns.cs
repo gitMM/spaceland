@@ -50,10 +50,10 @@ namespace Station.Core
         private void EvaluateCheckIn(Id<ActorTag> actorId)
         {
             var agent = checkIns[actorId]; agent.NextDecision = -1; var actor = actors[actorId];
-            if (EscortControls(actorId) || !agent.Due || actor.Action != null || DeferToNeed(actor) || PrepareCredentialGoal(actor) || !RoutineAllowsCheckIn(actorId) || GuardHasPriority(actorId) || DeferToDueGoal(actor, DueSource.CheckIn) || AlreadyPlanned(actor, DueSource.CheckIn) || !needAgents.ContainsKey(actorId.Value) && reportAgents.TryGetValue(actorId, out var report) && report.Pending.Count > 0) return;
+            if (GoalPriority.FirstDeferring(GoalPriority.CheckInGates, g => g == PriorityGate.Inactive ? !agent.Due : Defers(actor, g, DueSource.CheckIn)) != PriorityGate.None) return;
             if (needAgents.ContainsKey(actorId.Value) && agent.BlockedUntil > processingTick) { RequestCheckInDecision(agent, agent.BlockedUntil); return; }
             if (!SpendPlanningRequest()) { RequestCheckInDecision(agent, checked(processingTick + 1)); return; }
-            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget);
+            var result = ReportPlanning.PlanInbox(ActorView(actorId), Information!.LoginTicks, Information.ReadBaseTicks, planner.Candidates, planner.MaximumDepth, planner.NodeBudget, AvoidedTerminals(actorId));
             PlannerExpansions += result.Expansions;
             if (result.Outcome == PlanOutcome.PlanFound && result.Steps.Count > 0)
             {
@@ -64,7 +64,7 @@ namespace Station.Core
             {
                 if (result.Outcome == PlanOutcome.BudgetExhausted) PlansExhausted++; else PlansUnavailable++;
                 Emit("PlanUnavailable", actor, detail: "periodic-check-in/v1; " + result.Outcome);
-                if (!KnownOnDuty(actorId)) { RoutineCheckInFinished(actor, true); return; }
+                if (OffDutyPolicy.AbandonsFailedCheckIn(KnownOnDuty(actorId))) { RoutineCheckInFinished(actor, true); return; }
                 agent.BlockedUntil = checked(processingTick + agent.Backoff); WakeDaily(actor); RequestCheckInDecision(agent, agent.BlockedUntil); agent.Backoff = NextWorkBackoff(agent.Backoff);
             }
         }
@@ -93,10 +93,8 @@ namespace Station.Core
         }
         private void ReleaseIdleTerminal(Id<ActorTag> actor)
         {
-            if (reportAgents.TryGetValue(actor, out var report) && report.Pending.Count > 0) return;
-            if (checkIns.TryGetValue(actor, out var checkIn) && checkIn.Due) return;
-            if (KnownOnDuty(actor) && audits.Values.Any(a => a.ActorId == actor.Value && a.Pending && a.TerminalId == ActorView(actor).SessionTerminalId)) return;
-            if (actors[actor].Action?.Kind is ActionKind.Login or ActionKind.RecoveryLogin or ActionKind.PostLostCard or ActionKind.ReadRecoveryInbox or ActionKind.IssueReplacement or ActionKind.ReadInbox or ActionKind.PostMessage or ActionKind.QueryRecords) return;
+            if (TerminalAvoidance.KeepsSession(reportAgents.TryGetValue(actor, out var report) && report.Pending.Count > 0, checkIns.TryGetValue(actor, out var checkIn) && checkIn.Due,
+                () => KnownOnDuty(actor) && audits.Values.Any(a => a.ActorId == actor.Value && a.Pending && a.TerminalId == ActorView(actor).SessionTerminalId), actors[actor].Action?.Kind)) return;
             EndSession(actor, "CheckInFinished");
         }
     }

@@ -193,7 +193,8 @@ namespace Station.Core
         private FailureReason TerminalAccess(Actor actor, long terminalId, TerminalCapability needed, out Terminal? terminal)
         {
             terminal = null;
-            if (!terminals.TryGetValue(terminalId, out terminal) || !terminal.Enabled || !terminal.Connected || (terminal.Definition.Capabilities & needed) != needed) return FailureReason.RequiredServiceNotPresent;
+            if (terminals.TryGetValue(terminalId, out terminal) && (!terminal.Enabled || !terminal.Connected)) { LearnTerminalOutage(actor, terminal); return FailureReason.RequiredServiceNotPresent; }
+            if (terminal == null || (terminal.Definition.Capabilities & needed) != needed) return FailureReason.RequiredServiceNotPresent;
             if (actor.Position != terminal.Definition.Position || actor.Action?.Kind == ActionKind.Move) return FailureReason.NotAtRequiredTile;
             if (!terminal.Definition.PermittedRoles.Contains(actor.Role, StringComparer.Ordinal)) return FailureReason.NotQualified;
             return FailureReason.None;
@@ -297,6 +298,7 @@ namespace Station.Core
                 RecordSession(session, "Active");
                 Schedule(new ScheduledEvent { Tick = session.Expires, Phase = EventPhase.PhysicalCompletion, Kind = ScheduledKind.SessionExpiry, Intent = new ActionIntent(actor.Id, ActionKind.Logout, actor.Position), Value = session.Id });
                 Emit(session.Scope == SessionScope.Normal ? "TerminalLoginSucceeded" : "RecoveryLoginSucceeded", actor, action.Id, terminalId: session.Terminal, sessionId: session.Id, causeId: action.CauseId);
+                ObserveTerminalRestored(actor, session.Terminal);
             }
             else
             {
@@ -311,7 +313,7 @@ namespace Station.Core
                         // Capacity is checked before disclosure; overflow stays unread instead of silently granting knowledge.
                         bool accepted = message.Draft.Kind == MessageKind.RosterUpdated ? ReadRoster(actor, message) : Learn(actor, message.Draft.Subject, message.Draft.Claim, EvidenceKind.MessageRead, id, message.Draft.ObservedTick, action.CauseId,
                             message.Draft.Kind is MessageKind.Order or MessageKind.PatrolOrder or MessageKind.EscortOrder,preservePin:message.Draft.Kind!=MessageKind.OrderCancelled);
-                        if (!accepted) continue;
+                        if (!accepted) { action.LeftUnread = true; continue; }
                         message.Stage = MessageStage.Read; message.FirstReadTick = processingTick;
                         RemoveUnreadMessage(message);
                         Emit("MessageRead", actor, action.Id, terminalId: session!.Terminal, sessionId: session.Id, messageId: id, causeId: action.CauseId, detail: message.Draft.Kind.ToString());

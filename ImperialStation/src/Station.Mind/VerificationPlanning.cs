@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Station.Contracts;
 
@@ -5,6 +6,11 @@ namespace Station.Mind
 {
     public static class VerificationPlanning
     {
+        // A verification order waits for any older non-repair order the citizen is working.
+        public static bool YieldsToOlderOrder(long attemptId, IEnumerable<KnownLocalOrder> ownOrders) =>
+            ownOrders.Any(o => o.Working && o.Kind != WorkKind.RepairMachine && o.AttemptId < attemptId);
+        public static bool Discrepancy(bool operational, string requiredResource, string installedResource) => !operational || requiredResource != installedResource;
+        public static string Finding(bool discrepancy) => discrepancy ? "ResolveJobDiscrepancy" : "VerifiedClear";
         public static PlanResult Plan(IActorView view, long machineId, int depth = 8, int budget = 512)
         {
             var machine = view.PublicKnowledge?.Work?.Equipment.SingleOrDefault(m => m.Id == machineId);

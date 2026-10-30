@@ -34,6 +34,7 @@ namespace Station.Core
             foreach (var h in workHistory) { w.Write(h.Version); w.Write(h.Tick); w.Write(h.JobId); w.Write(h.AttemptId); w.Write(h.MessageId); w.Write(h.Kind); }
             w.Write(checkIns.Count);
             foreach (var c in checkIns.Values) { w.Write(c.Actor.Value); w.Write(c.Interval); w.Write(c.NextDecision); w.Write(c.DueTick); w.Write(c.Due); w.Write(c.Completed); w.Write(c.Backoff); w.Write(c.Stamp.Due); w.Write(c.Stamp.Sequence); w.Write(c.BlockedUntil); }
+            w.Write(ownCompletionPosts.Count); foreach (var p in ownCompletionPosts) { w.Write(p.Actor); w.Write(p.Job); w.Write(p.Attempt); }
         }
         private void ReadJobs(BinaryReader r)
         {
@@ -62,9 +63,7 @@ namespace Station.Core
                     message.Draft.WorkOrder == null || message.Draft.WorkOrder.Kind != o.Kind || message.Draft.WorkOrder.MachineId != o.MachineId || message.Draft.WorkOrder.Tile.Value != o.TileId ||
                     (message.Draft.WorkOrder.Construction?.ProjectId ?? 0) != o.ProjectId || message.Draft.WorkOrder.Expires != o.Expires || o.Expires != a.Expires ||
                     o.Kind != WorkKind.CleanTile && (o.CleanupChecked || o.CleanedUnits != 0)) throw new ArgumentException("Invalid local order read evidence.");
-                if (o.Reason == "OwnCompletionAlreadyPosted" && (o.Status != LocalOrderStatus.Completed || o.NextDecision >= 0 || !messages.Values.Any(m =>
-                    m.PhysicalSender.Value == o.ActorId && m.SenderAccount.Value == a.AccountId && m.TerminalId > 0 && m.SessionId > 0 && m.SubmittedTick <= o.ReadTick &&
-                    m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId == o.JobId && m.Draft.AttemptId == o.AttemptId))) throw new ArgumentException("Missing remembered completion submission.");
+                if (o.Reason == "OwnCompletionAlreadyPosted" && (o.Status != LocalOrderStatus.Completed || o.NextDecision >= 0)) throw new ArgumentException("Invalid remembered completion order.");
             }
             count = Count(r);
             for (int i = 0; i < count; i++) workHistory.Add(new WorkHistoryEntry { Version = r.ReadInt64(), Tick = r.ReadInt64(), JobId = r.ReadInt64(), AttemptId = r.ReadInt64(), MessageId = r.ReadInt64(), Kind = r.ReadString() });
@@ -74,6 +73,13 @@ namespace Station.Core
                 var c = new CheckInAgent { Actor = new Id<ActorTag>(r.ReadInt64()), Interval = r.ReadInt64(), NextDecision = r.ReadInt64(), DueTick = r.ReadInt64(), Due = r.ReadBoolean(), Completed = r.ReadInt64(), Backoff = r.ReadInt64(), Stamp = new GoalStamp(r.ReadInt64(), r.ReadInt64()), BlockedUntil = r.ReadInt64() };
                 if (!actors.ContainsKey(c.Actor) || c.Interval < 1) throw new ArgumentException("Invalid saved check-in schedule."); checkIns.Add(c.Actor, c);
             }
+            count = Count(r);
+            for (int i = 0; i < count; i++)
+            {
+                var p = (r.ReadInt64(), r.ReadInt64(), r.ReadInt64());
+                if (!actors.ContainsKey(new Id<ActorTag>(p.Item1)) || p.Item2 < 0 || p.Item3 < 0 || !ownCompletionPosts.Add(p)) throw new ArgumentException("Invalid remembered completion submission.");
+            }
+            if (localOrders.Values.Any(o => o.Reason == "OwnCompletionAlreadyPosted" && !ownCompletionPosts.Contains((o.ActorId, o.JobId, o.AttemptId)))) throw new ArgumentException("Missing remembered completion submission.");
             if (nextAttempt < 1 || workHistory.Count != workVersion || jobs.Values.Any(j => !ValidJobTarget(j) || j.CurrentAttemptId != 0 && !workAttempts.ContainsKey(j.CurrentAttemptId)) || cancellationKeys.Values.Any(id => !workAttempts.ContainsKey(id)) || workMessageKeys.Values.Any(id => !messages.ContainsKey(id))) throw new ArgumentException("Invalid work record indexes.");
             foreach (var agent in repairAgents.Values)
                 if (agent.Attempts.Any(p => !agent.Pending.Contains(p.Key) || !localOrders.TryGetValue(p.Value, out var order) || order.ActorId != agent.Actor.Value || order.Kind != WorkKind.RepairMachine || order.MachineId != p.Key)) throw new ArgumentException("Invalid repair attempt binding.");

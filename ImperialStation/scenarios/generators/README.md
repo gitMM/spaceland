@@ -157,7 +157,7 @@ scenario, relative catalog and property/normalization manifest. See
 `RecoveryStationGenerator.cs` composes the daily station with finite normal work,
 card losses, equipment faults, spills and one bounded terminal outage. It generates
 initial conditions and disturbances only. `benchmark recovery --count 32` and
-`--count 2048` use the same generator and the ordinary World policies. The gate
+`--count 256` (the population gate) use the same generator and the ordinary World policies. The gate
 checks physical backlog drainage, received institutional outcomes, daily life,
 credential recovery, bounded failed-action counts and checkpoint continuation.
 See `docs/recovery-station.md` for exact timings, supplied stock, role assumptions,

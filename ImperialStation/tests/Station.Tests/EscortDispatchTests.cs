@@ -106,6 +106,49 @@ public sealed class EscortDispatchTests
     }
 
     [Fact]
+    public void SilentTeamIsReassignedAfterTheAcknowledgmentDeadlineAndLateRepliesChangeNothing()
+    {
+        // Two more on-duty guards with their own terminal. Every guard terminal is offline
+        // from dispatch at tick 113 until 380, so the first team cannot reply before its
+        // deadline (363); the replacement can reply before its own (613).
+        var w = Load(j =>
+        {
+            var s = j["initialState"]!; s["horizon"] = 2000; var info = s["information"]!;
+            info["terminals"]!.AsArray().Add(new JsonObject { ["id"] = 5, ["position"] = new JsonObject { ["x"] = 0, ["y"] = 0, ["z"] = 0 }, ["permittedRoles"] = new JsonArray("guard"), ["capacity"] = 1, ["capabilities"] = "Inbox, Post" });
+            foreach (int g in new[] { 5, 6 })
+            {
+                s["actors"]!.AsArray().Add(new JsonObject { ["id"] = g, ["name"] = "Guard " + g, ["role"] = "guard", ["position"] = new JsonObject { ["x"] = 0, ["y"] = 0, ["z"] = 0 } });
+                s["items"]!.AsArray().Add(new JsonObject { ["id"] = 10 + g, ["resource"] = "card", ["quantity"] = 1, ["locationKind"] = "ActorInventory", ["owner"] = g });
+                info["credentials"]!.AsArray().Add(new JsonObject { ["id"] = g, ["holder"] = g, ["account"] = g, ["cardItem"] = 10 + g });
+                s["routines"]!["assignments"]!.AsArray().Add(new JsonObject { ["actorId"] = g, ["cohort"] = 0, ["restTile"] = new JsonObject { ["x"] = 0, ["y"] = 0, ["z"] = 0 } });
+            }
+        }).CreateWorld(42, true);
+        foreach (long terminal in new long[] { 3, 4, 5 }) { w.ScheduleTerminalChange(113, terminal, false, false); w.ScheduleTerminalChange(380, terminal, true, true); }
+        w.AdvanceTo(113); var first = Dispatch(w); var silent = first.Payload!.Guards.ToArray(); Assert.Equal(113 + 250, first.AcknowledgmentDeadline);
+        w.AdvanceTo(362); Assert.Equal(EscortDispatchStatus.AwaitingReaders, Dispatch(w).Status);
+        w.AdvanceTo(364);
+        Assert.Single(w.Trace, e => e.Type == "EscortAcknowledgmentOverdue");
+        var replacement = Dispatch(w); Assert.Equal(1, replacement.Reassignments);
+        Assert.Equal(EscortDispatchStatus.AwaitingReaders, replacement.Status);
+        Assert.Empty(replacement.Payload!.Guards.Intersect(silent));
+        Assert.All(w.InspectGuardAssignments().Where(a => silent.Contains(a.ActorId)), a => Assert.Equal("Unacknowledged", a.Response));
+        RoundTrip(w);
+        var copy = World.Restore(w.Serialize());
+        foreach (var world in new[] { w, copy }) world.AdvanceTo(950);
+        Assert.Equal(w.Serialize(), copy.Serialize());
+        // The silent guards learn of the reassignment by reading it; nothing they post
+        // afterwards restores their commitment or joins them to the current team.
+        Assert.All(silent, g => Assert.All(w.InspectLocalGuardOrders(new(g)), l => Assert.Equal("KnownOrderReassigned", l.Reason)));
+        Assert.All(w.InspectGuardAssignments().Where(a => silent.Contains(a.ActorId)), a => Assert.Equal("Unacknowledged", a.Response));
+        Assert.Equal(replacement.OrderMessageIds, Dispatch(w).OrderMessageIds);
+        Assert.All(Dispatch(w).OrderMessageIds, id => Assert.True(w.InspectGuardAssignments().Single(a => a.OrderMessageId == id).AcknowledgmentMessageId > 0));
+        Assert.Single(w.Trace, e => e.Type == "EscortAcknowledgmentOverdue");
+        // Both silent guards read their order and the reassignment together; their replies
+        // arrive late and are recorded without restoring a commitment.
+        Assert.Equal(2, w.Trace.Count(e => e.Type == "GuardAcknowledgmentLate"));
+    }
+
+    [Fact]
     public void OrderReadAfterExpiryOnlyReportsExpiryAndCannotBecomeReady()
     {
         var w = Load(j => j["initialState"]!["detention"]!["orderTicks"] = 10).CreateWorld(42); w.AdvanceTo(734);

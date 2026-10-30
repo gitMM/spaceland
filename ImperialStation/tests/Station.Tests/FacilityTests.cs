@@ -55,6 +55,34 @@ public sealed class FacilityTests
     }
 
     [Fact]
+    public void UnacknowledgedCleanupOrderIsReassignedAndTheLateReplyChangesNothing()
+    {
+        // The assigned cleaner's terminal is offline from tick 6 to 400, so it cannot read
+        // the order posted at 7. After two configured hours (day 3,000 / 12 = 250 ticks)
+        // the order goes to the other eligible cleaner through the ordinary supersede.
+        var w = Load(j => { j["initialState"]!["horizon"] = 2000; j["initialState"]!["jobSystem"]!["checkIns"]![0]!["interval"] = 20; }).CreateWorld(42, true);
+        w.ScheduleTerminalChange(6, 2, true, false); w.ScheduleTerminalChange(400, 2, true, true);
+        w.AdvanceTo(256);
+        var first = Assert.Single(w.InspectWorkAttempts()); Assert.Equal(2, first.ActorId); Assert.Null(first.AcknowledgmentReceivedTick);
+        w.AdvanceTo(258);
+        var reassigned = Assert.Single(w.Trace, e => e.Type == "FacilityOrderUnacknowledged"); Assert.Equal(257, reassigned.Tick);
+        var attempts = w.InspectWorkAttempts().OrderBy(a => a.Id).ToArray();
+        Assert.Equal(AssignmentStatus.Superseded, attempts[0].Assignment); Assert.Equal(1, attempts[1].ActorId);
+        Assert.Equal(attempts[1].Id, w.InspectFacilityTasks()[0].AttemptId);
+        Assert.Equal(w.Serialize(), World.Restore(w.Serialize()).Serialize());
+        var copy = World.Restore(w.Serialize());
+        w.AdvanceTo(1000); copy.AdvanceTo(1000); Assert.Equal(w.Serialize(), copy.Serialize());
+        Assert.Equal(0, w.InspectDirt()[0].Units);
+        Assert.Equal(FacilityTaskStatus.ReportedComplete, w.InspectFacilityTasks()[0].Status);
+        Assert.Contains(w.Trace, e => e.Type == "CleaningCompleted" && e.ActorId == 1 && e.Quantity == 1);
+        Assert.DoesNotContain(w.Trace, e => e.Type == "CleaningCompleted" && e.ActorId == 2 && e.Quantity == 1);
+        // The silent cleaner later reads the cancellation; its attempt never becomes current again.
+        Assert.Equal(AssignmentStatus.Superseded, w.InspectWorkAttempts().Single(a => a.Id == attempts[0].Id).Assignment);
+        Assert.Equal(1, w.InspectWorkAttempts().Count(a => a.Assignment == AssignmentStatus.Active));
+        w.AssertAccounting();
+    }
+
+    [Fact]
     public void NoTerminalAccessRetainsReportWithoutAuthorityKnowledge()
     {
         var w = Load().CreateWorld(42); w.ScheduleTerminalChange(0, 1, false, false); w.ScheduleTerminalChange(0, 2, false, false);

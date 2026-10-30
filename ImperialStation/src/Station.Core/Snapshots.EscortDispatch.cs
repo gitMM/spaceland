@@ -35,6 +35,7 @@ namespace Station.Core
             {
                 w.Write(d.AuthorizationId); w.Write(d.DispatchedTick); w.Write((int)d.Status); w.Write(d.Reason); WriteEscortPayload(w, d.Payload);
                 w.Write(d.OrderMessageIds.Count); foreach (long id in d.OrderMessageIds) w.Write(id);
+                w.Write(d.AcknowledgmentDeadline); w.Write(d.Reassignments);
             }
             w.Write(guardAssignments.Count);
             foreach (var a in guardAssignments.Values) { w.Write(a.OrderMessageId); w.Write(a.ActorId); w.Write(a.AuthorizationId); w.Write(a.AcknowledgmentMessageId); w.Write(a.Response); }
@@ -48,6 +49,8 @@ namespace Station.Core
             {
                 var d = new EscortDispatchSnapshot { AuthorizationId = r.ReadInt64(), DispatchedTick = r.ReadInt64(), Status = ReadEnum<EscortDispatchStatus>(r), Reason = r.ReadString(), Payload = ReadEscortPayload(r) };
                 var ids = new long[Count(r)]; for (int j = 0; j < ids.Length; j++) ids[j] = r.ReadInt64(); d.OrderMessageIds = ids;
+                d.AcknowledgmentDeadline = r.ReadInt64(); d.Reassignments = r.ReadInt32();
+                if (d.Reassignments < 0 || d.AcknowledgmentDeadline != -1 && (d.Payload == null || d.AcknowledgmentDeadline <= d.DispatchedTick)) throw new ArgumentException("Invalid escort acknowledgment deadline.");
                 if (Detention?.Escort == null || !detentionAuthorizations.TryGetValue(d.AuthorizationId, out var authorization)) throw new ArgumentException("Unknown escort authorization.");
                 if (d.Payload == null)
                 {
@@ -85,15 +88,17 @@ namespace Station.Core
                     order.Draft.OperationKey != "escort/" + authorization.Id + "/dispatch/" + payload.DispatchId + "/guard/" + a.ActorId ||
                     !messages.TryGetValue(payload.DispatchId, out var first) || first.Draft.EscortOrder == null || !first.Draft.EscortOrder.Same(payload) || first.SubmittedTick != order.SubmittedTick)
                     throw new ArgumentException("Invalid historical guard transport.");
-                if (a.AcknowledgmentMessageId == 0) { if (a.Response != "AwaitingAcknowledgment") throw new ArgumentException("Unread guard acknowledgment leaked."); }
+                if (a.AcknowledgmentMessageId == 0) { if (!(a.Response is "AwaitingAcknowledgment" or "Unacknowledged")) throw new ArgumentException("Unread guard acknowledgment leaked."); }
                 else if (!messages.TryGetValue(a.AcknowledgmentMessageId, out var ack) || ack.Draft.Kind != MessageKind.EscortAcknowledged || !ValidDraft(ack.Draft) || ack.Draft.RelatedMessageId != order.Id ||
                     ack.Stage != MessageStage.Accepted || ack.PhysicalSender.Value != a.ActorId || ack.SenderAccount.Value != person.AccountId || ack.TerminalId < 1 || ack.SessionId < 1 || ack.SubmittedTick < order.DeliveryTick ||
                     ack.DeliveryTick >= dispatch.Payload.Expires || RevocationWasKnownToAuthority(a.AuthorizationId, ack.DeliveryTick, long.MaxValue) || ack.Draft.Claim.Text != a.Response) throw new ArgumentException("Invalid guard acknowledgment receipt.");
                 var history = records.History.Values.Where(e => e.Kind == RecordKind.GuardAssignment && e.EntityId == a.OrderMessageId).ToArray();
-                if (history.Length != (a.AcknowledgmentMessageId == 0 ? 1 : 2) || history.Any(e => e.AccountId != person.AccountId || RecordNumber(e, AttributeKind.ActorId) != a.ActorId ||
+                // A reassigned silent order adds one "Unacknowledged" record after the original.
+                bool reassigned = a.Response == "Unacknowledged";
+                if (history.Length != (a.AcknowledgmentMessageId == 0 && !reassigned ? 1 : 2) || reassigned && (RecordNumber(history[1], AttributeKind.MessageId) != 0 || RecordText(history[1], AttributeKind.WorkStatus) != "Unacknowledged") || history.Any(e => e.AccountId != person.AccountId || RecordNumber(e, AttributeKind.ActorId) != a.ActorId ||
                     RecordNumber(e, AttributeKind.AuthorizationId) != a.AuthorizationId || RecordNumber(e, AttributeKind.SubjectAccountId) != dispatch.Payload.SubjectAccountId || RecordNumber(e, AttributeKind.Expires) != dispatch.Payload.Expires) ||
                     history[0].Tick != order.SubmittedTick || RecordNumber(history[0], AttributeKind.MessageId) != 0 || RecordText(history[0], AttributeKind.WorkStatus) != "AwaitingAcknowledgment" ||
-                    history.Length == 2 && (history[1].Tick != messages[a.AcknowledgmentMessageId].DeliveryTick || RecordNumber(history[1], AttributeKind.MessageId) != a.AcknowledgmentMessageId || RecordText(history[1], AttributeKind.WorkStatus) != a.Response)) throw new ArgumentException("Invalid guard assignment history.");
+                    history.Length == 2 && !reassigned && (history[1].Tick != messages[a.AcknowledgmentMessageId].DeliveryTick || RecordNumber(history[1], AttributeKind.MessageId) != a.AcknowledgmentMessageId || RecordText(history[1], AttributeKind.WorkStatus) != a.Response)) throw new ArgumentException("Invalid guard assignment history.");
                 guardAssignments.Add(a.OrderMessageId, a);
             }
             foreach (var d in escortDispatches.Values.Where(d => d.Payload != null))
@@ -105,8 +110,11 @@ namespace Station.Core
                 {
                     var group = generations[generation]; var payload = messages[group.Key].Draft.EscortOrder!;
                     if (!group.Select(a => a.ActorId).OrderBy(id => id).SequenceEqual(payload.Guards.OrderBy(id => id))) throw new ArgumentException("Incomplete historical guard team.");
+                    // A replacement needs every earlier order closed by a received terminal report or
+                    // by a recorded acknowledgment-deadline reassignment, and reuses none of them.
                     if (generation > 0 && generations.Take(generation).SelectMany(g => g).Any(a => payload.Guards.Contains(a.ActorId) ||
-                        !records.History.Values.Any(e => e.Kind == RecordKind.GuardOutcome && RecordNumber(e, AttributeKind.GuardOrderMessageId) == a.OrderMessageId && GuardOutcomeTerminal(RecordText(e, AttributeKind.WorkStatus)) && e.Tick <= messages[group.Key].SubmittedTick)))
+                        !records.History.Values.Any(e => e.Kind == RecordKind.GuardOutcome && RecordNumber(e, AttributeKind.GuardOrderMessageId) == a.OrderMessageId && GuardOutcomeTerminal(RecordText(e, AttributeKind.WorkStatus)) && e.Tick <= messages[group.Key].SubmittedTick) &&
+                        !(a.Response == "Unacknowledged" && records.History.Values.Any(e => e.Kind == RecordKind.GuardAssignment && e.EntityId == a.OrderMessageId && RecordText(e, AttributeKind.WorkStatus) == "Unacknowledged" && e.Tick <= messages[group.Key].SubmittedTick))))
                         throw new ArgumentException("Replacement lacks received terminal reports or reuses a failed guard.");
                 }
                 if (d.Status == EscortDispatchStatus.AwaitingGuards)
