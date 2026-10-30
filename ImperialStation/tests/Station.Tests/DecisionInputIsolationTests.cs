@@ -135,4 +135,19 @@ public sealed class DecisionInputIsolationTests
         string source = File.ReadAllText(Path.Combine(Fixtures.Root, "src", "Station.Core", "World.RecoveryPlanning.cs"));
         foreach (string word in new[] { "credentials", "recoveryDesks", "recoveryCapabilities", "messages[", "messages." }) Assert.DoesNotContain(word, source);
     }
+
+    [Fact]
+    public void T08_LateOrderReadUsesTheCitizensOwnSubmissionMemoryNotTheMessageStore()
+    {
+        static LocalWorkOrderSnapshot[] Late(World w) => w.InspectLocalOrders(new(1)).Where(o => o.JobId is 10001 or 10002).OrderBy(o => o.JobId).ToArray();
+        var probe = InstitutionalStation.Create(32).CreateWorld(trace: false); probe.AdvanceTo(2000); long read = Late(probe).Min(o => o.ReadTick);
+        // The store re-attributes the citizen's completion posts; its own memory of posting them is unchanged.
+        var (plain, changed) = Twin(() => InstitutionalStation.Create(32).CreateWorld(trace: false), read - 1, w =>
+        {
+            foreach (var m in ((IDictionary)Get(w, "messages")).Values.Cast<MessageSnapshot>().Where(m => m.PhysicalSender.Value == 1 && m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId is 10001 or 10002))
+                Set(m, "PhysicalSender", new Id<ActorTag>(999));
+        }, Late(probe).Max(o => o.ReadTick));
+        Assert.Equal(2, Late(plain).Length); Assert.All(Late(plain), o => Assert.Equal("OwnCompletionAlreadyPosted", o.Reason));
+        Assert.Equal(Late(plain).Select(o => (o.Status, o.Reason)), Late(changed).Select(o => (o.Status, o.Reason)));
+    }
 }

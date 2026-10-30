@@ -138,9 +138,8 @@ namespace Station.Core
                     Learn(actor, condition, FactValue.Boolean(false), EvidenceKind.MessageRead, message.Id, draft.ObservedTick, 0);
             }
             // Memory of the citizen's own authenticated submission, not the
-            // authority's assessment or physical truth.
-            bool ownCompletionPosted = messages.Values.Any(m => m.PhysicalSender == actor.Id && m.SenderAccount == actor.Account && m.TerminalId > 0 && m.SessionId > 0 &&
-                m.Draft.Kind == MessageKind.WorkCompleted && m.Draft.TaskId == order.JobId && m.Draft.AttemptId == order.AttemptId && m.SubmittedTick <= processingTick);
+            // authority's assessment, physical truth or the message store.
+            bool ownCompletionPosted = ownCompletionPosts.Contains((actor.Id.Value, order.JobId, order.AttemptId));
             switch (WorkOrderPolicy.OnRead(ownCompletionPosted, order.Expires, processingTick))
             {
                 case WorkOrderReadOutcome.OwnCompletionAlreadyPosted:
@@ -212,8 +211,11 @@ namespace Station.Core
             if (!agent.Pending.Any(p => p.OperationKey == draft.OperationKey)) QueueReport(agent, draft);
             RequestReportDecision(agent, processingTick);
         }
+        // Each citizen remembers the work completions it posted itself, by (job, attempt).
+        private readonly SortedSet<(long Actor, long Job, long Attempt)> ownCompletionPosts = new SortedSet<(long, long, long)>();
         private void WorkMessagePosted(Actor actor, MessageSnapshot message)
         {
+            if (message.Draft.Kind == MessageKind.WorkCompleted) ownCompletionPosts.Add((actor.Id.Value, message.Draft.TaskId, message.Draft.AttemptId));
             if (!localOrders.TryGetValue(message.Draft.AttemptId, out var order) || order.ActorId != actor.Id.Value || message.Draft.TaskId != order.JobId || message.Draft.RelatedMessageId != order.OrderMessageId) return;
             if (message.Draft.Kind == MessageKind.OrderAccepted && order.Status == LocalOrderStatus.AcknowledgmentPending)
             {
