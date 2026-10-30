@@ -42,6 +42,9 @@ public static partial class PressureStation
         public double ReplaySeconds { get; set; }
         public ResponseReport Responses { get; set; } = new();
         public IReadOnlyList<GuardCoverage> GuardCoverage { get; set; } = Array.Empty<GuardCoverage>();
+        public MissedWindowReport MissedWindows { get; set; } = new();
+        public CheckInReport CheckIns { get; set; } = new();
+        public List<RosterChangeCheck> RosterChanges { get; set; } = new();
         public List<string> Failures { get; set; } = new();
     }
     public static Result Execute(LoadedScenario scenario, string? output = null)
@@ -66,6 +69,7 @@ public static partial class PressureStation
         long previous = 0, failures = 0;
         var protocolCauses = new Dictionary<long, string>();
         var responses = new ResponseTracker(scenario);
+        var routineMisses = new RoutineMissTracker(scenario);
         using var originalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         void Hash(IncrementalHash hash, TraceEvent e) => hash.AppendData(Encoding.UTF8.GetBytes(Runs.EventJson(e) + "\n"));
         if (output != null) Directory.CreateDirectory(output);
@@ -90,7 +94,7 @@ public static partial class PressureStation
                 foreach (var e in w.Trace)
                 {
                     if (e.Id != previous + 1) result.TraceGaps++; previous = e.Id;
-                    responses.Observe(e);
+                    responses.Observe(e); routineMisses.Observe(e);
                     result.Events[e.Type] = result.Events.GetValueOrDefault(e.Type) + 1;
                     if (e.Type is "CustodyBegan" or "DetentionReleaseDue" or "ConversationConsented") protocolCauses.Add(e.Id, e.Type);
                     if (e.Type == "ActionRequested" && !IsTrigger(e) && (e.CauseId <= 0 || e.CauseId >= e.Id || e.Origin is not (ActionOrigin.Autonomous or ActionOrigin.SystemProtocol))) result.InvalidCauses++;
@@ -137,6 +141,13 @@ public static partial class PressureStation
         result.CaseOutcomes = InspectCaseOutcomes(world, repairTriggers);
         result.Responses = responses.Finish(world, result.CaseOutcomes);
         result.GuardCoverage = responses.Coverage();
+        result.MissedWindows = routineMisses.Finish(world);
+        result.CheckIns = routineMisses.FinishCheckIns(world, 2 * s.Routines!.Configuration.PeriodicCheckInTicks);
+        result.RosterChanges = routineMisses.FinishRosterChanges(world);
+        Require(result.MissedWindows.Categories.GetValueOrDefault("Unexplained") == 0, "A missed routine window has no recorded explanation.");
+        Require(result.CheckIns.GapsOverBound == 0, "A citizen went more than two check-in intervals of available duty time without reading its inbox.");
+        Require(result.RosterChanges.All(c => c.Read > c.Published && c.Inconsistent == 0), "A roster change was unread or a duty boundary did not follow the roster the citizen knew.");
+        Require(result.RosterChanges.Count == 0 || result.RosterChanges.Sum(c => c.OldRosterOnlyEvents) > 0, "No duty boundary distinguished an unread roster change from the old roster.");
         // Staggered staffing must leave every cohort a complete escort team plus one
         // guard for patrols, breaks or ongoing custody. The single-cohort control is exempt.
         if (s.Actors.Count(a => a.Role == "guard") > 4 * ((s.Actors.Count + 63) / 64))
@@ -190,15 +201,21 @@ public static partial class PressureStation
         }
         Require(result.Participation.ScheduledRestsOverdue == 0, "Scheduled rests remained overdue.");
         int days = (int)(s.Horizon / StationBaseline.Day);
-        result.CitizensWithContinuingShifts = s.Actors.Count(a => onDuty.GetValueOrDefault(a.Id) >= days && offDuty.GetValueOrDefault(a.Id) >= days);
+        // A roster change may move one duty period past the run, or skip it if read off duty.
+        int Changes(long actor) => scenario.Scenario.Disturbances.Count(d => d.Type == "RosterChange" && d.Roster!.ActorId == actor);
+        result.CitizensWithContinuingShifts = s.Actors.Count(a => onDuty.GetValueOrDefault(a.Id) >= days - Changes(a.Id) && offDuty.GetValueOrDefault(a.Id) >= days - Changes(a.Id));
         Require(result.CitizensWithContinuingShifts == s.Actors.Count, "Some citizens stopped cycling through known duty and off-duty periods.");
         Require(result.DuplicateActiveAssignments == 0, "A job had duplicate active assignments.");
         Require(failures < s.Actors.Count * 100L, "Retry storm exceeded 100 failed actions per citizen.");
         bool Drained(Phase p) => p.Dirt == 0 && p.BrokenMachines == 0 && p.OpenFacilityTasks == 0 && p.UnfinishedJobs == 0 && p.MissingResponses == 0 && p.ActiveDispatches == 0 && p.Occupants == 0 && p.PendingCases == 0;
         // The last declared disturbance (84,000 for the default schedule) starts recovery.
         long pressureEnd = scenario.Scenario.Disturbances.Select(d => d.Tick).DefaultIfEmpty(PressureEnd).Max();
-        var recovered = result.Phases.FindIndex(p => p.Tick >= pressureEnd && Drained(p));
-        if (recovered >= 0 && result.Phases.Skip(recovered).All(Drained)) result.RecoveryTick = result.Phases[recovered].Tick;
+        // Recovery starts at the earliest sample after which every sample stays drained.
+        // Routine work that opens and closes between samples is not a backlog; work still
+        // open at any later sample moves the recovery tick past it.
+        int recovered = result.Phases.Count;
+        while (recovered > 0 && result.Phases[recovered - 1].Tick >= pressureEnd && Drained(result.Phases[recovered - 1])) recovered--;
+        if (recovered < result.Phases.Count) result.RecoveryTick = result.Phases[recovered].Tick;
         Require(result.RecoveryTick >= 0 && s.Horizon - result.RecoveryTick >= StationBaseline.Day, "Backlogs did not drain and remain drained for a configured day.");
         Require(world.InspectDetentionFacilities().All(f => f.Occupants == 0 && f.Reservations == 0), "Custody capacity leaked.");
         Require(world.InspectRepairAgents().All(a => a.PendingMachines.Count == 0), "A repair agent retained unfinished work after recovery.");

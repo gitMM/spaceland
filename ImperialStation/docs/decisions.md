@@ -391,3 +391,14 @@ the result, so no snapshot schema change is needed.
 | Hold repair dispatch for a machine under the authority's own pending quality check or undecided discrepancy | Repair priority otherwise destroyed misconduct evidence before inspection or filing; the hold is bounded to one configured day after a reported discrepancy. |
 | Add up to two cleanup helpers when a reported spill exceeds one cleaner's duty period | Uses only received reports and published durations; at most four helpers per task over its life. |
 | Reassign a facility order unacknowledged after two configured hours | Uses the ordinary superseding dispatch, so late replies affect only the old attempt. |
+
+## Routine windows, check-ins and unread rosters (2026-10-30)
+
+| Decision | Reason |
+| --- | --- |
+| Give every missed routine window exactly one category, checked in a fixed order, and fail the pressure gate on `Unexplained` | Allowed delays (fixture start, custody, escort/custody duty, credential recovery, hunger reaching seek only at the close) are separated from timing defects; nothing is reset or hidden. |
+| Count custody from the escort taking the subject, not from intake | A subject waiting under escort for intake capacity cannot eat at its own cafeteria; intake alone missed that wait. |
+| Treat a meal as late-eligible when hunger had not reached seek, with no meal since, 500 ticks before the close | A meal below seek is not needed by design, so cleaning through such a window is not a priority defect. A one-day look-back wrongly used the previous day's crossing. |
+| Bound on-duty time between check-in reads at two periodic intervals, excluding declared outages, custody, escort duty, credential recovery and sleep | Sustained cleaning, meals and travel may delay a check-in but must not starve it; the measurement uses only the trace, rosters and declared disturbances. |
+| Add a `roster-change` control instead of changing the acceptance schedule | Three cleaners per group get a new cohort at tick 42,000; each boundary and roster check-in is checked against the roster the citizen knew. The acceptance workload and its digests are unchanged. |
+| Allow one fewer duty period per roster change in the shift-cycling gate | A citizen that reads its new roster while off duty correctly skips the new shift already in progress. |

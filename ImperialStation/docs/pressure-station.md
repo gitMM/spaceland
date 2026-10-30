@@ -65,8 +65,10 @@ Declared workload changes (all in `PressureStation.Generator.cs`):
 - **Variants** (`--variant`): `single-cohort-guards` (the old four cohort-0 guards on
   the new schedule; comparison control), `daytime` (staggered guards, the earlier
   all-daytime waves) and `overnight` (all waves at the shift boundary while the day
-  cohort sleeps). Controls report the workload-exercise checks (overlap, overdue
-  work, shared guard duty) as `controlLimitations` instead of failing on them.
+  cohort sleeps). `roster-change` (2026-10-30) is the acceptance schedule plus a new
+  roster (next cohort, same rest tile) for cleaners b+10..b+12 of every group,
+  published at tick 42,000. Controls report the workload-exercise checks (overlap,
+  overdue work, shared guard duty) as `controlLimitations` instead of failing on them.
 
 Daily-life changes (core, schema 46): sleep opens one configured hour early with the
 same close; needs forecast from own values and configured sleeping rates to become
@@ -90,6 +92,22 @@ New measurements in `pressure-result.json`:
   roster, needs/breaks and escort/patrol commitments. The gate requires at least
   three guards per cohort and zero roster gaps when staffing is staggered.
 - `participation.missedDailyGoalReasons`: missed windows by kind and reason.
+- `missedWindows` (2026-10-30): every missed routine window with one category, checked
+  in this order: `InitialSleepWindow` (a day-0 window during the sleep every citizen
+  starts in), `InCustody` (escort to release), `EscortOrCustodyDuty` (a guard between
+  reading its escort order and intake), `CredentialRecovery`, `SleepOverran`,
+  `LateEligibility` (a meal whose hunger had not reached seek, with no meal since, 500
+  ticks before the close), `ContinuousWork` (mostly working) and `Unexplained`. The
+  first five and `LateEligibility` are allowed; the gate fails on any `Unexplained`.
+- `checkIns`: per citizen, on-duty ticks between completed inbox reads, less declared
+  terminal outages, custody, escort duty, credential recovery and sleep. Duty time
+  uses the roster the citizen knew at each tick. The gate allows at most two periodic
+  check-in intervals (3,000 ticks) between reads.
+- `rosterChanges` (roster-change control): publication and read tick, old and new
+  cohort, duty boundaries before and after the read, and `oldRosterOnlyEvents`
+  (boundaries and roster check-ins between publication and read that only the old
+  roster schedules). The gate requires each change to be read by the citizen, every
+  boundary to follow the roster it knew, and at least one old-roster-only event.
 
 Evidence at 32 citizens (this host, .NET 8.0.33):
 

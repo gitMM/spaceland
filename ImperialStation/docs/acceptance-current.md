@@ -259,30 +259,57 @@ test now requires backlogs clear by day six. The suite passes **855 tests**
 
 ## Remaining daily-life verification
 
-Prioritize T22: classify the 46 missed ordinary routine windows in the current normal
-32-citizen run and revisit the historical 2,887 in the population run, then prove unread-roster and
-routine/check-in priority behavior under sustained work. These counts are distinct
-from overdue scheduled rests, which are zero in both runs; a missed window needs
-an explanation before it can be classified as an allowed delay or a defect.
-Use the small institutional command for iteration (3.309 seconds measured, including
-continuation/export and excluding compilation). Run affected controls after fixes,
-then the complete suite and population workload at the increment boundary.
-Broader concurrent institutional load and seed coverage follow; no full acceptance
-gate is closed by this recommended order alone.
+Refreshed 2026-10-30 for the current pressure workload (the 46-window
+`routine-32-completion` and 189-window nine-day counts below were earlier builds
+and are kept only as history).
 
-Current-build timing triage: `artifacts/routine-32-completion/` passes the two-day
-32-person participation gate, with all 64 scheduled rests complete and 46 ordinary
-windows missed. Its detailed trace reproduces the benchmark state exactly. Of these
-misses, 25 pre-duty meal windows close during committed sleep, 19 sleep goals end
-with a same-tick critical interruption (10 hunger, nine bladder), and two duty meals
-close during cleaning begun before hunger reaches seek. This replaces the old
-48-window count for this build, without changing historical results. The nine-day
-small pressure run has 189 misses: 108 pre-duty meals during sleep, 69 sleeps
-interrupted by critical needs (eight hunger, 61 bladder), four meals during committed
-cleaning, and eight remaining meal cases involving custody, threshold/window edges
-or travel across closure. Detailed event references are in each run's
-`routine-window-detail.json`. These explain observed timing; they do not close T22's
-calibration, goal-retention or integrated unread-roster/priority obligations.
+**Missed routine windows (T22).** `pressure-result.json` now gives every missed
+window one category (see [pressure-station.md](pressure-station.md)); the gate fails
+on any `Unexplained`. The 32-citizen acceptance run `artifacts/p32-default/` has 21
+misses, all allowed:
+
+| Category | Count | Explanation |
+| --- | --- | --- |
+| `InitialSleepWindow` | 11 | Day-0 pre-duty meals: every citizen starts in a pre-start sleep (tick 10 to ~12,000). A fixture-start effect, not a timing defect. |
+| `LateEligibility` | 5 | Duty meals during cleaning whose hunger reached seek only 90–219 ticks before the close; a meal below seek is not needed by design. |
+| `InCustody` | 2 | Subject 1 under escort or detained across a duty and an after-duty meal. |
+| `EscortOrCustodyDuty` | 2 | Guards 4 and 21 between reading an escort order and intake. |
+| `CredentialRecovery` | 1 | Actor 2 recovering its lost card at the first wave. |
+
+Zero critical needs interrupted sleep. Sleep interrupted by critical needs (69 in the
+older nine-day run) and pre-duty meals during sleep (108) no longer occur outside day 0.
+Building the classifier exposed one miscount: custody was counted from intake, so a
+subject waiting under escort for intake capacity (seed 2026) was `Unexplained`.
+Custody now runs from `CustodyBegan`.
+
+**Check-in priority under sustained work.** `checkIns` measures on-duty time between
+completed inbox reads, after removing declared outages, custody, escort duty, credential
+recovery and sleep. The gate is two periodic intervals (3,000 ticks). At 32 citizens
+the worst gap is 2,109 ticks (median of per-citizen worst 1,902) over 3,000 reads.
+Cleaners keep cleaning through 300-tick units and check in between them within about
+600 ticks of their own due time; the 8,350/7,100-tick raw gaps for guards 21 and 4
+are escort duty (15,747 excluded on-duty ticks).
+
+**Unread rosters.** The `roster-change` control publishes a new cohort for three
+cleaners per group at tick 42,000 during sustained cleaning. At 32 citizens every
+change was read only through the citizen's own inbox read (43,442, 46,522 and 58,516).
+All 53 duty boundaries of the changed cleaners follow the roster the citizen knew at the time. Cleaners 11
+and 12 made their pre-duty check-in at the old roster's time, which the new roster
+would not have scheduled. Cleaner 12's new shift had already started while it was
+unread, so it correctly stayed off duty until it read the change. The shift-cycling
+gate allows one fewer duty period per change. Observed limitation: cleaner 10 read a
+shift that started 4,558 ticks later and began its full 12,000-tick sleep immediately,
+sleeping 7,453 ticks into the new shift (excluded as `Sleeping`). Sleep start does not
+yet weigh the known duty start.
+
+**Seed coverage (T25/T26).** Seeds 7, 91, 1234 and 2026 at 32 citizens (`artifacts/seeds/p32-s*`)
+all pass the gate, exact state and continuation replay and the independent audit:
+4 reprimands and 2 releases each; clear from 138,000 (150,000 for seed 7); 18–21
+missed windows, none needing attention; worst check-in gap 2,012–2,088; distinct
+state digests. 256-citizen seed runs are in progress.
+
+T22 still lacks calibration of the declared targets and roster-aware sleep start; the
+missed-window, check-in and unread-roster obligations now have integrated evidence.
 
 ## Acceptance gates
 
@@ -315,7 +342,7 @@ family-level audit limits even where these specific tests pass.
 | T19 | CleanupOrderTests; IncidentResponseTests; PatrolTests | partial: autonomous cleanup/patrol/replacement covered; broader recovery/generation open |
 | T20 | QA, Audit, Personnel, Detention, Guard, Escort and InstitutionalStationTests | partial: integrated chain and eight declared controls pass, including full capacity and replacement after interruption; complete variant/requirement audit remains open |
 | T21 | InformationTests; RoutineTests; daily/population terminal use | partial: reads/privacy/queues/offline orders covered; complete contention/security variant audit open |
-| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; missed ordinary windows, unread-roster variants and calibration remain open |
+| T22 | StationIntegrationTests; RecoveryStationTests; InstitutionalStationTests; population runs | partial: daily needs, scheduled rests, custody, staffing waits and resumed work pass for declared shortened days; every missed window classified (none unexplained), check-in gaps bounded and the `roster-change` control pass at 32 (2026-10-30; 256 in progress); calibration and roster-aware sleep start remain open |
 | T23 | PlanningTests; RepairPlanningTests | pass: known costs change choices; unknown changes do not |
 | T24 | ConstructionGeneratorTests; RecoveryGeneratorTests | partial: declared transformations covered only for implemented generator families |
 | T25 | ReproducibilityTests; RunnerTests; feature checkpoint tests | partial: broad continuation coverage; every-fixture × 20-seed × five-tick campaign not closed |

@@ -38,6 +38,38 @@ public sealed class PressureStationTests
         // Pre-sleep relief: no critical need interrupts sleep; every missed window is classified.
         Assert.Equal(0, result.Participation.CriticalInterruptions);
         Assert.All(result.Participation.MissedDailyGoalReasons.Keys, k => Assert.Contains("OpportunityClosed/", k));
+        // Every missed routine window has one allowed explanation (fixture start, custody,
+        // escort duty, credential recovery or hunger reaching seek only at the close).
+        Assert.Equal(result.Participation.MissedDailyGoals, result.MissedWindows.Total);
+        Assert.Equal(0, result.MissedWindows.NeedsAttention);
+        Assert.All(result.MissedWindows.Windows, w => Assert.True(PressureStation.MissCategoryAllowed[w.Category], w.Category));
+        // Sustained cleaning delays but never starves check-ins: at most two periodic
+        // intervals of available duty time between inbox reads (2,109 measured).
+        Assert.Equal(result.Participation.Citizens.Count, result.CheckIns.Actors);
+        Assert.Equal(0, result.CheckIns.GapsOverBound);
+        Assert.InRange(result.CheckIns.MaximumGap, 1, result.CheckIns.BoundTicks);
+        Assert.True(result.CheckIns.ExcludedOnDutyTicks["TerminalOutage"] > 0 && result.CheckIns.ExcludedOnDutyTicks["EscortOrCustodyDuty"] > 0);
+        Assert.Empty(result.RosterChanges);
+    }
+
+    [Fact]
+    public void UnreadRosterChangeKeepsTheOldRosterUntilTheCitizenReadsIt()
+    {
+        var scenario = PressureStation.Create(variant: "roster-change");
+        var result = PressureStation.Execute(scenario);
+        Assert.True(result.Status == "completed", string.Join("\n", result.Failures));
+        Assert.Equal("roster-change", result.Variant);
+        Assert.Equal(PressureStation.RosterChangeActors(0), result.RosterChanges.Select(c => c.Actor));
+        Assert.All(result.RosterChanges, c =>
+        {
+            Assert.True(c.Read > c.Published, "The new roster is adopted only by reading it.");
+            Assert.Equal((c.OldCohort + 1) % 3, c.NewCohort);
+            Assert.Equal(0, c.Inconsistent);
+        });
+        // Old-roster check-ins between publication and read prove the roster was unread.
+        Assert.True(result.RosterChanges.Sum(c => c.OldRosterOnlyEvents) > 0);
+        Assert.Equal(0, result.CheckIns.GapsOverBound);
+        Assert.True(result.CheckpointMatches && result.ContinuationTraceMatches);
     }
 
     [Fact]

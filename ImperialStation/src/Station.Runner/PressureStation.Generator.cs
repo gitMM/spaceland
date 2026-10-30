@@ -14,7 +14,13 @@ public static partial class PressureStation
     // (the same schedule with the earlier four guards per group, all in cohort 0; a
     // comparison control only), "daytime" (staggered guards, the earlier all-daytime waves)
     // and "overnight" (staggered guards, every wave in the day cohort's night).
-    public static readonly IReadOnlyList<string> Variants = new[] { "", "single-cohort-guards", "daytime", "overnight" };
+    // "roster-change" is the default schedule plus mid-run roster changes for three
+    // cleaners per group, to check that each follows its old roster until it reads the new one.
+    public static readonly IReadOnlyList<string> Variants = new[] { "", "single-cohort-guards", "daytime", "overnight", "roster-change" };
+    // Published at the start of day 1's first wave hour block: one changed cleaner is on
+    // duty, one is off duty before its next shift, one is off duty during its new shift.
+    public const long RosterChangeTick = StationBaseline.Day + 6000;
+    public static IReadOnlyList<long> RosterChangeActors(long groupBase) => new[] { groupBase + 10, groupBase + 11, groupBase + 12 };
     // Wave start offsets within each configured day. The mixed default keeps the first
     // wave during day duty, starts the second at the 24,000 shift boundary while the day
     // cohort sleeps, and puts the third in the evening after day duty has ended.
@@ -170,6 +176,14 @@ public static partial class PressureStation
         for (int bed = 1; bed < groups; bed++)
             s.Needs!.Services.Add(new() { Id = 10100 + bed, Kind = NeedServiceKind.Bed, Position = At(5), DetentionFacilityId = 1, Capacity = 1, DurationTicks = 12000 });
         s.Items.Add(new() { Id = item++, Resource = "meal", Quantity = groups * 60, LocationKind = LocationKind.TileContainer, Owner = 6 });
+        if (variant == "roster-change")
+            for (int b = 0; b < population; b += 64)
+                foreach (long actor in RosterChangeActors(b))
+                {
+                    var old = s.Routines.Assignments.Single(r => r.ActorId == actor);
+                    scenario.Disturbances.Add(new() { Type = "RosterChange", Tick = RosterChangeTick, OperationKey = "pressure/roster-change/" + actor,
+                        Roster = new() { ActorId = actor, Cohort = (old.Cohort + 1) % s.Routines.Configuration.Cohorts, RestTile = CoordinateData.From(old.RestTile!.ToCoord()) } });
+                }
         return new LoadedScenario(JsonData.Write(scenario), JsonData.Write(catalog), "generated fixed-station pressure");
     }
 }
